@@ -2,18 +2,19 @@
 import json
 import logging
 import os
-from typing import Dict, List
+from typing import Any, Dict, List
 import webbrowser
 import subprocess
 import platform
 
-from flask import Flask, render_template, request, jsonify, send_from_directory, Response
+from flask import Blueprint, Flask, render_template, request, jsonify, send_from_directory, Response
 
-from core import template_manager
 from core.config_manager import ConfigManager
+from core.download_service import DownloadService
 from core.log_analyzer import LogAnalyzer
 from core.log_downloader import LogDownloader
 from core.parser_config_manager import ParserConfigManager
+from core.template_manager import TemplateManager
 
 app = Flask(__name__)
 
@@ -43,6 +44,10 @@ log_downloader = LogDownloader(DOWNLOAD_DIR, config_manager)
 HTML_LOGS_DIR = os.path.join(project_root, 'html_logs')
 log_analyzer = LogAnalyzer(HTML_LOGS_DIR, config_manager, parser_config_manager)
 
+# 模板与下载服务
+region_template_manager = TemplateManager(REGION_TEMPLATES_DIR)
+download_service = DownloadService(log_downloader, region_template_manager)
+
 # 确保配置目录存在
 os.makedirs(CONFIG_DIR, exist_ok=True)
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -54,6 +59,19 @@ os.makedirs(REGION_TEMPLATES_DIR, exist_ok=True)
 REPORT_MAPPING_FILE = os.path.join(base_dir, 'report_mappings.json')
 
 app.config['HTML_LOGS_DIR'] = HTML_LOGS_DIR
+
+
+# 通用工具
+def _get_bool(payload: Dict[str, Any], *keys, default: bool = False) -> bool:
+    for key in keys:
+        if key in payload:
+            value = payload.get(key)
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                return value.lower() in {'1', 'true', 'yes', 'on'}
+            return bool(value)
+    return default
 
 
 # 初始化配置文件
@@ -952,51 +970,15 @@ def clear_parser_config():
 
 
 @app.route('/api/search-logs', methods=['POST'])
-def search_logs():
-    """搜索服务器上的日志文件"""
-    try:
-        data = request.json
-        factory = data.get('factory')
-        system = data.get('system')
-        node = data.get('node')
-        include_realtime = data.get('includeRealtime', True)
-        include_archive = data.get('includeArchive', False)
-        date_start = data.get('dateStart')
-        date_end = data.get('dateEnd')
-
-        if not factory or not system or not node:
-            return jsonify({'success': False, 'error': '缺少必要参数'}), 400
-
-        log_files = log_downloader.search_logs(
-            factory, system, node, include_realtime, include_archive, date_start, date_end
-        )
-        return jsonify({'success': True, 'log_files': log_files})
-    except Exception as e:
-        logger.error(f"搜索日志失败: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+def legacy_search_logs():
+    """兼容旧前端的搜索接口。"""
+    return api_logs_search()
 
 
 @app.route('/api/download-logs', methods=['POST'])
-def download_logs():
-    """下载选中的日志文件"""
-    try:
-        data = request.json
-        log_files = data.get('files')
-        factory = data.get('factory')
-        system = data.get('system')
-        node = data.get('node')
-
-        if not log_files or not factory or not system or not node:
-            return jsonify({'success': False, 'error': '缺少必要参数'}), 400
-
-        downloaded_files = log_downloader.download_logs(log_files, factory, system, node)
-        return jsonify({
-            'success': True,
-            'downloaded_files': downloaded_files
-        })
-    except Exception as e:
-        logger.error(f"下载日志失败: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+def legacy_download_logs():
+    """兼容旧前端的下载接口。"""
+    return api_logs_download()
 
 
 @app.route('/api/downloaded-logs', methods=['GET'])
@@ -1516,11 +1498,8 @@ def delete_config_item():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # --- server.py 里：Templates API（使用 core/template_manager.TemplateManager） ---
-from flask import Blueprint, request, jsonify
-from core.template_manager import TemplateManager as TM
-
 templates_bp = Blueprint("templates_api", __name__)
-tm = TM(base_dir=REGION_TEMPLATES_DIR)
+tm = region_template_manager
 
 def _parse_nodes(nodes_or_text):
     """允许数组或逗号分隔字符串"""
@@ -1612,117 +1591,70 @@ app.register_blueprint(templates_bp)
 
 @app.route('/api/logs/search', methods=['POST'])
 def api_logs_search():
-    """
-    前端普通模式用：
-    - 接受 nodes (数组) 或 node (字符串)
-    - include_realtime/includeRealtime、include_archive/includeArchive 兼容
-    - 若 include_archive=True，则必须提供 date_start/date_end（或 camelCase）
-    - 返回 {success, logs:[...]}，并统一补齐 path 字段
-    """
     try:
         data = request.get_json(force=True) or {}
 
-        factory = data.get('factory')
-        system  = data.get('system')
-
-        nodes = data.get('nodes') or []
-        single_node = data.get('node') or ''
-        if not nodes and single_node:
-            nodes = [single_node]
-
-        include_realtime = data.get('include_realtime')
-        if include_realtime is None:
-            include_realtime = data.get('includeRealtime', True)
-
-        include_archive = data.get('include_archive')
-        if include_archive is None:
-            include_archive = data.get('includeArchive', False)
-
-        date_start = data.get('date_start') or data.get('dateStart')
-        date_end   = data.get('date_end')   or data.get('dateEnd')
-
-        if not factory or not system:
-            return jsonify({"success": False, "error": "缺少厂区或系统参数"}), 400
-
-        if include_archive and (not date_start or not date_end):
-            return jsonify({"success": False, "error": "归档搜索需要提供开始/结束日期"}), 400
-
-        if nodes and len(nodes) > 1:
-            logs = log_downloader.search_logs_many_nodes(
-                factory=factory, system=system, nodes=nodes,
-                include_realtime=include_realtime, include_archive=include_archive,
-                date_start=date_start, date_end=date_end
-            )
-        else:
-            node = nodes[0] if nodes else ''
-            logs = log_downloader.search_logs(
-                factory=factory, system=system, node=node,
-                include_realtime=include_realtime, include_archive=include_archive,
-                date_start=date_start, date_end=date_end
-            )
-
-        for it in logs:
-            it['path'] = it.get('remote_path') or it.get('path') or it.get('name', '')
+        logs = download_service.search(
+            factory=data.get('factory') or '',
+            system=data.get('system') or '',
+            nodes=data.get('nodes'),
+            node=data.get('node'),
+            include_realtime=_get_bool(data, 'include_realtime', 'includeRealtime', default=True),
+            include_archive=_get_bool(data, 'include_archive', 'includeArchive', default=False),
+            date_start=data.get('date_start') or data.get('dateStart'),
+            date_end=data.get('date_end') or data.get('dateEnd'),
+        )
 
         return jsonify({"success": True, "logs": logs})
-    except Exception as e:
-        logger.error(f"/api/logs/search 失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e)}), 500
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception as exc:
+        logger.error(f"/api/logs/search 失败: {exc}", exc_info=True)
+        return jsonify({"success": False, "error": '搜索日志失败'}), 500
 
 
 @app.route('/api/logs/search_strict', methods=['POST'])
 def api_logs_search_strict():
-    """
-    模板锁定模式用：
-    - 接受 template_id，从模板取 factory/system/nodes
-    - 归档同样强制校验日期
-    - 返回 {success, logs:[...]}，并统一补齐 path
-    """
     try:
         data = request.get_json(force=True) or {}
         template_id = data.get('template_id')
-
-        include_realtime = data.get('include_realtime')
-        if include_realtime is None:
-            include_realtime = data.get('includeRealtime', True)
-
-        include_archive = data.get('include_archive')
-        if include_archive is None:
-            include_archive = data.get('includeArchive', False)
-
-        date_start = data.get('date_start') or data.get('dateStart')
-        date_end   = data.get('date_end')   or data.get('dateEnd')
-
         if not template_id:
             return jsonify({"success": False, "error": "缺少模板ID"}), 400
 
-        tpl = tm.get(template_id)
-        if not tpl:
-            return jsonify({"success": False, "error": "模板不存在"}), 404
-
-        factory = tpl.get('factory_name') or tpl.get('factory')
-        system = tpl.get('system_name') or tpl.get('system')
-        nodes   = tpl.get('nodes') or []
-
-        if not factory or not system or not nodes:
-            return jsonify({"success": False, "error": "模板数据不完整"}), 400
-
-        if include_archive and (not date_start or not date_end):
-            return jsonify({"success": False, "error": "归档搜索需要提供开始/结束日期"}), 400
-
-        logs = log_downloader.search_logs_strict(
-            factory=factory, system=system, nodes=nodes,
-            include_realtime=include_realtime, include_archive=include_archive,
-            date_start=date_start, date_end=date_end
+        logs = download_service.search_with_template(
+            template_id=template_id,
+            include_realtime=_get_bool(data, 'include_realtime', 'includeRealtime', default=True),
+            include_archive=_get_bool(data, 'include_archive', 'includeArchive', default=False),
+            date_start=data.get('date_start') or data.get('dateStart'),
+            date_end=data.get('date_end') or data.get('dateEnd'),
         )
 
-        for it in logs:
-            it['path'] = it.get('remote_path') or it.get('path') or it.get('name', '')
-
         return jsonify({"success": True, "logs": logs})
-    except Exception as e:
-        logger.error(f"/api/logs/search_strict 失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e)}), 500
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception as exc:
+        logger.error(f"/api/logs/search_strict 失败: {exc}", exc_info=True)
+        return jsonify({"success": False, "error": '搜索日志失败'}), 500
+
+
+@app.route('/api/logs/download', methods=['POST'])
+def api_logs_download():
+    try:
+        data = request.get_json(force=True) or {}
+        files = data.get('files') or []
+        downloaded = download_service.download(
+            files=files,
+            factory=data.get('factory') or '',
+            system=data.get('system') or '',
+            nodes=data.get('nodes'),
+            node=data.get('node'),
+        )
+        return jsonify({'success': True, 'downloaded_files': downloaded})
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    except Exception as exc:
+        logger.error(f"/api/logs/download 失败: {exc}", exc_info=True)
+        return jsonify({'success': False, 'error': '下载日志失败'}), 500
 
 
 @app.after_request

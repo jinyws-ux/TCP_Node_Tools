@@ -19,8 +19,9 @@ export const api = {
   /* -------- 下载页 -------- */
   getFactories: () => get('/api/factories'),
   getSystems: (factoryId) => get(`/api/systems?factory=${encodeURIComponent(factoryId)}`),
-  searchLogs: (payload) => post('/api/search-logs', payload),
-  downloadLogs: (payload) => post('/api/download-logs', payload),
+  searchLogs: (payload) => post('/api/logs/search', payload),
+  searchLogsByTemplate: (payload) => post('/api/logs/search_strict', payload),
+  downloadLogs: (payload) => post('/api/logs/download', payload),
 
   /* -------- 分析页 -------- */
   getDownloadedLogs: () => get('/api/downloaded-logs'),
