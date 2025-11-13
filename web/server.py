@@ -9,11 +9,13 @@ import platform
 
 from flask import Blueprint, Flask, render_template, request, jsonify, send_from_directory, Response
 
+from core.analysis_service import AnalysisService
 from core.config_manager import ConfigManager
 from core.download_service import DownloadService
 from core.log_analyzer import LogAnalyzer
 from core.log_downloader import LogDownloader
 from core.parser_config_manager import ParserConfigManager
+from core.report_mapping_store import ReportMappingStore
 from core.template_manager import TemplateManager
 
 app = Flask(__name__)
@@ -47,6 +49,12 @@ log_analyzer = LogAnalyzer(HTML_LOGS_DIR, config_manager, parser_config_manager)
 # 模板与下载服务
 region_template_manager = TemplateManager(REGION_TEMPLATES_DIR)
 download_service = DownloadService(log_downloader, region_template_manager)
+report_mapping_store = ReportMappingStore(REPORT_MAPPING_FILE)
+analysis_service = AnalysisService(
+    log_downloader=log_downloader,
+    log_analyzer=log_analyzer,
+    report_store=report_mapping_store,
+)
 
 # 确保配置目录存在
 os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -56,7 +64,7 @@ os.makedirs(PARSER_CONFIGS_DIR, exist_ok=True)
 os.makedirs(REGION_TEMPLATES_DIR, exist_ok=True)
 
 # 报告映射文件路径
-REPORT_MAPPING_FILE = os.path.join(base_dir, 'report_mappings.json')
+REPORT_MAPPING_FILE = os.path.join(HTML_LOGS_DIR, 'report_mappings.json')
 
 app.config['HTML_LOGS_DIR'] = HTML_LOGS_DIR
 
@@ -98,59 +106,6 @@ def init_config_files():
 
     # 创建解析配置文件目录
     os.makedirs(PARSER_CONFIGS_DIR, exist_ok=True)
-
-
-def load_report_mappings() -> Dict[str, str]:
-    """加载报告映射关系"""
-    try:
-        if os.path.exists(REPORT_MAPPING_FILE):
-            with open(REPORT_MAPPING_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return {}
-    except Exception as e:
-        logger.error(f"加载报告映射失败: {str(e)}")
-        return {}
-
-
-# 添加报告映射管理函数
-def save_report_mappings(log_paths: List[str], report_path: str):
-    """保存日志文件到报告的映射关系"""
-    try:
-        mapping_file = os.path.join(app.config['HTML_LOGS_DIR'], 'report_mappings.json')
-        mappings = {}
-
-        # 加载现有映射
-        if os.path.exists(mapping_file):
-            with open(mapping_file, 'r', encoding='utf-8') as f:
-                mappings = json.load(f)
-
-        # 更新映射
-        for log_path in log_paths:
-            mappings[log_path] = report_path
-
-        # 保存映射
-        with open(mapping_file, 'w', encoding='utf-8') as f:
-            json.dump(mappings, f, indent=2, ensure_ascii=False)
-
-        logger.info(f"保存报告映射: {len(log_paths)}个日志文件 -> {report_path}")
-        return True
-    except Exception as e:
-        logger.error(f"保存报告映射失败: {str(e)}")
-        return False
-
-
-def get_report_path(log_path: str) -> str:
-    """获取日志文件对应的报告路径"""
-    try:
-        mapping_file = os.path.join(app.config['HTML_LOGS_DIR'], 'report_mappings.json')
-        if os.path.exists(mapping_file):
-            with open(mapping_file, 'r', encoding='utf-8') as f:
-                mappings = json.load(f)
-                return mappings.get(log_path, '')
-        return ''
-    except Exception as e:
-        logger.error(f"获取报告路径失败: {str(e)}")
-        return ''
 
 
 def build_config_tree(config, factory, system):
@@ -985,7 +940,7 @@ def legacy_download_logs():
 def get_downloaded_logs():
     """获取已下载的日志列表"""
     try:
-        logs = log_downloader.get_downloaded_logs()
+        logs = analysis_service.list_downloaded_logs()
         return jsonify({'success': True, 'logs': logs})
     except Exception as e:
         logger.error(f"获取已下载日志失败: {str(e)}")
@@ -999,30 +954,21 @@ def analyze_logs():
         data = request.json
         log_paths = data.get('logs')
         config_id = data.get('config')
+        if not config_id:
+            return jsonify({'success': False, 'error': '请选择解析配置'}), 400
 
-        if not log_paths or not config_id:
-            return jsonify({'success': False, 'error': '缺少必要参数'}), 400
-
-        # 从配置ID中提取厂区和系统信息
-        config_filename = config_id
-        if config_filename.endswith('.json'):
-            config_filename = config_filename[:-5]
-
-        parts = config_filename.split('_')
-        if len(parts) >= 2:
-            factory = parts[0]
-            system = parts[1]
-        else:
-            return jsonify({'success': False, 'error': '无效的配置ID'}), 400
-
-        # 调用日志分析器
-        result = log_analyzer.analyze_logs(log_paths, factory, system)
-
-        # 保存报告映射关系
-        if result.get('success'):
-            report_path = result.get('html_report')
-            if report_path:
-                save_report_mappings(log_paths, report_path)
+        try:
+            result = analysis_service.analyze_logs(
+                log_paths,
+                config_id,
+                options={
+                    'generate_html': _get_bool(data or {}, 'generate_html', default=True),
+                    'generate_original_log': _get_bool(data or {}, 'generate_original_log', default=True),
+                    'generate_sorted_log': _get_bool(data or {}, 'generate_sorted_log', default=True),
+                }
+            )
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
 
         return jsonify(result)
 
@@ -1058,7 +1004,10 @@ def delete_log():
         if not log_path:
             return jsonify({'success': False, 'error': '缺少日志路径'}), 400
 
-        result = log_analyzer.delete_log(log_path)
+        try:
+            result = analysis_service.delete_log(log_path)
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
         return jsonify(result)
     except Exception as e:
         logger.error(f"删除日志失败: {str(e)}")
@@ -1303,17 +1252,12 @@ def check_report():
         data = request.json
         log_path = data.get('log_path')
 
-        if not log_path:
-            return jsonify({'success': False, 'error': '缺少日志路径'})
+        try:
+            result = analysis_service.check_report(log_path)
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
 
-        report_path = get_report_path(log_path)
-        has_report = os.path.exists(report_path) if report_path else False
-
-        return jsonify({
-            'success': True,
-            'has_report': has_report,
-            'report_path': report_path
-        })
+        return jsonify(result)
 
     except Exception as e:
         logger.error(f"检查报告状态失败: {str(e)}")
@@ -1423,7 +1367,7 @@ def open_reports_directory():
     """打开报告目录"""
     try:
         # 获取报告目录
-        reports_dir = app.config['HTML_LOGS_DIR']
+        reports_dir = analysis_service.get_reports_directory() or app.config['HTML_LOGS_DIR']
 
         if not os.path.exists(reports_dir):
             logger.error(f"报告目录不存在: {reports_dir}")

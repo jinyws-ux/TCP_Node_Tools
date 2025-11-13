@@ -32,6 +32,55 @@ function updateSelectedLogs() {
   updateAnalyzeButton();
 }
 
+function formatDuration(ms) {
+  const value = Number(ms);
+  if (!Number.isFinite(value)) return '-';
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(2)} s`;
+  }
+  return `${value.toFixed(1)} ms`;
+}
+
+function renderAnalysisStats(stats = []) {
+  const container = document.getElementById('analysis-stats-body');
+  if (!container) return;
+  if (!Array.isArray(stats) || stats.length === 0) {
+    container.innerHTML = '<div class="message-empty">暂无阶段统计</div>';
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'analysis-stats-table';
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>阶段</th>
+        <th>输入数量</th>
+        <th>输出数量</th>
+        <th>耗时</th>
+      </tr>
+    </thead>
+  `;
+
+  const tbody = document.createElement('tbody');
+  stats.forEach((stage, index) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${index + 1}</td>
+      <td>${escapeHtml(stage.stage || '-')}</td>
+      <td>${Number.isFinite(stage.input_items) ? stage.input_items : '-'}</td>
+      <td>${Number.isFinite(stage.output_items) ? stage.output_items : '-'}</td>
+      <td>${formatDuration(stage.duration_ms)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  container.innerHTML = '';
+  container.appendChild(table);
+}
+
 function toggleSelectAllLogs() {
   const checked = this.checked;
   $$('#logs-body input[type="checkbox"]').forEach(chk => (chk.checked = checked));
@@ -251,6 +300,7 @@ async function analyzeLogs() {
       showMessage('success', `日志分析完成！生成 ${res.log_entries_count} 条日志记录`, 'analyze-messages');
       // 刷新列表，显示新的报告按钮
       loadDownloadedLogs();
+      renderAnalysisStats(res.stats || []);
     } else {
       showMessage('error', '分析失败: ' + (res.error || ''), 'analyze-messages');
     }
@@ -302,6 +352,7 @@ export function init() {
 
   // 初始按钮状态
   updateAnalyzeButton();
+  renderAnalysisStats([]);
 
   window.addEventListener('parser-config:changed', () => {
     console.log('[analyze] 解析配置变更 → 自动刷新配置列表');

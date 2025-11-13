@@ -474,3 +474,48 @@ footer{
 }
 .btn-edit:hover{ background: var(--indigo-600); }
 
+
+/* ---------- 分析统计卡片 ---------- */
+.analysis-stats-card{
+  margin-top:18px;
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  padding:18px;
+  background:var(--card);
+  box-shadow:0 2px 8px rgba(15,23,42,.05);
+}
+.analysis-stats-card__header h3{
+  margin:0;
+  color:#0f172a;
+  font-size:1.2rem;
+}
+.analysis-stats-card__header p{
+  margin:4px 0 0;
+  color:var(--muted);
+  font-size:.9rem;
+}
+.analysis-stats-body{
+  margin-top:12px;
+  overflow-x:auto;
+}
+.analysis-stats-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:13px;
+}
+.analysis-stats-table th,
+.analysis-stats-table td{
+  padding:8px 10px;
+  border:1px solid var(--line);
+  text-align:left;
+}
+.analysis-stats-table th{
+  background:var(--primary-50);
+  color:#1d4ed8;
+  font-weight:600;
+}
+.analysis-stats-table td:first-child,
+.analysis-stats-table th:first-child{
+  width:60px;
+  text-align:center;
+}

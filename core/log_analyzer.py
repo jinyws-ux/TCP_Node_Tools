@@ -1,8 +1,10 @@
 # core/log_analyzer.py
+import json
 import logging
 import os
-from typing import List, Dict, Any
 import re
+from time import perf_counter
+from typing import Any, Dict, List, Tuple
 
 from .log_parser import LogParser
 from .report_generator import ReportGenerator
@@ -16,88 +18,100 @@ class LogAnalyzer:
         self.logger = logging.getLogger(__name__)
         os.makedirs(output_dir, exist_ok=True)
 
-    def analyze_logs(self, log_paths: List[str], factory: str, system: str) -> Dict[str, Any]:
-        """分析日志文件并生成报告 - 修复映射关系"""
+    def analyze_logs(
+        self,
+        log_paths: List[str],
+        factory: str,
+        system: str,
+        *,
+        options: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        """分析日志文件并生成报告，顺便记录阶段耗时。"""
+        stats: List[Dict[str, Any]] = []
+        opts = {
+            'generate_html': True,
+            'generate_original_log': True,
+            'generate_sorted_log': True,
+        }
+        if options:
+            opts.update(options)
+
         try:
             if not log_paths:
                 self.logger.error("未选择日志文件")
-                return {'success': False, 'error': '未选择日志文件'}
+                return {'success': False, 'error': '未选择日志文件', 'stats': stats}
 
-            # 加载解析配置
             parser_config = self.parser_config_manager.load_config(factory, system)
             if not parser_config:
                 self.logger.error(f"未找到解析配置: {factory}/{system}")
-                return {'success': False, 'error': f'未找到解析配置: {factory}/{system}'}
+                return {
+                    'success': False,
+                    'error': f'未找到解析配置: {factory}/{system}',
+                    'stats': stats
+                }
 
-            # 创建解析器和报告生成器
             parser = LogParser(parser_config)
             report_generator = ReportGenerator(self.output_dir)
 
-            # 存储日志文件与报告的映射关系
-            report_mappings = {}
-
-            # 读取所有日志文件内容
-            all_log_lines = []
-            for log_path in log_paths:
-                if not os.path.exists(log_path):
-                    self.logger.error(f"日志文件不存在: {log_path}")
-                    continue
-
-                try:
-                    with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        lines = f.readlines()
-                        all_log_lines.extend(lines)
-                except Exception as e:
-                    self.logger.error(f"读取日志文件失败: {log_path}, 错误: {str(e)}")
-                    continue
-
+            stage_start = perf_counter()
+            all_log_lines, _ = self._read_log_files(log_paths)
+            self._record_stage(stats, '读取日志文件', stage_start, len(log_paths), len(all_log_lines))
             if not all_log_lines:
                 self.logger.error("未读取到有效的日志内容")
-                return {'success': False, 'error': '未读取到有效的日志内容'}
+                return {'success': False, 'error': '未读取到有效的日志内容', 'stats': stats}
 
-            # 解析日志
+            stage_start = perf_counter()
             log_entries = parser.parse_log_lines(all_log_lines)
-
+            self._record_stage(stats, '解析日志条目', stage_start, len(all_log_lines), len(log_entries))
             if not log_entries:
                 self.logger.error("未解析到有效的日志条目")
-                return {'success': False, 'error': '未解析到有效的日志条目'}
+                return {'success': False, 'error': '未解析到有效的日志条目', 'stats': stats}
 
-            # 生成报告 - 为每个日志文件生成对应的报告
             timestamp = self._get_timestamp()
+            html_report_path = ''
+            if opts.get('generate_html', True):
+                report_filename = self._generate_smart_filename(factory, system, log_paths, timestamp)
+                html_report_path = os.path.join(self.output_dir, report_filename)
+                stage_start = perf_counter()
+                generated_html_path = report_generator.generate_html_logs(log_entries, html_report_path)
+                self._record_stage(stats, '生成HTML报告', stage_start, len(log_entries), 1)
 
-            # 生成HTML报告
-            report_filename = self._generate_smart_filename(factory, system, log_paths, timestamp)
-            html_report_path = os.path.join(self.output_dir, report_filename)
+                if not generated_html_path or not os.path.exists(generated_html_path):
+                    self.logger.error("HTML报告生成失败")
+                    return {'success': False, 'error': 'HTML报告生成失败', 'stats': stats}
+                html_report_path = generated_html_path
 
-            # 调用报告生成器 - 确保参数正确
-            generated_html_path = report_generator.generate_html_logs(log_entries, html_report_path)
+            original_log_path = ''
+            sorted_log_path = ''
+            if opts.get('generate_original_log', True):
+                stage_start = perf_counter()
+                original_log_path = self._generate_text_log(log_entries, "converted", timestamp)
+                self._record_stage(stats, '输出文本日志', stage_start, len(log_entries), 1 if original_log_path else 0)
 
-            if not generated_html_path or not os.path.exists(generated_html_path):
-                self.logger.error("HTML报告生成失败")
-                return {'success': False, 'error': 'HTML报告生成失败'}
+            if opts.get('generate_sorted_log', True):
+                stage_start = perf_counter()
+                sorted_log_path = self._generate_sorted_text_log(log_entries, "sorted", timestamp)
+                self._record_stage(stats, '输出排序日志', stage_start, len(log_entries), 1 if sorted_log_path else 0)
 
-            # 建立映射关系：每个日志文件都映射到同一个报告文件
-            for log_path in log_paths:
-                report_mappings[log_path] = generated_html_path
-
-            # 生成文本日志（可选）
-            original_log_path = self._generate_text_log(log_entries, "converted", timestamp)
-            sorted_log_path = self._generate_sorted_text_log(log_entries, "sorted", timestamp)
-
-            self.logger.info(f"分析完成: 生成{len(log_entries)}条日志记录，报告文件: {generated_html_path}")
+            self._write_stats_record(factory, system, log_paths, len(log_entries), stats, opts)
+            self.logger.info(
+                "分析完成: 生成%s条日志记录，报告文件: %s",
+                len(log_entries),
+                html_report_path or '未生成',
+            )
 
             return {
                 'success': True,
-                'html_report': generated_html_path,
+                'html_report': html_report_path,
                 'original_log': original_log_path,
                 'sorted_log': sorted_log_path,
                 'log_entries_count': len(log_entries),
-                'report_mappings': report_mappings  # 返回映射关系
+                'stats': stats,
             }
 
         except Exception as e:
             self.logger.error(f"分析日志失败: {str(e)}", exc_info=True)
-            return {'success': False, 'error': str(e)}
+            return {'success': False, 'error': str(e), 'stats': stats}
 
     def view_log_content(self, log_path: str) -> Dict[str, Any]:
         """查看日志文件内容"""
@@ -132,40 +146,6 @@ class LogAnalyzer:
         except Exception as e:
             self.logger.error(f"删除日志失败: {str(e)}")
             return {'success': False, 'error': str(e)}
-
-    def get_downloaded_logs(self) -> List[Dict[str, Any]]:
-        """获取已下载的日志列表"""
-        try:
-            downloaded_logs = []
-
-            if os.path.exists(self.output_dir):
-                for root, dirs, files in os.walk(self.output_dir):
-                    for file in files:
-                        if file.startswith('tcp_trace'):
-                            file_path = os.path.join(root, file)
-                            # 从路径中提取信息
-                            path_parts = file_path.split(os.sep)
-                            if len(path_parts) >= 4:
-                                factory = path_parts[-4] if len(path_parts) >= 4 else '未知'
-                                system = path_parts[-3] if len(path_parts) >= 3 else '未知'
-                                node = path_parts[-2] if len(path_parts) >= 2 else '未知'
-
-                                downloaded_logs.append({
-                                    'id': len(downloaded_logs) + 1,
-                                    'path': file_path,
-                                    'name': file,
-                                    'factory': factory,
-                                    'system': system,
-                                    'node': node,
-                                    'timestamp': os.path.getctime(file_path),
-                                    'size': os.path.getsize(file_path)
-                                })
-
-            self.logger.info(f"成功获取已下载日志列表，共{len(downloaded_logs)}个文件")
-            return downloaded_logs
-        except Exception as e:
-            self.logger.error(f"获取已下载日志失败: {str(e)}")
-            return []
 
     def _get_timestamp(self) -> str:
         """获取当前时间戳"""
@@ -209,6 +189,72 @@ class LogAnalyzer:
         except Exception as e:
             self.logger.error(f"生成排序日志失败: {str(e)}")
             return ""
+
+    def _record_stage(
+        self,
+        stats: List[Dict[str, Any]],
+        name: str,
+        started_at: float,
+        input_items: int,
+        output_items: int,
+    ) -> None:
+        duration_ms = round((perf_counter() - started_at) * 1000, 2)
+        stats.append({
+            'stage': name,
+            'duration_ms': duration_ms,
+            'input_items': input_items,
+            'output_items': output_items,
+        })
+
+    def _read_log_files(self, log_paths: List[str]) -> Tuple[List[str], int]:
+        lines: List[str] = []
+        read_files = 0
+        for log_path in log_paths:
+            if not os.path.exists(log_path):
+                self.logger.warning(f"日志文件不存在: {log_path}")
+                continue
+            try:
+                with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    file_lines = f.readlines()
+                    lines.extend(file_lines)
+                    read_files += 1
+            except Exception as exc:
+                self.logger.error(f"读取日志文件失败: {log_path}, 错误: {exc}")
+        return lines, read_files
+
+    def _write_stats_record(
+        self,
+        factory: str,
+        system: str,
+        log_paths: List[str],
+        entry_count: int,
+        stats: List[Dict[str, Any]],
+        options: Dict[str, Any],
+    ) -> None:
+        record = {
+            'timestamp': self._get_timestamp(),
+            'factory': factory,
+            'system': system,
+            'log_files': [os.path.basename(p) for p in log_paths],
+            'log_file_count': len(log_paths),
+            'log_entry_count': entry_count,
+            'options': options,
+            'stages': stats,
+        }
+        stats_path = os.path.join(self.output_dir, 'analysis_stats.json')
+        try:
+            data: List[Dict[str, Any]] = []
+            if os.path.exists(stats_path):
+                with open(stats_path, 'r', encoding='utf-8') as f:
+                    loaded = json.load(f)
+                    if isinstance(loaded, list):
+                        data = loaded
+            data.append(record)
+            data = data[-50:]
+            with open(stats_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as exc:
+            self.logger.warning(f"写入分析统计失败: {exc}")
 
     def _generate_smart_filename(self, factory: str, system: str, log_paths: List[str], timestamp: str) -> str:
         """生成智能报告文件名"""
