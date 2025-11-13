@@ -16,28 +16,14 @@ const state = {
   pager: { page: 1, page_size: 20, total: 0, loading: false, q: '' },
   // 右侧过滤与联动
   filters: { factory: '', system: '' },
-  templateCache: [] // 当前页累积
+  templateCache: [], // 当前页累积
+
+  // 搜索结果 & 选中状态（下载用）
+  searchResults: [],
+  selectedLogPaths: new Set(), // remote_path/path 作为 key
 };
 
 /* ---------- 本地工具：恢复按钮文案（配合现有 core/ui.js） ---------- */
-function getSelectedOptionText(sel) {
-  if (!sel) return '';
-  const opt = sel.options[sel.selectedIndex];
-  return opt ? opt.textContent || '' : '';
-}
-function fillSelectByText(sel, text) {
-  if (!sel || !text) return false;
-  const opt = Array.from(sel.options).find(o => (o.textContent || '').trim() === String(text).trim());
-  if (opt) { sel.value = opt.value; return true; }
-  return false;
-}
-// 可选：从页面或全局状态拿 server_config_id（若没有就为空）
-function getCurrentServerConfigId() {
-  const el = document.querySelector('#current-config-id');
-  if (el && el.value) return el.value;
-  return ''; // 没有就留空，后端会当作未绑定
-}
-
 function restoreSearchBtnLabel() {
   const btn = qs('#btn-search');
   if (!btn) return;
@@ -51,6 +37,23 @@ function restoreSaveTemplateBtnLabel() {
   btn.innerHTML = '<i class="fas fa-save"></i> 保存区域';
 }
 
+function updateDownloadButton() {
+  const btn = qs('#btn-download-logs');
+  if (!btn) return;
+  btn.disabled = !state.selectedLogPaths.size;
+}
+
+/* 根据 state.selectedLogPaths 同步勾选框 UI （重新渲染或全选时用） */
+function syncLogCheckboxes() {
+  const tbody = qs('#logs-search-body');
+  if (!tbody) return;
+  qsa('input[type="checkbox"].log-select', tbody).forEach(chk => {
+    const path = chk.dataset.remotePath || chk.dataset.path || '';
+    chk.checked = !!(path && state.selectedLogPaths.has(path));
+  });
+  updateDownloadButton();
+}
+
 export function init() {
   const tab = qs('#download-tab');
   if (!tab || inited) return;
@@ -58,25 +61,6 @@ export function init() {
 
   bindLeftForm();
   bindRightPanel();
-
-  // 服务器配置有变动 -> 重新拉取厂区/系统，并刷新右侧模板列表
-  window.addEventListener('server-configs:changed', async () => {
-    const factorySel = qs('#factory-select');
-    const currentFactory = factorySel?.value || '';
-
-    await loadFactories();                  // 重新拉厂区
-    const f = qs('#factory-select')?.value || currentFactory;
-    if (f) await loadSystems(f);            // 选中项下再拉系统
-
-    syncRightFiltersAndReload();            // 右侧模板跟着刷新
-    $msg('success', '服务器配置已刷新');
-  });
-
-  // 解析配置有变动 -> 不影响左侧下拉，但可选择性刷新右侧模板（若你在模板里显示解析统计才需要）
-  window.addEventListener('parser-configs:changed', () => {
-    // 可按需：仅右侧模板搜索/刷新
-    reloadTemplates(true);
-  });
 
   // 初始化下拉：厂区 -> 系统（依赖后端）
   loadFactories().then(() => syncRightFiltersAndReload());
@@ -118,6 +102,9 @@ function bindLeftForm() {
   qs('#btn-refresh')?.addEventListener('click', refreshDownloadedList);
   qs('#btn-open-dir')?.addEventListener('click', openDownloadDir);
 
+  // 下载选中日志
+  qs('#btn-download-logs')?.addEventListener('click', onDownloadLogsClick);
+
   // 添加模板模式
   qs('#btn-save-template')?.addEventListener('click', onSaveTemplate);
   qs('#btn-cancel-template')?.addEventListener('click', exitAddTemplateMode);
@@ -128,10 +115,26 @@ function bindLeftForm() {
     $msg('info', '已解除模板选择');
   });
 
+  // 可选：全选 checkbox（如果你在表头放了一个 id="logs-check-all" 的勾选框）
+  qs('#logs-check-all')?.addEventListener('change', (e) => {
+    const checked = e.target.checked;
+    const tbody = qs('#logs-search-body');
+    if (!tbody) return;
+    state.selectedLogPaths.clear();
+    qsa('input[type="checkbox"].log-select', tbody).forEach(chk => {
+      chk.checked = checked;
+      const path = chk.dataset.remotePath || chk.dataset.path || '';
+      if (checked && path) state.selectedLogPaths.add(path);
+    });
+    updateDownloadButton();
+  });
+
   // 默认载入一次系统（空）
   loadSystems('');
   // 初次拉已下载列表（如有接口，这里实现）——占位
   refreshDownloadedList();
+
+  updateDownloadButton();
 }
 
 function bindRightPanel() {
@@ -184,32 +187,29 @@ async function onSearchClick() {
     return;
   }
 
-  let url = '/api/logs/search';
-  let body = {
+  // 你的 server.py 暴露的是 /api/search-logs（单节点）
+  const url = '/api/search-logs';
+  const body = {
     factory,
     system,
-    include_realtime,
-    include_archive,
-    date_start,
-    date_end
+    includeRealtime: include_realtime,
+    includeArchive: include_archive,
+    dateStart: date_start,
+    dateEnd: date_end
   };
 
   if (state.mode === 'selected' && state.selectedTemplate) {
-    // 严格模式：只给模板 ID，后端按模板的 factory/system/nodes 搜
-    url = '/api/logs/search_strict';
-    body = {
-      template_id: state.selectedTemplate.id,
-      include_realtime,
-      include_archive,
-      date_start,
-      date_end
-    };
+    // 后端目前只支持单节点：取模板里的第一个节点
+    const first = (state.selectedTemplate.nodes || [])[0] || '';
+    body.node = first;
+    if (!first) {
+      $msg('warning', '所选模板没有节点；请编辑模板或手工输入节点');
+    }
   } else {
-    // 普通模式：支持多节点；兼容老后端的 node 字段
+    // 普通模式
     const nodes = parseNodes(qs('#node-input')?.value || '');
-    body.nodes = nodes;
-    body.node  = nodes[0] || '';
-    if (!nodes.length) {
+    body.node = nodes[0] || '';
+    if (!body.node) {
       $msg('warning', '建议填写至少一个节点，或使用右侧区域模板');
     }
   }
@@ -223,9 +223,10 @@ async function onSearchClick() {
     });
     const data = await res.json();
 
-    // 新接口统一返回 { success, logs: [...] }；兼容历史字段
-    const list = data?.logs || data?.log_files || [];
+    // 后端响应：{ success, log_files: [...] }
+    const list = data?.log_files || data?.logs || [];
     renderLogs(list);
+
     if (!list.length) $msg('info', '没有匹配的日志');
   } catch (e) {
     console.error(e);
@@ -237,11 +238,106 @@ async function onSearchClick() {
 }
 
 async function refreshDownloadedList() {
-  // 占位：如有“已下载列表”的接口，可在此拉取并渲染
+  // 如果你希望在“下载”页也展示一个“已下载列表”，
+  // 这里可以调用 /api/downloaded-logs 然后渲染到你自己的表格区域。
+  // 目前先留空，不影响功能。
 }
 
 function openDownloadDir() {
   // 占位：若后端有打开目录的API，这里调用
+}
+
+/* ---------------- 下载功能：从搜索结果中选择并下载 ---------------- */
+
+function buildSelectedFilesPayload() {
+  const files = [];
+  const results = state.searchResults || [];
+  const selected = state.selectedLogPaths;
+
+  if (!results.length || !selected.size) return files;
+
+  for (const item of results) {
+    const remote_path = item.remote_path || item.path || '';
+    if (!remote_path || !selected.has(remote_path)) continue;
+
+    files.push({
+      name: item.name || '',
+      remote_path,
+      path: remote_path,       // 兼容后端 old 字段
+      size: item.size || 0,
+      mtime: item.mtime || item.timestamp || '',
+      type: item.type || 'unknown',
+      node: item.node || ''    // 后端会用实际节点分目录
+    });
+  }
+  return files;
+}
+
+/** 计算 download-logs 请求中的 node 参数（search_node，用于记录） */
+function resolveSearchNodeForDownload() {
+  if (state.mode === 'selected' && state.selectedTemplate) {
+    const nodes = state.selectedTemplate.nodes || [];
+    if (nodes.length) return nodes.join(',');
+  }
+  const nodes = parseNodes(qs('#node-input')?.value || '');
+  if (nodes.length) return nodes[0]; // 老接口只要求非空即可
+  return 'mixed'; // 兜底给个标记值，避免后端报“缺少 node”
+}
+
+async function onDownloadLogsClick() {
+  const factory = qs('#factory-select')?.value || '';
+  const system  = qs('#system-select')?.value || '';
+
+  if (!factory || !system) {
+    $msg('error', '请先选择厂区与系统');
+    return;
+  }
+
+  const files = buildSelectedFilesPayload();
+  if (!files.length) {
+    $msg('error', '请先在下方搜索结果中勾选要下载的日志');
+    return;
+  }
+
+  const node = resolveSearchNodeForDownload();
+
+  try {
+    setButtonLoading('btn-download-logs', true);
+    const res = await fetch('/api/download-logs', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        files,
+        factory,
+        system,
+        node
+      })
+    });
+    const data = await res.json();
+    if (!data?.success) {
+      throw new Error(data?.error || '下载失败');
+    }
+
+    const downloaded = data.downloaded_files || [];
+    const count = downloaded.length;
+    if (count > 0) {
+      $msg('success', `下载完成，成功下载 ${count} 个日志文件`);
+    } else {
+      $msg('warning', '后端返回成功，但未包含任何已下载文件信息，请检查服务器日志');
+    }
+
+    // 清空选择
+    state.selectedLogPaths.clear();
+    syncLogCheckboxes();
+    // 如有需要，这里可以刷新“已下载列表”或通知分析页
+    refreshDownloadedList();
+  } catch (e) {
+    console.error(e);
+    $msg('error', '下载失败：' + (e?.message || e));
+  } finally {
+    setButtonLoading('btn-download-logs', false);
+    updateDownloadButton();
+  }
 }
 
 /* ---------------- 模板：UI 状态切换 ---------------- */
@@ -270,34 +366,17 @@ function exitAddTemplateMode() {
   restoreSaveTemplateBtnLabel();
 }
 
-async function enterSelectedTemplateMode(tpl) {
+function enterSelectedTemplateMode(tpl) {
   state.mode = 'selected';
   state.selectedTemplate = tpl;
 
+  // 锁定左侧
   const factorySel = qs('#factory-select');
   const systemSel  = qs('#system-select');
   const nodeInput  = qs('#node-input');
 
-  // 先设厂区：优先用 ID，没有就用名称兜底
-  let targetFactoryId = tpl.factory_id || tpl.factoryId || '';
-  if (targetFactoryId) {
-    fillSelectValue(factorySel, targetFactoryId);
-  } else {
-    // 用名称匹配 option 文本
-    fillSelectByText(factorySel, tpl.factory);
-  }
-
-  // 根据厂区重新载入系统，再设系统（优先 ID 没有就按名称）
-  const fval = factorySel?.value || '';
-  await loadSystems(fval);
-
-  let targetSystemId = tpl.system_id || tpl.systemId || '';
-  if (targetSystemId) {
-    fillSelectValue(systemSel, targetSystemId);
-  } else {
-    fillSelectByText(systemSel, tpl.system);
-  }
-
+  fillSelectValue(factorySel, tpl.factory);
+  fillSelectValue(systemSel, tpl.system);
   if (nodeInput) {
     nodeInput.value = (tpl.nodes || []).join(',');
     nodeInput.setAttribute('disabled','disabled');
@@ -305,15 +384,16 @@ async function enterSelectedTemplateMode(tpl) {
   factorySel?.setAttribute('disabled','disabled');
   systemSel?.setAttribute('disabled','disabled');
 
+  // 改按钮文案
   const searchBtn = qs('#btn-search');
   if (searchBtn) searchBtn.innerHTML = `<i class="fas fa-search"></i> 搜索日志（模板）`;
 
+  // 徽标提示
   const nameEl = qs('#selected-template-name');
   const badge = qs('#selected-template-badge');
   if (nameEl) nameEl.textContent = tpl.name;
   if (badge) badge.style.display = '';
 }
-
 
 function exitSelectedTemplateMode() {
   state.mode = 'normal';
@@ -378,7 +458,7 @@ function renderTemplateList(items, append = false) {
       </div>
     `;
 
-    el.querySelector('.tpl-select')?.addEventListener('click', () => { enterSelectedTemplateMode(t); });
+    el.querySelector('.tpl-select')?.addEventListener('click', () => enterSelectedTemplateMode(t));
     el.querySelector('.tpl-edit')?.addEventListener('click', () => editTemplate(t));
     el.querySelector('.tpl-del')?.addEventListener('click', () => deleteTemplate(t));
 
@@ -429,17 +509,11 @@ async function reloadTemplates(reset = true) {
 }
 
 async function onSaveTemplate() {
-  const factorySel = qs('#factory-select');
-  const systemSel  = qs('#system-select');
+  const factory = qs('#factory-select')?.value || '';
+  const system  = qs('#system-select')?.value || '';
+  const nodes   = parseNodes(qs('#node-input')?.value || '');
 
-  const factory_id = factorySel?.value || '';
-  const system_id  = systemSel?.value  || '';
-  const factory    = getSelectedOptionText(factorySel);
-  const system     = getSelectedOptionText(systemSel);
-
-  const nodes = parseNodes(qs('#node-input')?.value || '');
-
-  if (!factory_id || !system_id) {
+  if (!factory || !system) {
     $msg('error', '请先选择厂区与系统');
     return;
   }
@@ -451,21 +525,12 @@ async function onSaveTemplate() {
   const name = prompt('为该区域命名：', `${factory}-${system}-区域`);
   if (name == null || name.trim() === '') return;
 
-  const server_config_id = getCurrentServerConfigId();
-
   try {
     setButtonLoading('btn-save-template', true);
     const res = await fetch('/api/templates', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        name: name.trim(),
-        // 名称与ID都带上，后端会择优使用
-        factory, system,
-        factory_id, system_id,
-        server_config_id,
-        nodes
-      })
+      body: JSON.stringify({ name: name.trim(), factory, system, nodes })
     });
     const data = await res.json();
     if (!data?.success) throw new Error(data?.error || '保存失败');
@@ -483,53 +548,27 @@ async function onSaveTemplate() {
 }
 
 async function editTemplate(t) {
-  // 名称
   const newName = prompt('模板名称：', t.name);
   if (newName == null) return;
-
-  // 节点
   const newNodesStr = prompt('节点（英文逗号分隔）：', (t.nodes || []).join(','));
   if (newNodesStr == null) return;
+
   const nodes = parseNodes(newNodesStr);
-
-  // 绑定到当前左侧选择（像服务器配置一样可修改绑定）
-  const factorySel = qs('#factory-select');
-  const systemSel  = qs('#system-select');
-  const factory_id = factorySel?.value || t.factory_id || '';
-  const system_id  = systemSel?.value  || t.system_id  || '';
-  const factory    = getSelectedOptionText(factorySel) || t.factory || '';
-  const system     = getSelectedOptionText(systemSel)  || t.system  || '';
-
-  const server_config_id = getCurrentServerConfigId() || t.server_config_id || '';
 
   try {
     const res = await fetch(`/api/templates/${encodeURIComponent(t.id)}`, {
       method: 'PUT',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        name: newName.trim(),
-        nodes,
-        factory, system,
-        factory_id, system_id,
-        server_config_id
-      })
+      body: JSON.stringify({ name: newName.trim(), nodes })
     });
     const data = await res.json();
     if (!data?.success) throw new Error(data?.error || '保存失败');
-
     $msg('success', '模板已更新');
-    // 若当前处于已选择该模板，重新按更新后的模板重置左侧
-    if (state.mode === 'selected' && state.selectedTemplate && state.selectedTemplate.id === t.id) {
-      state.selectedTemplate = data.item || t;
-      await enterSelectedTemplateMode(state.selectedTemplate);
-    }
     reloadTemplates(true);
   } catch (e) {
-    console.error(e);
     $msg('error', '更新失败：' + (e?.message || e));
   }
 }
-
 
 async function deleteTemplate(t) {
   if (!confirm(`确认删除模板「${t.name}」？`)) return;
@@ -551,7 +590,7 @@ async function loadFactories() {
   const sel = qs('#factory-select');
   if (!sel) return;
   try {
-    const res = await fetch('/api/factories?ts=' + Date.now(), { cache: 'no-store' });
+    const res = await fetch('/api/factories');
     const list = await res.json();
     sel.innerHTML = `<option value="">-- 请选择厂区 --</option>`;
     (list || []).forEach(f => {
@@ -570,7 +609,7 @@ async function loadSystems(factoryId) {
     return;
   }
   try {
-    const res = await fetch(`/api/systems?factory=${encodeURIComponent(factoryId)}&ts=${Date.now()}`, { cache: 'no-store' });
+    const res = await fetch(`/api/systems?factory=${encodeURIComponent(factoryId)}`);
     const list = await res.json();
     sel.innerHTML = `<option value="">-- 请选择系统 --</option>`;
     (list || []).forEach(s => {
@@ -598,32 +637,90 @@ function fillSelectValue(sel, val) {
   if (opt) sel.value = val;
 }
 
-/* ---------------- 结果渲染（下载页的表格） ---------------- */
+/* ---------------- 结果渲染（下载页的表格 + 勾选） ---------------- */
 
 function renderLogs(list) {
   const tbody = qs('#logs-search-body'); // 下载页结果表
   if (!tbody) return;
+
+  state.searchResults = Array.isArray(list) ? list : [];
+  state.selectedLogPaths.clear();
+
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="message-empty">未找到日志</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="message-empty">未找到日志</td></tr>`;
+    updateDownloadButton();
     return;
   }
-  tbody.innerHTML = list.map(item => {
+
+  tbody.innerHTML = '';
+
+  list.forEach((item) => {
+    const tr = document.createElement('tr');
+
     const size = humanSize(item.size || 0);
     const node = item.node || extractNodeFromName(item.name || '');
     const type = item.type || '-';
     const mtime = item.mtime || item.timestamp || '-';
     const path = item.path || item.remote_path || '';
-    return `
-      <tr>
-        <td>${escapeHtml(item.name || '')}</td>
-        <td>${escapeHtml(String(node))}</td>
-        <td>${escapeHtml(type)}</td>
-        <td>${escapeHtml(size)}</td>
-        <td>${escapeHtml(mtime)}</td>
-        <td title="${escapeHtml(path)}">${escapeHtml(path)}</td>
-      </tr>
-    `;
-  }).join('');
+
+    // 选择列
+    const tdSel = document.createElement('td');
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.className = 'log-select';
+    chk.dataset.remotePath = item.remote_path || '';
+    chk.dataset.path = path;
+    chk.addEventListener('change', (e) => {
+      const p = e.target.dataset.remotePath || e.target.dataset.path || '';
+      if (!p) return;
+      if (e.target.checked) {
+        state.selectedLogPaths.add(p);
+      } else {
+        state.selectedLogPaths.delete(p);
+        // 取消“全选”勾选（如果有）
+        const allChk = qs('#logs-check-all');
+        if (allChk && allChk.checked) allChk.checked = false;
+      }
+      updateDownloadButton();
+    });
+    tdSel.appendChild(chk);
+    tr.appendChild(tdSel);
+
+    // 文件名
+    const tdName = document.createElement('td');
+    tdName.textContent = item.name || '';
+    tr.appendChild(tdName);
+
+    // 节点
+    const tdNode = document.createElement('td');
+    tdNode.textContent = String(node);
+    tr.appendChild(tdNode);
+
+    // 类型
+    const tdType = document.createElement('td');
+    tdType.textContent = type;
+    tr.appendChild(tdType);
+
+    // 大小
+    const tdSize = document.createElement('td');
+    tdSize.textContent = size;
+    tr.appendChild(tdSize);
+
+    // 时间
+    const tdTime = document.createElement('td');
+    tdTime.textContent = mtime;
+    tr.appendChild(tdTime);
+
+    // 路径
+    const tdPath = document.createElement('td');
+    tdPath.title = path;
+    tdPath.textContent = path;
+    tr.appendChild(tdPath);
+
+    tbody.appendChild(tr);
+  });
+
+  updateDownloadButton();
 }
 
 function humanSize(bytes) {
