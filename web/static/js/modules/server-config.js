@@ -4,236 +4,219 @@ import { showMessage } from '../core/messages.js';
 import { setButtonLoading } from '../core/ui.js';
 import { escapeHtml } from '../core/utils.js';
 
-let inited = false;
-let currentEditingConfigId = null;
+const state = {
+  configs: [],
+  editingId: null,
+  loading: false,
+  initialized: false,
+};
 
-// 小工具
-const $  = (sel, scope = document) => scope.querySelector(sel);
-const $$ = (sel, scope = document) => Array.from(scope.querySelectorAll(sel));
+const $ = (sel, scope = document) => scope.querySelector(sel);
 
-function bind(id, ev, fn){
-  const el = document.getElementById(id);
-  if (!el) return console.warn('元素不存在:', id);
-  el.addEventListener(ev, fn);
-}
-
-function tsToLocalString(tsSec){
+function formatTimestamp(tsSec) {
   if (!tsSec) return '';
-  try { return new Date(tsSec * 1000).toLocaleString(); } catch { return ''; }
-}
-
-/* ---------------- 渲染列表 ---------------- */
-
-async function loadServerConfigs(){
   try {
-    const list = await api.getServerConfigs();
-    const container = $('#server-configs-container');
-    const empty = $('#no-server-configs-message');
-    if (!container) return;
-
-    container.innerHTML = '';
-    if (!Array.isArray(list) || list.length === 0) {
-      if (empty) empty.style.display = 'block';
-      return;
-    }
-    if (empty) empty.style.display = 'none';
-
-    list.forEach(cfg => {
-      const item = document.createElement('div');
-      item.className = 'config-item' + (currentEditingConfigId === cfg.id ? ' editing' : '');
-      item.innerHTML = `
-        <div class="config-info">
-          <h3>${escapeHtml(cfg.factory || '')} - ${escapeHtml(cfg.system || '')}</h3>
-          <p>服务器: ${escapeHtml(cfg.server?.alias || '')} (${escapeHtml(cfg.server?.hostname || '')})</p>
-          <p class="config-meta">
-            创建: ${escapeHtml(tsToLocalString(cfg.created_time))}${
-              cfg.updated_time ? ` | 更新: ${escapeHtml(tsToLocalString(cfg.updated_time))}` : ''
-            }
-          </p>
-        </div>
-        <div class="config-actions">
-          <button class="btn btn-sm btn-edit" data-act="edit" data-id="${escapeHtml(cfg.id)}">
-            <i class="fas fa-edit"></i> 编辑
-          </button>
-          <button class="btn btn-sm btn-danger" data-act="del" data-id="${escapeHtml(cfg.id)}">
-            <i class="fas fa-trash"></i> 删除
-          </button>
-        </div>
-      `;
-      container.appendChild(item);
-    });
-
-    // 事件委托
-    container.addEventListener('click', onListAction, { once: true });
-  } catch (e) {
-    showMessage('error', '加载服务器配置失败: ' + e.message, 'server-config-messages');
+    return new Date(tsSec * 1000).toLocaleString();
+  } catch (_) {
+    return '';
   }
 }
 
-function onListAction(e){
-  const btn = e.target.closest('button[data-act]');
-  if (!btn) {
-    // 继续监听后续点击
-    e.currentTarget.addEventListener('click', onListAction, { once: true });
+function renderList() {
+  const container = document.getElementById('server-configs-container');
+  const empty = document.getElementById('no-server-configs-message');
+  if (!container) return;
+
+  container.innerHTML = '';
+  if (!state.configs.length) {
+    if (empty) empty.style.display = 'block';
     return;
   }
-  const act = btn.getAttribute('data-act');
-  const id  = btn.getAttribute('data-id');
-  if (act === 'edit') editServerConfig(id);
-  if (act === 'del')  deleteServerConfig(id);
-  // 保持委托（单次绑定，触发后重绑）
-  e.currentTarget.addEventListener('click', onListAction, { once: true });
+  if (empty) empty.style.display = 'none';
+
+  state.configs.forEach((cfg) => {
+    const item = document.createElement('div');
+    item.className = 'config-item' + (state.editingId === cfg.id ? ' editing' : '');
+    item.innerHTML = `
+      <div class="config-info">
+        <h3>${escapeHtml(cfg.factory || '')} - ${escapeHtml(cfg.system || '')}</h3>
+        <p>服务器: ${escapeHtml(cfg.server?.alias || '')} (${escapeHtml(cfg.server?.hostname || '')})</p>
+        <p class="config-meta">
+          创建: ${escapeHtml(formatTimestamp(cfg.created_time))}${cfg.updated_time ? ` | 更新: ${escapeHtml(formatTimestamp(cfg.updated_time))}` : ''}
+        </p>
+      </div>
+      <div class="config-actions">
+        <button class="btn btn-sm btn-edit" data-act="edit" data-id="${escapeHtml(cfg.id)}">
+          <i class="fas fa-edit"></i> 编辑
+        </button>
+        <button class="btn btn-sm btn-danger" data-act="delete" data-id="${escapeHtml(cfg.id)}">
+          <i class="fas fa-trash"></i> 删除
+        </button>
+      </div>
+    `;
+    container.appendChild(item);
+  });
 }
 
-/* ---------------- 表单编辑 ---------------- */
-
-async function editServerConfig(configId){
+async function loadServerConfigs(opts = {}) {
+  if (state.loading) return;
+  state.loading = true;
   try {
-    const list = await api.getServerConfigs();
-    const cfg = (list || []).find(c => c.id === configId);
-    if (!cfg) {
-      showMessage('error', '未找到配置信息', 'server-config-messages');
-      return;
+    state.configs = await api.getServerConfigs();
+    renderList();
+    if (opts.flash) {
+      showMessage('success', '服务器配置已刷新', 'server-config-messages');
     }
-
-    currentEditingConfigId = configId;
-    setEditMode(true);
-
-    $('#factory-name').value       = cfg.factory || '';
-    $('#system-name').value        = cfg.system || '';
-    $('#server-alias').value       = cfg.server?.alias || '';
-    $('#server-hostname').value    = cfg.server?.hostname || '';
-    $('#server-username').value    = cfg.server?.username || '';
-    $('#server-password').value    = cfg.server?.password || '';
-
-    // 高亮当前编辑项
-    await loadServerConfigs();
-
-    // 滚动到表单
-    document.querySelector('.config-form-section')?.scrollIntoView({ behavior: 'smooth' });
-
-    showMessage('info', `正在编辑配置: ${cfg.factory} - ${cfg.system}`, 'server-config-messages');
   } catch (e) {
-    showMessage('error', '获取配置详情失败: ' + e.message, 'server-config-messages');
+    showMessage('error', '加载服务器配置失败：' + e.message, 'server-config-messages');
+  } finally {
+    state.loading = false;
   }
 }
 
-async function deleteServerConfig(configId){
-  if (!confirm('确定要删除此配置吗？')) return;
-  try {
-    const res = await api.deleteServerConfig(configId);
-    if (res.success) {
-      showMessage('success', '配置删除成功', 'server-config-messages');
-      if (currentEditingConfigId === configId) {
-        resetServerConfigForm();
-      }
-      await loadServerConfigs();
-
-        window.dispatchEvent(new CustomEvent('server-configs:changed', {
-          detail: { action: 'delete', id: configId }
-        }));
-
-        window.dispatchEvent(new CustomEvent('server-configs:changed', {
-          detail: {
-            action: currentEditingConfigId ? 'update' : 'create',
-            id: currentEditingConfigId || ''
-          }
-        }));
-    } else {
-      showMessage('error', '删除失败: ' + (res.error || ''), 'server-config-messages');
-    }
-  } catch (e) {
-    showMessage('error', '删除配置失败: ' + e.message, 'server-config-messages');
-  }
-}
-
-async function saveServerConfig(){
-  const payload = {
-    factory: $('#factory-name')?.value?.trim(),
-    system:  $('#system-name')?.value?.trim(),
-    server: {
-      alias:    $('#server-alias')?.value?.trim(),
-      hostname: $('#server-hostname')?.value?.trim(),
-      username: $('#server-username')?.value?.trim(),
-      password: $('#server-password')?.value?.trim(),
-    }
+function collectFormPayload() {
+  const factory = $('#factory-name')?.value?.trim();
+  const system = $('#system-name')?.value?.trim();
+  const server = {
+    alias: $('#server-alias')?.value?.trim(),
+    hostname: $('#server-hostname')?.value?.trim(),
+    username: $('#server-username')?.value?.trim(),
+    password: $('#server-password')?.value?.trim(),
   };
 
-  if (!payload.factory || !payload.system || !payload.server.alias || !payload.server.hostname ||
-      !payload.server.username || !payload.server.password) {
-    showMessage('error', '请填写所有字段', 'server-config-messages');
-    return;
+  if (!factory || !system || !server.alias || !server.hostname || !server.username || !server.password) {
+    throw new Error('请完整填写厂区、系统与服务器信息');
   }
-
-  const btnId = 'save-config-btn';
-  setButtonLoading(btnId, true);
-
-  try {
-    let res;
-    if (currentEditingConfigId) {
-      res = await api.updateServerConfig({ id: currentEditingConfigId, ...payload });
-    } else {
-      res = await api.saveServerConfig(payload);
-    }
-
-    setButtonLoading(btnId, false);
-
-    if (res.success) {
-      showMessage('success', currentEditingConfigId ? '配置更新成功' : '配置保存成功', 'server-config-messages');
-      resetServerConfigForm();
-      await loadServerConfigs();
-    } else {
-      showMessage('error', '保存失败: ' + (res.error || ''), 'server-config-messages');
-    }
-  } catch (e) {
-    setButtonLoading(btnId, false);
-    showMessage('error', '保存配置失败: ' + e.message, 'server-config-messages');
-  }
+  return { factory, system, server };
 }
 
-function cancelServerEdit(){
-  resetServerConfigForm();
+function fillForm(cfg) {
+  $('#factory-name') && ($('#factory-name').value = cfg?.factory || '');
+  $('#system-name') && ($('#system-name').value = cfg?.system || '');
+  $('#server-alias') && ($('#server-alias').value = cfg?.server?.alias || '');
+  $('#server-hostname') && ($('#server-hostname').value = cfg?.server?.hostname || '');
+  $('#server-username') && ($('#server-username').value = cfg?.server?.username || '');
+  $('#server-password') && ($('#server-password').value = cfg?.server?.password || '');
 }
 
-function resetServerConfigForm(){
-  $('#factory-name') && ($('#factory-name').value = '');
-  $('#system-name') && ($('#system-name').value = '');
-  $('#server-alias') && ($('#server-alias').value = '');
-  $('#server-hostname') && ($('#server-hostname').value = '');
-  $('#server-username') && ($('#server-username').value = '');
-  $('#server-password') && ($('#server-password').value = '');
-
-  currentEditingConfigId = null;
-  setEditMode(false);
-  $('#factory-name')?.focus();
-}
-
-function setEditMode(isEditing){
+function setEditMode(isEditing) {
   const form = document.querySelector('.config-form');
-  const save = $('#save-config-btn');
-  const cancel = $('#cancel-edit-btn');
+  const saveBtn = $('#save-config-btn');
+  const cancelBtn = $('#cancel-edit-btn');
 
   if (isEditing) {
     form?.classList.add('editing');
-    if (save) { save.classList.add('btn-update'); save.innerHTML = '<i class="fas fa-save"></i> 更新配置'; }
-    if (cancel) cancel.style.display = 'inline-block';
+    if (saveBtn) {
+      saveBtn.classList.add('btn-update');
+      saveBtn.innerHTML = '<i class="fas fa-save"></i> 更新配置';
+    }
+    if (cancelBtn) cancelBtn.style.display = 'inline-block';
   } else {
     form?.classList.remove('editing');
-    if (save) { save.classList.remove('btn-update'); save.innerHTML = '<i class="fas fa-save"></i> 保存配置'; }
-    if (cancel) cancel.style.display = 'none';
+    if (saveBtn) {
+      saveBtn.classList.remove('btn-update');
+      saveBtn.innerHTML = '<i class="fas fa-save"></i> 保存配置';
+    }
+    if (cancelBtn) cancelBtn.style.display = 'none';
   }
 }
 
-/* ---------------- 模块入口 ---------------- */
+function resetForm() {
+  fillForm({ factory: '', system: '', server: {} });
+  state.editingId = null;
+  setEditMode(false);
+}
 
-export function init(){
-  if (inited) return;
-  inited = true;
+async function handleSave() {
+  const btnId = 'save-config-btn';
+  try {
+    const payload = collectFormPayload();
+    setButtonLoading(btnId, true);
+    let res;
+    if (state.editingId) {
+      res = await api.updateServerConfig({ id: state.editingId, ...payload });
+    } else {
+      res = await api.saveServerConfig(payload);
+    }
+    setButtonLoading(btnId, false);
 
-  // 绑定表单按钮
-  bind('save-config-btn', 'click', saveServerConfig);
-  bind('cancel-edit-btn', 'click', cancelServerEdit);
+    if (!res.success) throw new Error(res.error || '保存失败');
 
-  // 首次加载列表
+    const message = state.editingId ? '配置更新成功' : '配置保存成功';
+    showMessage('success', message, 'server-config-messages');
+    window.dispatchEvent(new CustomEvent('server-configs:changed', {
+      detail: {
+        action: state.editingId ? 'update' : 'create',
+        id: res.config?.id,
+      }
+    }));
+    resetForm();
+    await loadServerConfigs();
+  } catch (e) {
+    setButtonLoading(btnId, false);
+    showMessage('error', e.message || '保存配置失败', 'server-config-messages');
+  }
+}
+
+async function handleDelete(id) {
+  if (!id) return;
+  if (!confirm('确定要删除此配置吗？')) return;
+  try {
+    const res = await api.deleteServerConfig(id);
+    if (!res.success) throw new Error(res.error || '删除失败');
+    showMessage('success', '配置删除成功', 'server-config-messages');
+    window.dispatchEvent(new CustomEvent('server-configs:changed', {
+      detail: { action: 'delete', id }
+    }));
+    if (state.editingId === id) {
+      resetForm();
+    }
+    await loadServerConfigs();
+  } catch (e) {
+    showMessage('error', '删除配置失败：' + e.message, 'server-config-messages');
+  }
+}
+
+function bindListEvents() {
+  const container = document.getElementById('server-configs-container');
+  if (!container) return;
+  container.addEventListener('click', (evt) => {
+    const btn = evt.target.closest('button[data-act]');
+    if (!btn) return;
+    const id = btn.getAttribute('data-id');
+    const act = btn.getAttribute('data-act');
+    if (act === 'edit') {
+      const cfg = state.configs.find((c) => c.id === id);
+      if (!cfg) {
+        showMessage('error', '未找到配置信息', 'server-config-messages');
+        return;
+      }
+      state.editingId = id;
+      fillForm(cfg);
+      setEditMode(true);
+      renderList();
+      document.querySelector('.config-form-section')?.scrollIntoView({ behavior: 'smooth' });
+    }
+    if (act === 'delete') {
+      handleDelete(id);
+    }
+  });
+}
+
+function bindFormEvents() {
+  const saveBtn = document.getElementById('save-config-btn');
+  const cancelBtn = document.getElementById('cancel-edit-btn');
+  if (saveBtn) saveBtn.addEventListener('click', handleSave);
+  if (cancelBtn) cancelBtn.addEventListener('click', () => {
+    resetForm();
+    renderList();
+  });
+}
+
+export function init() {
+  if (state.initialized) return;
+  state.initialized = true;
+  bindFormEvents();
+  bindListEvents();
   loadServerConfigs();
 }

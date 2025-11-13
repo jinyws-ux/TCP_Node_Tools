@@ -3,6 +3,7 @@
 import { escapeHtml, escapeAttr } from '../core/utils.js';
 import { showMessage } from '../core/messages.js';
 import { setButtonLoading } from '../core/ui.js';
+import { api } from '../core/api.js';
 
 let inited = false;
 
@@ -146,8 +147,7 @@ async function loadParserFactoriesSafe() {
   const sel = qs('#parser-factory-select');
   if (!sel) return;
   try {
-    const res = await fetch('/api/factories');
-    const list = await res.json();
+    const list = await api.getFactories();
     sel.innerHTML = '<option value="">-- 请选择厂区 --</option>';
     (list || []).forEach(f => {
       const opt = document.createElement('option');
@@ -166,8 +166,7 @@ async function loadParserSystems() {
     return;
   }
   try {
-    const res = await fetch(`/api/systems?factory=${encodeURIComponent(factoryId)}`);
-    const list = await res.json();
+    const list = await api.getSystems(factoryId);
     sel.innerHTML = '<option value="">-- 请选择系统 --</option>';
     (list || []).forEach(s => {
       const opt = document.createElement('option');
@@ -181,26 +180,19 @@ async function loadParserSystems() {
 
 // =============== 刷新树/配置/统计 ===============
 async function refreshTree() {
-  const url = `/api/parser-config-tree?factory=${encodeURIComponent(workingFactory)}&system=${encodeURIComponent(workingSystem)}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (!data.success) throw new Error(data.error || '加载树失败');
-  workingTree = data.tree || [];
+  const tree = await api.fetchParserConfigTree(workingFactory, workingSystem);
+  workingTree = tree;
   renderTree(workingTree);
 }
 
 async function refreshFullConfig() {
-  const url = `/api/parser-config?factory=${encodeURIComponent(workingFactory)}&system=${encodeURIComponent(workingSystem)}&format=full`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (!data.success) throw new Error(data.error || '加载配置失败');
-  workingConfig = data.config || {};
+  workingConfig = await api.fetchParserConfig(workingFactory, workingSystem);
   renderJsonPreview();
 }
 
 async function refreshStats() {
   try {
-    await fetch(`/api/parser-config-stats?factory=${encodeURIComponent(workingFactory)}&system=${encodeURIComponent(workingSystem)}`);
+    await api.fetchParserConfigStats(workingFactory, workingSystem);
   } catch(_) {}
 }
 
@@ -865,18 +857,11 @@ async function postJSON(url, body) {
 }
 
 async function saveFullConfig(newConfig, opts = {}) {
-  // 验证/保存整包
-  const res = await fetch('/api/save-parser-config', {
-    method: 'POST',
-    headers: { 'Content-Type':'application/json' },
-    body: JSON.stringify({
-      factory: workingFactory,
-      system: workingSystem,
-      config: newConfig
-    })
+  const data = await api.saveParserConfig({
+    factory: workingFactory,
+    system: workingSystem,
+    config: newConfig
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
   if (!data.success) throw new Error(data.error || '保存失败');
   workingConfig = structuredClone(newConfig);
   if (!opts.silent) renderJsonPreview();

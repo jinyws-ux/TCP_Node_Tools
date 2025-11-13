@@ -15,6 +15,14 @@ async function post(url, body) {
   return res.json();
 }
 
+function ensureSuccess(data, fallbackMsg) {
+  if (data && data.success !== false) {
+    return data;
+  }
+  const err = data?.error || fallbackMsg || '接口调用失败';
+  throw new Error(err);
+}
+
 export const api = {
   /* -------- 下载页 -------- */
   getFactories: () => get('/api/factories'),
@@ -33,11 +41,32 @@ export const api = {
   analyze: (logs, config) => post('/api/analyze', { logs, config }),
   getParserConfigs: () => get('/api/parser-configs'),
 
-  /* -------- 服务器配置页（本步新增） -------- */
-  getServerConfigs: () => get('/api/server-configs'),
+  /* -------- 服务器配置页 -------- */
+  async getServerConfigs() {
+    const data = await get('/api/server-configs');
+    const res = ensureSuccess(data, '加载服务器配置失败');
+    return res.configs || [];
+  },
   saveServerConfig: ({ factory, system, server }) => post('/api/save-config', { factory, system, server }),
   updateServerConfig: ({ id, factory, system, server }) => post('/api/update-config', { id, factory, system, server }),
   deleteServerConfig: (id) => post('/api/delete-config', { id }),
 
-  /* -------- 解析配置（第 4 步会补齐） -------- */
+  /* -------- 解析配置 -------- */
+  async fetchParserConfig(factory, system) {
+    const data = await get(`/api/parser-config?factory=${encodeURIComponent(factory)}&system=${encodeURIComponent(system)}&format=full`);
+    const res = ensureSuccess(data, '加载解析配置失败');
+    return res.config || {};
+  },
+  async fetchParserConfigTree(factory, system) {
+    const data = await get(`/api/parser-config-tree?factory=${encodeURIComponent(factory)}&system=${encodeURIComponent(system)}`);
+    const res = ensureSuccess(data, '加载解析配置树失败');
+    return res.tree || [];
+  },
+  async fetchParserConfigStats(factory, system) {
+    const data = await get(`/api/parser-config-stats?factory=${encodeURIComponent(factory)}&system=${encodeURIComponent(system)}`);
+    const res = ensureSuccess(data, '加载解析配置统计失败');
+    return res.stats || {};
+  },
+  saveParserConfig: ({ factory, system, config }) => post('/api/save-parser-config', { factory, system, config }),
+  updateParserConfig: ({ factory, system, updates }) => post('/api/update-parser-config', { factory, system, updates }),
 };
