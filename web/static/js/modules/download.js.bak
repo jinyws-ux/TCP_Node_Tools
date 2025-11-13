@@ -1,0 +1,229 @@
+// modules/download.js
+import { api } from '../core/api.js';
+import { showMessage } from '../core/messages.js';
+import { setButtonLoading } from '../core/ui.js';
+import { formatFileSize } from '../core/utils.js';
+
+let inited = false;
+let selectedLogFiles = [];
+
+function bind(id, event, handler) {
+  const el = document.getElementById(id);
+  if (!el) return console.warn('元素不存在:', id);
+  el.addEventListener(event, handler);
+}
+
+function updateDownloadButton() {
+  const btn = document.getElementById('download-selected-btn');
+  if (btn) btn.disabled = selectedLogFiles.length === 0;
+}
+
+function updateSelectedFiles() {
+  selectedLogFiles = [];
+  const checks = document.querySelectorAll('#results-body input
+  [type="checkbox"]:checked');
+  checks.forEach(chk => {
+    try {
+      const file = JSON.parse(chk.value);
+      selectedLogFiles.push(file);
+    } catch (e) {
+      console.error('解析文件失败:', e);
+    }
+  });
+  updateDownloadButton();
+}
+
+function toggleSelectAllResults() {
+  const checked = this.checked;
+  document.querySelectorAll('#results-body input[type="checkbox"]').forEach(chk => chk.checked = checked);
+  updateSelectedFiles();
+}
+
+function renderSearchResults(logFiles) {
+  const body = document.getElementById('results-body');
+  const panel = document.getElementById('search-results');
+  if (!body || !panel) return;
+
+  body.innerHTML = '';
+  if (!Array.isArray(logFiles) || logFiles.length === 0) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = 'block';
+
+  logFiles.forEach(file => {
+    const tr = document.createElement('tr');
+
+    // 选框
+    const tdChk = document.createElement('td');
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.value = JSON.stringify(file);
+    chk.addEventListener('change', updateSelectedFiles);
+    tdChk.appendChild(chk);
+    tr.appendChild(tdChk);
+
+    // 名称
+    const tdName = document.createElement('td');
+    tdName.textContent = file.name || '';
+    tr.appendChild(tdName);
+
+    // 路径
+    const tdPath = document.createElement('td');
+    tdPath.textContent = file.path || '';
+    tr.appendChild(tdPath);
+
+    // 大小
+    const tdSize = document.createElement('td');
+    tdSize.textContent = formatFileSize(file.size);
+    tr.appendChild(tdSize);
+
+    // 修改时间
+    const tdMtime = document.createElement('td');
+    tdMtime.textContent = file.mtime || '';
+    tr.appendChild(tdMtime);
+
+    // 类型
+    const tdType = document.createElement('td');
+    const badge = document.createElement('span');
+    badge.className = 'status-badge ' + ((file.type === 'archive') ? 'status-warning' : 'status-success');
+    badge.textContent = (file.type === 'archive') ? '归档' : '实时';
+    tdType.appendChild(badge);
+    tr.appendChild(tdType);
+
+    body.appendChild(tr);
+  });
+
+  selectedLogFiles = [];
+  updateDownloadButton();
+}
+
+async function onSearchLogs() {
+  const factory = document.getElementById('factory-select')?.value || '';
+  const system  = document.getElementById('system-select')?.value || '';
+  const node    = document.getElementById('node-input')?.value || '';
+
+  if (!factory || !system || !node) {
+    showMessage('error', '请选择厂区、系统并输入节点号', 'download-messages');
+    return;
+  }
+
+  setButtonLoading('search-logs-btn', true);
+
+  const includeRealtime = document.getElementById('realtime-logs')?.checked ?? true;
+  const includeArchive  = document.getElementById('archive-logs')?.checked ?? false;
+  const dateStart = includeArchive ? (document.getElementById('date-start')?.value || null) : null;
+  const dateEnd   = includeArchive ? (document.getElementById('date-end')?.value || null)   : null;
+
+  const payload = { factory, system, node, includeRealtime, includeArchive, dateStart, dateEnd };
+
+  try {
+    const data = await api.searchLogs(payload);
+    setButtonLoading('search-logs-btn', false);
+
+    if (data.success) {
+      renderSearchResults(data.log_files || []);
+      showMessage('success', `找到 ${data.log_files.length} 个日志文件`, 'download-messages');
+    } else {
+      showMessage('error', '搜索失败: ' + (data.error || ''), 'download-messages');
+    }
+  } catch (e) {
+    setButtonLoading('search-logs-btn', false);
+    console.error(e);
+    showMessage('error', '搜索日志失败: ' + e.message, 'download-messages');
+  }
+}
+
+async function onDownloadSelected() {
+  if (selectedLogFiles.length === 0) {
+    showMessage('error', '请选择要下载的文件', 'download-messages');
+    return;
+  }
+  const factory = document.getElementById('factory-select')?.value || '';
+  const system  = document.getElementById('system-select')?.value || '';
+  const node    = document.getElementById('node-input')?.value || '';
+
+  setButtonLoading('download-selected-btn', true);
+  try {
+    const data = await api.downloadLogs({ files: selectedLogFiles, factory, system, node });
+    setButtonLoading('download-selected-btn', false);
+    if (data.success) {
+      showMessage('success', `成功下载 ${data.downloaded_files.length} 个文件`, 'download-messages');
+      // 这里不自动切页；保持和你原来交互一致（如果你想切到分析页，我们下一步实现 analyze 模块时加入）
+    } else {
+      showMessage('error', '下载失败: ' + (data.error || ''), 'download-messages');
+    }
+  } catch (e) {
+    setButtonLoading('download-selected-btn', false);
+    console.error(e);
+    showMessage('error', '下载日志失败: ' + e.message, 'download-messages');
+  }
+}
+
+async function loadFactories() {
+  try {
+    const factories = await api.getFactories();
+    const sel = document.getElementById('factory-select');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">-- 请选择厂区 --</option>';
+    (factories || []).forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f.id;
+      opt.textContent = f.name;
+      sel.appendChild(opt);
+    });
+  } catch (e) {
+    console.error(e);
+    showMessage('error', '加载厂区失败: ' + e.message, 'download-messages');
+  }
+}
+
+async function loadSystems() {
+  const factoryId = document.getElementById('factory-select')?.value || '';
+  const sel = document.getElementById('system-select');
+  if (!sel) return;
+  if (!factoryId) {
+    sel.innerHTML = '<option value="">-- 请选择系统 --</option>';
+    return;
+  }
+  try {
+    const systems = await api.getSystems(factoryId);
+    sel.innerHTML = '<option value="">-- 请选择系统 --</option>';
+    (systems || []).forEach(s => {
+      const opt = document.createElement('option');
+      // 兼容后端返回多种结构
+      const value = s.id ?? s.name ?? s.system ?? s.alias ?? s.hostname ?? String(s);
+      const text  = s.name ?? s.id ?? s.system ?? s.alias ?? s.hostname ?? '系统';
+      opt.value = value;
+      opt.textContent = text;
+      sel.appendChild(opt);
+    });
+  } catch (e) {
+    console.error(e);
+    showMessage('error', '加载系统失败: ' + e.message, 'download-messages');
+  }
+}
+
+function toggleArchiveOptions() {
+  const box = document.getElementById('archive-options');
+  if (box) box.style.display = this.checked ? 'block' : 'none';
+}
+
+export function init() {
+  if (inited) return;
+  inited = true;
+
+  // 初始数据
+  loadFactories();
+
+  // 绑定事件
+  bind('factory-select', 'change', loadSystems);
+  bind('archive-logs', 'change', toggleArchiveOptions);
+  bind('search-logs-btn', 'click', onSearchLogs);
+  bind('download-selected-btn', 'click', onDownloadSelected);
+  const selectAll = document.getElementById('select-all-results');
+  if (selectAll) selectAll.addEventListener('change', toggleSelectAllResults);
+
+  // 初始按钮状态
+  updateDownloadButton();
+}
