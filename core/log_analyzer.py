@@ -113,26 +113,6 @@ class LogAnalyzer:
             self.logger.error(f"分析日志失败: {str(e)}", exc_info=True)
             return {'success': False, 'error': str(e), 'stats': stats}
 
-    def view_log_content(self, log_path: str) -> Dict[str, Any]:
-        """查看日志文件内容"""
-        try:
-            if not os.path.exists(log_path):
-                self.logger.error(f"日志文件不存在: {log_path}")
-                return {'success': False, 'error': '日志文件不存在'}
-
-            with open(log_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-
-            self.logger.info(f"成功查看日志内容: {log_path}")
-            return {
-                'success': True,
-                'content': content,
-                'path': log_path
-            }
-        except Exception as e:
-            self.logger.error(f"查看日志内容失败: {str(e)}")
-            return {'success': False, 'error': str(e)}
-
     def delete_log(self, log_path: str) -> Dict[str, Any]:
         """删除日志文件"""
         try:

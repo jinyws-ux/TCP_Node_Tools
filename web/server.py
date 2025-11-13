@@ -602,18 +602,6 @@ def clear_parser_config():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/search-logs', methods=['POST'])
-def legacy_search_logs():
-    """兼容旧前端的搜索接口。"""
-    return api_logs_search()
-
-
-@app.route('/api/download-logs', methods=['POST'])
-def legacy_download_logs():
-    """兼容旧前端的下载接口。"""
-    return api_logs_download()
-
-
 @app.route('/api/downloaded-logs', methods=['GET'])
 def get_downloaded_logs():
     """获取已下载的日志列表"""
@@ -652,23 +640,6 @@ def analyze_logs():
 
     except Exception as e:
         logger.error(f"分析日志失败: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/view-log', methods=['POST'])
-def view_log():
-    """查看日志文件内容"""
-    try:
-        data = request.json
-        log_path = data.get('path')
-
-        if not log_path:
-            return jsonify({'success': False, 'error': '缺少日志路径'}), 400
-
-        result = log_analyzer.view_log_content(log_path)
-        return jsonify(result)
-    except Exception as e:
-        logger.error(f"查看日志内容失败: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

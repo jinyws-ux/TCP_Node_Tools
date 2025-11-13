@@ -32,7 +32,7 @@
 - **做法**：
   1. 在 `core/` 下新建 `config_repository.py`，包装所有「读/写 JSON + 校验」操作；`ConfigManager` 专心暴露 CRUD，Flask 层通过依赖注入获得实例。
   2. 报告映射写成一个小型仓库（可替换为 SQLite/轻量 KV），并提供 `get_for_logs(log_ids)`、`save(log_id, report_path)` 等方法，避免直接操作文件路径。
-  3. `build_config_tree`、`calculate_config_stats` 放入 `core/template_store.py` 或新的 `core/config_tree.py`，并接受 `ConfigSnapshot` 作为纯数据，这样前端或 CLI 都能重用。
+  3. `build_config_tree`、`calculate_config_stats` 放入独立的纯数据模块（例如新增 `core/config_tree.py`），并接受 `ConfigSnapshot` 作为输入，这样前端或 CLI 都能重用。
 
 ## 5. 给分析阶段增加可观测性与“按需执行”能力（`core/log_analyzer.py`）
 - `LogAnalyzer.analyze_logs` 会在单个函数里完成「读取下载结果 → 调用 LogParser → 渲染报告 → 写 HTML/文本」，且没有任何阶段性指标；失败时只返回 `False`，用户无法定位耗时步骤。【F:core/log_analyzer.py†L1-L200】
