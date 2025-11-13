@@ -45,6 +45,81 @@
 *{ margin:0; padding:0; box-sizing:border-box; font-family:var(--font); }
 html,body{ height:100%; }
 body{ background:var(--bg); color:var(--text); line-height:1.6; }
+.preloader{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(59,130,246,.4), transparent 55%),
+    radial-gradient(circle at 80% 0%, rgba(14,165,233,.35), transparent 40%),
+    linear-gradient(135deg, #020617 0%, #0f172a 60%, #1e1b4b 100%);
+  color:#fff;
+  z-index:9999;
+  overflow:hidden;
+  letter-spacing:clamp(.2rem, 1vw, .55rem);
+  isolation:isolate;
+}
+.preloader::after{
+  content:"";
+  position:absolute;
+  inset:-35%;
+  background:radial-gradient(circle, rgba(14,165,233,.4), transparent 65%);
+  filter:blur(100px);
+  opacity:.85;
+  z-index:-1;
+}
+.preloader::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background-image:linear-gradient(120deg, rgba(255,255,255,.06) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.04) 50%, rgba(255,255,255,.04) 75%, transparent 75%, transparent);
+  background-size:180px 180px;
+  mix-blend-mode:screen;
+  opacity:.45;
+}
+.preloader__letters{
+  display:flex;
+  gap:clamp(10px, 2.6vw, 36px);
+  font-family:'Space Grotesk','Poppins','Segoe UI',sans-serif;
+  font-size:clamp(3rem, 10vw, 6rem);
+  font-weight:700;
+  text-transform:uppercase;
+  position:relative;
+  z-index:1;
+}
+.preloader__letters span{
+  display:inline-block;
+  letter-spacing:.2em;
+  animation:letterPulse 1.8s cubic-bezier(.22, 1, .36, 1) infinite;
+  text-shadow:0 22px 40px rgba(2,6,23,.6);
+  transform-origin:50% 80%;
+}
+.preloader__letters span:nth-child(2){ animation-delay:.12s; }
+.preloader__letters span:nth-child(3){ animation-delay:.24s; }
+.preloader__letters span:nth-child(4){ animation-delay:.36s; }
+.preloader.is-complete{
+  animation:preloaderOutro .85s ease forwards;
+  pointer-events:none;
+}
+@keyframes letterPulse{
+  0%{ opacity:0; transform:translateY(32px) scale(.6); }
+  30%{ opacity:1; transform:translateY(-8px) scale(1.08); }
+  55%{ transform:translateY(0) scale(.98); }
+  70%{ transform:translateY(0) scale(1); }
+  100%{ opacity:0; transform:translateY(-40px) scale(.9); }
+}
+@keyframes preloaderOutro{
+  0%{ opacity:1; }
+  100%{ opacity:0; transform:scale(.98); }
+}
+@media (prefers-reduced-motion: reduce){
+  .preloader,
+  .preloader::before,
+  .preloader::after{ animation:none; }
+  .preloader__letters span{ animation:none; }
+}
 .container{ max-width:1400px; margin:0 auto; padding:20px; }
 
 header{

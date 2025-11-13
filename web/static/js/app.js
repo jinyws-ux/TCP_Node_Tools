@@ -15,6 +15,7 @@ window.setButtonLoading = ui.setButtonLoading;
 
 const qs  = (sel, scope = document) => scope.querySelector(sel);
 const qsa = (sel, scope = document) => Array.from(scope.querySelectorAll(sel));
+const sleep = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
 
 /* ---------- 模块懒加载 ---------- */
 async function loadModule(tabName) {
@@ -68,6 +69,47 @@ async function switchTab(tabName) {
   }
 }
 
+function setupPreloader() {
+  const preloader = qs('.preloader');
+  if (!preloader) {
+    return () => Promise.resolve();
+  }
+
+  const minDuration = Number(preloader.dataset.minDuration) || 2000;
+  const start = performance.now();
+  const animatedLetter = preloader.querySelector('.preloader__letters span');
+
+  const waitForFullCycle = () => new Promise(resolve => {
+    if (!animatedLetter) {
+      resolve();
+      return;
+    }
+
+    const styles = window.getComputedStyle(animatedLetter);
+    const hasAnimation = styles && styles.animationName !== 'none' && parseFloat(styles.animationDuration) > 0;
+    if (!hasAnimation) {
+      resolve();
+      return;
+    }
+
+    const handle = () => {
+      animatedLetter.removeEventListener('animationiteration', handle);
+      resolve();
+    };
+    animatedLetter.addEventListener('animationiteration', handle);
+  });
+
+  return async () => {
+    const elapsed = performance.now() - start;
+    if (elapsed < minDuration) {
+      await sleep(minDuration - elapsed);
+    }
+    await waitForFullCycle();
+    preloader.classList.add('is-complete');
+    preloader.addEventListener('animationend', () => preloader.remove(), { once: true });
+  };
+}
+
 /* ---------- 初始化 ---------- */
 function initTopTabs() {
   const firstTab = qs('.tab');
@@ -86,10 +128,16 @@ function initTopTabs() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  const resolvePreloader = setupPreloader();
   messages.initMessageContainers();
   initTopTabs();
 
   // 默认打开第一个 tab
   const first = qs('.tab')?.getAttribute('data-tab') || 'download';
   await switchTab(first);
+  await resolvePreloader();
+
+  if (window.__preloader?.finish) {
+    await window.__preloader.finish();
+  }
 });
