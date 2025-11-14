@@ -1,4 +1,5 @@
 # core/log_downloader.py
+import json
 import logging
 import os
 import re
@@ -342,20 +343,31 @@ class LogDownloader:
 
                         try:
                             sftp.get(remote_path, local_path)
-                            downloaded_files.append(
+                            download_time = datetime.now().isoformat()
+                            source_mtime = file_info.get("mtime") or ""
+                            entry = {
+                                "name": filename,
+                                "path": local_path,
+                                "size": os.path.getsize(local_path),
+                                "timestamp": download_time,
+                                "download_time": download_time,
+                                "log_time": source_mtime,
+                                "source_mtime": source_mtime,
+                                "factory": factory,
+                                "system": system,
+                                "node": actual_node,
+                                "type": file_info.get("type", "unknown"),
+                                "search_node": search_node,
+                                "search_nodes": list(self._normalize_nodes(search_nodes or []))
+                                or ([search_node] if search_node else []),
+                            }
+                            downloaded_files.append(entry)
+                            self._write_metadata(
+                                local_path,
                                 {
-                                    "name": filename,
-                                    "path": local_path,
-                                    "size": os.path.getsize(local_path),
-                                    "timestamp": datetime.now().isoformat(),
-                                    "factory": factory,
-                                    "system": system,
-                                    "node": actual_node,
-                                    "type": file_info.get("type", "unknown"),
-                                    "search_node": search_node,
-                                    "search_nodes": list(self._normalize_nodes(search_nodes or []))
-                                    or ([search_node] if search_node else []),
-                                }
+                                    **entry,
+                                    "remote_path": remote_path,
+                                },
                             )
                             self.logger.info(
                                 f"成功下载: {local_path} (实际节点: {actual_node}, 搜索节点/集: {search_node or search_nodes})"
@@ -408,6 +420,28 @@ class LogDownloader:
             self.logger.error(f"提取节点号失败 {filename}: {str(e)}")
             return "未知"
 
+    def _metadata_path(self, file_path: str) -> str:
+        return f"{file_path}.meta.json"
+
+    def _write_metadata(self, file_path: str, payload: Dict[str, Any]) -> None:
+        try:
+            with open(self._metadata_path(file_path), "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False, indent=2)
+        except Exception as exc:
+            self.logger.warning("写入日志元数据失败: %s (%s)", file_path, exc)
+
+    def _read_metadata(self, file_path: str) -> Dict[str, Any]:
+        meta_path = self._metadata_path(file_path)
+        if not os.path.exists(meta_path):
+            return {}
+        try:
+            with open(meta_path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+                return data if isinstance(data, dict) else {}
+        except Exception as exc:
+            self.logger.warning("读取日志元数据失败: %s (%s)", meta_path, exc)
+            return {}
+
     def get_downloaded_logs(self) -> List[Dict[str, Any]]:
         """获取已下载的日志列表 - 正确显示实际节点"""
         try:
@@ -438,6 +472,22 @@ class LogDownloader:
                     import hashlib
                     file_id = hashlib.md5(file_path.encode()).hexdigest()[:8]
 
+                    metadata = self._read_metadata(file_path)
+                    factory = metadata.get("factory") or factory
+                    system = metadata.get("system") or system
+                    actual_node = metadata.get("node") or actual_node
+                    download_time = (
+                        metadata.get("download_time")
+                        or metadata.get("timestamp")
+                        or datetime.fromtimestamp(os.path.getctime(file_path)).isoformat()
+                    )
+                    log_time = (
+                        metadata.get("log_time")
+                        or metadata.get("source_mtime")
+                        or metadata.get("remote_mtime")
+                        or ""
+                    )
+
                     downloaded_logs.append(
                         {
                             "id": file_id,
@@ -446,12 +496,15 @@ class LogDownloader:
                             "factory": factory,
                             "system": system,
                             "node": actual_node,
-                            "timestamp": datetime.fromtimestamp(os.path.getctime(file_path)).isoformat(),
+                            "timestamp": download_time,
+                            "download_time": download_time,
+                            "log_time": log_time,
+                            "source_mtime": log_time,
                             "size": os.path.getsize(file_path),
                         }
                     )
 
-            downloaded_logs.sort(key=lambda x: x["timestamp"], reverse=True)
+            downloaded_logs.sort(key=lambda x: x.get("download_time") or x.get("timestamp"), reverse=True)
             self.logger.info(f"获取已下载日志完成，共{len(downloaded_logs)}个文件")
             return downloaded_logs
         except Exception as e:
