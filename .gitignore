@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+
+# Virtual environments
+.venv/
+venv/
+
+# Local artifacts
+*.log
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+
+# Generated data
+reports/
+downloads/
+
