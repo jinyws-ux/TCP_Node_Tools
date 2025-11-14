@@ -30,109 +30,107 @@
     <!-- 日志下载标签页 -->
     <!-- 下载日志 -->
     <div id="download-tab" class="tab-content">
-      <div class="selection-panel">
-        <div class="selection-header">
-          <h3><i class="fas fa-download"></i> 日志下载</h3>
-        </div>
+      <h2><i class="fas fa-download"></i> 日志下载</h2>
 
-        <div class="message-container" id="download-messages"></div>
+      <div class="message-container" id="download-messages">
+        <div class="message-empty"></div>
+      </div>
 
-        <div class="config-layout">
-          <!-- 左：搜索与结果 -->
-          <section class="config-form-section">
-            <!-- 添加模板模式提示条（默认隐藏） -->
-            <div id="template-hint" class="message message-info" style="display:none; margin-bottom:12px;">
-              正在添加区域：请选择厂区与系统，并在“节点”填入多个节点（英文逗号分隔，例如：2001,2002,2003）。
+      <div class="config-layout">
+        <!-- 左：搜索与结果 -->
+        <section class="config-form-section">
+          <!-- 添加模板模式提示条（默认隐藏） -->
+          <div id="template-hint" class="message message-info" style="display:none; margin-bottom:12px;">
+            正在添加区域：请选择厂区与系统，并在“节点”填入多个节点（英文逗号分隔，例如：2001,2002,2003）。
+          </div>
+
+          <form id="download-form" class="config-form">
+            <div class="form-group">
+              <label for="factory-select">厂区</label>
+              <select id="factory-select"></select>
+            </div>
+            <div class="form-group">
+              <label for="system-select">系统</label>
+              <select id="system-select"></select>
             </div>
 
-            <form id="download-form" class="config-form">
-              <div class="form-group">
-                <label for="factory-select">厂区</label>
-                <select id="factory-select"></select>
-              </div>
-              <div class="form-group">
-                <label for="system-select">系统</label>
-                <select id="system-select"></select>
-              </div>
 
-
-              <div class="form-group">
-                <label for="node-input">节点（支持多个，英文逗号分隔）</label>
-                <input id="node-input" type="text" placeholder="示例：2001,2002,2003">
-              </div>
-
-              <div class="checkbox-group">
-                <label class="checkbox-item"><input id="include-realtime" type="checkbox" checked> 实时</label>
-                <label class="checkbox-item"><input id="include-archive" type="checkbox"> 归档</label>
-              </div>
-
-              <div class="date-range" id="date-range" style="display:none;">
-                <input id="date-start" type="date" placeholder="开始日期">
-                <span>—</span>
-                <input id="date-end" type="date" placeholder="结束日期">
-              </div>
-
-              <!-- 操作区：默认显示 A；添加模板模式显示 B；选中模板后主按钮文案会切换 -->
-              <div id="download-actions-default" class="analyze-actions" style="margin-top:12px;">
-                <button type="button" class="btn btn-primary" id="btn-search"><i class="fas fa-search"></i> 搜索日志</button>
-                <button type="button" class="btn btn-secondary" id="btn-refresh"><i class="fas fa-sync"></i> 刷新列表</button>
-<!--                <button type="button" class="btn" id="btn-open-dir"><i class="fas fa-folder-open"></i> 打开下载目录</button>-->
-              </div>
-
-              <div id="download-actions-template" class="analyze-actions" style="display:none; margin-top:12px;">
-                <button type="button" class="btn btn-success" id="btn-save-template"><i class="fas fa-save"></i> 保存区域</button>
-                <button type="button" class="btn btn-danger" id="btn-cancel-template"><i class="fas fa-times"></i> 取消</button>
-              </div>
-
-              <!-- 选中模板提示（左侧锁定时显示） -->
-              <div id="selected-template-badge" class="status-badge status-warning" style="display:none; margin-top:12px;">
-                已选模板：<span id="selected-template-name"></span>
-                <button type="button" class="btn btn-sm" id="btn-unselect-template" style="margin-left:8px;">解除选择</button>
-              </div>
-            </form>
-
-            <!-- 结果表 -->
-            <div class="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>文件名</th><th>节点</th><th>类型</th><th>大小</th><th>时间</th><th>路径</th>
-                  </tr>
-                </thead>
-                <tbody id="logs-search-body"><tr><td colspan="6" class="message-empty">尚无结果</td></tr></tbody>
-              </table>
+            <div class="form-group">
+              <label for="node-input">节点（支持多个，英文逗号分隔）</label>
+              <input id="node-input" type="text" placeholder="示例：2001,2002,2003">
             </div>
 
-            <button id="btn-download-logs" class="btn btn-primary" disabled>
-              <i class="fas fa-download"></i> 下载选中日志
-            </button>
-
-          </section>
-
-          <!-- 右：区域模板 -->
-          <aside class="config-list-section">
-            <div class="config-list">
-              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-                <h4 style="margin:0;">区域模板</h4>
-                <button class="btn btn-primary" id="btn-add-template"><i class="fas fa-plus"></i> 添加区域</button>
-              </div>
-
-              <div class="search-box" style="margin-bottom:12px;">
-                <i class="fas fa-search"></i>
-                <input id="template-search-input" class="search-input" placeholder="搜索名称 / 节点">
-                <button class="btn-clear-search" id="template-clear-search" title="清空">&times;</button>
-              </div>
-
-              <div id="template-list">
-                <div class="message-empty">暂无模板</div>
-              </div>
-
-              <div style="display:flex; justify-content:center; margin-top:10px;">
-                <button class="btn" id="btn-more-templates" style="display:none;">加载更多</button>
-              </div>
+            <div class="checkbox-group">
+              <label class="checkbox-item"><input id="include-realtime" type="checkbox" checked> 实时</label>
+              <label class="checkbox-item"><input id="include-archive" type="checkbox"> 归档</label>
             </div>
-          </aside>
-        </div>
+
+            <div class="date-range" id="date-range" style="display:none;">
+              <input id="date-start" type="date" placeholder="开始日期">
+              <span>—</span>
+              <input id="date-end" type="date" placeholder="结束日期">
+            </div>
+
+            <!-- 操作区：默认显示 A；添加模板模式显示 B；选中模板后主按钮文案会切换 -->
+            <div id="download-actions-default" class="analyze-actions" style="margin-top:12px;">
+              <button type="button" class="btn btn-primary" id="btn-search"><i class="fas fa-search"></i> 搜索日志</button>
+              <button type="button" class="btn btn-secondary" id="btn-refresh"><i class="fas fa-sync"></i> 刷新列表</button>
+<!--              <button type="button" class="btn" id="btn-open-dir"><i class="fas fa-folder-open"></i> 打开下载目录</button>-->
+            </div>
+
+            <div id="download-actions-template" class="analyze-actions" style="display:none; margin-top:12px;">
+              <button type="button" class="btn btn-success" id="btn-save-template"><i class="fas fa-save"></i> 保存区域</button>
+              <button type="button" class="btn btn-danger" id="btn-cancel-template"><i class="fas fa-times"></i> 取消</button>
+            </div>
+
+            <!-- 选中模板提示（左侧锁定时显示） -->
+            <div id="selected-template-badge" class="status-badge status-warning" style="display:none; margin-top:12px;">
+              已选模板：<span id="selected-template-name"></span>
+              <button type="button" class="btn btn-sm" id="btn-unselect-template" style="margin-left:8px;">解除选择</button>
+            </div>
+          </form>
+
+          <!-- 结果表 -->
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>文件名</th><th>节点</th><th>类型</th><th>大小</th><th>时间</th><th>路径</th>
+                </tr>
+              </thead>
+              <tbody id="logs-search-body"><tr><td colspan="6" class="message-empty">尚无结果</td></tr></tbody>
+            </table>
+          </div>
+
+          <button id="btn-download-logs" class="btn btn-primary" disabled>
+            <i class="fas fa-download"></i> 下载选中日志
+          </button>
+
+        </section>
+
+        <!-- 右：区域模板 -->
+        <aside class="config-list-section">
+          <div class="config-list">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+              <h4 style="margin:0;">区域模板</h4>
+              <button class="btn btn-primary" id="btn-add-template"><i class="fas fa-plus"></i> 添加区域</button>
+            </div>
+
+            <div class="search-box" style="margin-bottom:12px;">
+              <i class="fas fa-search"></i>
+              <input id="template-search-input" class="search-input" placeholder="搜索名称 / 节点">
+              <button class="btn-clear-search" id="template-clear-search" title="清空">&times;</button>
+            </div>
+
+            <div id="template-list">
+              <div class="message-empty">暂无模板</div>
+            </div>
+
+            <div style="display:flex; justify-content:center; margin-top:10px;">
+              <button class="btn" id="btn-more-templates" style="display:none;">加载更多</button>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
 
