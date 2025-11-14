@@ -62,8 +62,12 @@ REPORT_MAPPING_FILE = os.path.join(HTML_LOGS_DIR, 'report_mappings.json')
 region_template_manager = TemplateManager(REGION_TEMPLATES_DIR)
 download_service = DownloadService(log_downloader, region_template_manager)
 report_mapping_store = ReportMappingStore(REPORT_MAPPING_FILE)
-server_config_service = ServerConfigService(config_manager, region_template_manager)
 parser_config_service = ParserConfigService(parser_config_manager)
+server_config_service = ServerConfigService(
+    config_manager,
+    region_template_manager,
+    parser_config_service,
+)
 analysis_service = AnalysisService(
     log_downloader=log_downloader,
     log_analyzer=log_analyzer,

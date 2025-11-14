@@ -19,6 +19,20 @@ const HISTORY_LIMIT = 15;
 const qs  = (sel, scope = document) => scope.querySelector(sel);
 const qsa = (sel, scope = document) => Array.from(scope.querySelectorAll(sel));
 
+function selectHasOption(sel, val) {
+  if (!sel || val === undefined || val === null) return false;
+  return Array.from(sel.options || []).some((opt) => opt.value == val);
+}
+
+function setSelectValue(sel, val) {
+  if (!sel) return false;
+  if (selectHasOption(sel, val)) {
+    sel.value = val;
+    return true;
+  }
+  return false;
+}
+
 function notifyParserConfigChanged(action, detail = {}) {
   window.dispatchEvent(new CustomEvent('parser-config:changed', {
     detail: { action, ...detail }
@@ -72,6 +86,12 @@ export function init() {
 
   // 首次载入：填厂区列表（沿用你已有逻辑：在 app.js/其他模块里也会拉一次，这里兜底）
   loadParserFactoriesSafe();
+
+  window.addEventListener('server-configs:changed', (evt) => {
+    handleServerConfigsEvent(evt).catch((err) => {
+      console.error('[parser-config] server-configs:changed 处理失败', err);
+    });
+  });
 }
 
 function bindIfExists(sel, evt, fn) {
@@ -175,6 +195,95 @@ async function loadParserSystems() {
     });
   } catch (e) {
     showMessage('error', '加载系统失败：' + (e?.message || e), 'parser-config-messages');
+  }
+}
+
+async function handleServerConfigsEvent(evt) {
+  const factorySel = qs('#parser-factory-select');
+  if (!factorySel) return;
+  const systemSel = qs('#parser-system-select');
+  const beforeFactory = factorySel.value || '';
+  const beforeSystem = systemSel?.value || '';
+  const detail = evt?.detail || {};
+  const { action, config, previous } = detail;
+
+  await loadParserFactoriesSafe();
+  if (beforeFactory) {
+    if (!setSelectValue(factorySel, beforeFactory)) {
+      factorySel.value = '';
+    }
+  }
+
+  if (action === 'update' && previous && config && beforeFactory === previous.factory) {
+    setSelectValue(factorySel, config.factory);
+  } else if (
+    action === 'delete'
+    && previous
+    && beforeFactory === previous.factory
+    && !selectHasOption(factorySel, beforeFactory)
+  ) {
+    factorySel.value = '';
+  }
+
+  await loadParserSystems();
+  if (systemSel && beforeSystem) {
+    if (!setSelectValue(systemSel, beforeSystem)) {
+      systemSel.value = '';
+    }
+  }
+
+  if (
+    action === 'update'
+    && previous
+    && config
+    && beforeFactory === previous.factory
+    && beforeSystem === previous.system
+    && systemSel
+    && factorySel.value === (config.factory || previous.factory)
+  ) {
+    setSelectValue(systemSel, config.system);
+  } else if (
+    action === 'delete'
+    && previous
+    && systemSel
+    && factorySel.value === previous.factory
+    && !selectHasOption(systemSel, beforeSystem)
+  ) {
+    systemSel.value = '';
+  }
+
+  const afterFactory = factorySel.value || '';
+  const afterSystem = systemSel?.value || '';
+  const selectionChanged = afterFactory !== beforeFactory || afterSystem !== beforeSystem;
+  const workspaceAffected = Boolean(
+    previous
+    && workingFactory
+    && workingSystem
+    && previous.factory === workingFactory
+    && previous.system === workingSystem
+  );
+
+  if (workspaceAffected) {
+    if (action === 'delete') {
+      exitWorkspace();
+      showMessage('warning', '当前工作台对应的厂区/系统已删除，请重新选择', 'parser-config-messages');
+    } else if (action === 'update' && config) {
+      workingFactory = config.factory;
+      workingSystem  = config.system;
+      const fCrumb = qs('#current-factory-breadcrumb');
+      const sCrumb = qs('#current-system-breadcrumb');
+      if (fCrumb) fCrumb.textContent = workingFactory;
+      if (sCrumb) sCrumb.textContent = workingSystem;
+      try {
+        await Promise.all([refreshTree(), refreshFullConfig(), refreshStats()]);
+        showMessage('info', '服务器配置改名，已同步至当前工作台', 'parser-config-messages');
+      } catch (err) {
+        console.error(err);
+        showMessage('error', '重载解析配置失败：' + (err?.message || err), 'parser-config-messages');
+      }
+    }
+  } else if (selectionChanged && action === 'delete') {
+    showMessage('warning', '服务器配置调整后，请重新选择厂区与系统', 'parser-config-messages');
   }
 }
 

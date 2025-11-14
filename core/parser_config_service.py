@@ -54,6 +54,25 @@ class ParserConfigService:
             raise ValueError("保存配置失败")
         return patched
 
+    def transfer_namespace(
+        self,
+        old_factory: str,
+        old_system: str,
+        new_factory: str,
+        new_system: str,
+    ) -> bool:
+        """当厂区/系统改名时，联动迁移解析配置文件。"""
+        if not all([old_factory, old_system, new_factory, new_system]):
+            return False
+        if old_factory == new_factory and old_system == new_system:
+            return False
+        return self._manager.rename_namespace(
+            old_factory,
+            old_system,
+            new_factory,
+            new_system,
+        )
+
     # ------------------------------------------------------------------
     # 纯数据算法（以下方法全部是内部实现）
     # ------------------------------------------------------------------

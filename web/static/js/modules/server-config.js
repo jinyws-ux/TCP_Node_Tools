@@ -131,6 +131,9 @@ async function handleSave() {
   const btnId = 'save-config-btn';
   try {
     const payload = collectFormPayload();
+    const previous = state.editingId
+      ? (state.configs.find((c) => c.id === state.editingId) || null)
+      : null;
     setButtonLoading(btnId, true);
     let res;
     if (state.editingId) {
@@ -148,6 +151,12 @@ async function handleSave() {
       detail: {
         action: state.editingId ? 'update' : 'create',
         id: res.config?.id,
+        config: res.config,
+        previous: previous ? {
+          id: previous.id,
+          factory: previous.factory,
+          system: previous.system,
+        } : null,
       }
     }));
     resetForm();
@@ -161,12 +170,21 @@ async function handleSave() {
 async function handleDelete(id) {
   if (!id) return;
   if (!confirm('确定要删除此配置吗？')) return;
+  const target = state.configs.find((c) => c.id === id) || null;
   try {
     const res = await api.deleteServerConfig(id);
     if (!res.success) throw new Error(res.error || '删除失败');
     showMessage('success', '配置删除成功', 'server-config-messages');
     window.dispatchEvent(new CustomEvent('server-configs:changed', {
-      detail: { action: 'delete', id }
+      detail: {
+        action: 'delete',
+        id,
+        previous: target ? {
+          id: target.id,
+          factory: target.factory,
+          system: target.system,
+        } : null,
+      }
     }));
     if (state.editingId === id) {
       resetForm();

@@ -56,6 +56,12 @@ export function init() {
 
   loadFactories().then(() => syncRightFiltersAndReload());
   updateRefreshButton();
+
+  window.addEventListener('server-configs:changed', (evt) => {
+    handleServerConfigsEvent(evt).catch((err) => {
+      console.error('[download] server-configs:changed 处理失败', err);
+    });
+  });
 }
 
 function bindLeftForm() {
@@ -427,6 +433,64 @@ function syncRightFiltersAndReload() {
   reloadTemplates(true);
 }
 
+async function handleServerConfigsEvent(evt) {
+  const factorySel = qs('#factory-select');
+  const systemSel = qs('#system-select');
+  if (!factorySel || !systemSel) return;
+
+  const beforeFactory = factorySel.value || '';
+  const beforeSystem = systemSel.value || '';
+  const detail = evt?.detail || {};
+  const { action, config, previous } = detail;
+
+  await loadFactories();
+  fillSelectValue(factorySel, beforeFactory);
+
+  if (action === 'update' && previous && config && beforeFactory === previous.factory) {
+    fillSelectValue(factorySel, config.factory);
+  } else if (
+    action === 'delete'
+    && previous
+    && beforeFactory === previous.factory
+    && !selectHasOption(factorySel, beforeFactory)
+  ) {
+    factorySel.value = '';
+  }
+
+  await loadSystems(factorySel.value);
+  fillSelectValue(systemSel, beforeSystem);
+
+  if (
+    action === 'update'
+    && previous
+    && config
+    && beforeFactory === previous.factory
+    && beforeSystem === previous.system
+    && factorySel.value === (config.factory || previous.factory)
+  ) {
+    fillSelectValue(systemSel, config.system);
+  } else if (
+    action === 'delete'
+    && previous
+    && factorySel.value === previous.factory
+    && !selectHasOption(systemSel, beforeSystem)
+  ) {
+    systemSel.value = '';
+  }
+
+  const afterFactory = factorySel.value || '';
+  const afterSystem = systemSel.value || '';
+  const selectionChanged = afterFactory !== beforeFactory || afterSystem !== beforeSystem;
+
+  syncRightFiltersAndReload();
+  if (selectionChanged) {
+    clearLastSearch();
+    if (state.mode === 'selected') {
+      unselectTemplateSilent();
+    }
+  }
+}
+
 function renderTemplateList(items, append = false) {
   const host = qs('#template-list');
   if (!host) return;
@@ -645,6 +709,11 @@ function fillSelectValue(sel, val) {
   if (!sel) return;
   const opt = Array.from(sel.options).find(o => o.value == val);
   if (opt) sel.value = val;
+}
+
+function selectHasOption(sel, val) {
+  if (!sel || val === undefined || val === null) return false;
+  return Array.from(sel.options || []).some((o) => o.value == val);
 }
 
 function renderLogs(list) {

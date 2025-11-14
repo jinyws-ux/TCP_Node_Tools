@@ -1,18 +1,27 @@
 """封装服务器配置的增删改查以及与区域模板之间的联动。"""
 from __future__ import annotations
 
-from typing import Any, Dict, List
+import logging
+from typing import Any, Dict, List, Optional
 
 from core.config_manager import ConfigManager
+from core.parser_config_service import ParserConfigService
 from core.template_manager import TemplateManager
 
 
 class ServerConfigService:
     """为 Flask 视图提供一个纯数据层，避免在路由中堆业务逻辑。"""
 
-    def __init__(self, config_manager: ConfigManager, template_manager: TemplateManager) -> None:
+    def __init__(
+        self,
+        config_manager: ConfigManager,
+        template_manager: TemplateManager,
+        parser_config_service: Optional[ParserConfigService] = None,
+    ) -> None:
         self._config_manager = config_manager
         self._template_manager = template_manager
+        self._parser_config_service = parser_config_service
+        self._logger = logging.getLogger(__name__)
 
     # ------------------------------------------------------------------
     # 查询
@@ -40,6 +49,10 @@ class ServerConfigService:
         if not config_id:
             raise ValueError("缺少配置 ID")
 
+        previous = self._config_manager.get_config_by_id(config_id)
+        if not previous:
+            raise ValueError("未找到服务器配置")
+
         factory, system, server = self._extract_payload(payload)
         updated = self._config_manager.update_server_config(config_id, factory, system, server)
         if not updated:
@@ -56,6 +69,8 @@ class ServerConfigService:
             factory_name=factory,
             system_name=system,
         )
+
+        self._sync_parser_config(previous, fresh)
 
         return self._format_config(fresh)
 
@@ -110,3 +125,29 @@ class ServerConfigService:
             "created_time": config.get("created_time"),
             "updated_time": config.get("updated_time"),
         }
+
+    def _sync_parser_config(self, previous: Dict[str, Any], fresh: Dict[str, Any]) -> None:
+        if not self._parser_config_service:
+            return
+        old_factory = previous.get("factory")
+        old_system = previous.get("system")
+        new_factory = fresh.get("factory")
+        new_system = fresh.get("system")
+        if not old_factory or not old_system:
+            return
+        if old_factory == new_factory and old_system == new_system:
+            return
+        moved = self._parser_config_service.transfer_namespace(
+            old_factory,
+            old_system,
+            new_factory,
+            new_system,
+        )
+        if moved:
+            self._logger.info(
+                "联动更新解析配置: %s/%s -> %s/%s",
+                old_factory,
+                old_system,
+                new_factory,
+                new_system,
+            )
