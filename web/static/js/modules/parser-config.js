@@ -176,7 +176,6 @@ export function init() {
   bindIfExists('#undo-btn', 'click', undoLastOperation);
   bindIfExists('#msg-type-search', 'input', searchMessageType);
   bindIfExists('#parser-preview-toggle', 'click', togglePreviewPanel);
-  bindIfExists('#parser-nav-toggle', 'click', toggleNavPanel);
   bindIfExists('[data-action="clear-clipboard"]', 'click', clearClipboard);
 
   // “添加”模态框 —— 兼容你现有 HTML
@@ -225,24 +224,6 @@ function togglePreviewPanel() {
   }
 }
 
-function toggleNavPanel() {
-  const nav = qs('.parser-left-nav');
-  const layout = qs('.parser-three-column');
-  if (!nav || !layout) return;
-  const collapsed = nav.classList.toggle('is-collapsed');
-  layout.classList.toggle('nav-collapsed', collapsed);
-  nav.dataset.state = collapsed ? 'collapsed' : 'expanded';
-  const btn = qs('#parser-nav-toggle');
-  if (btn) {
-    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    btn.setAttribute('title', collapsed ? '展开导航' : '收起导航');
-    const icon = btn.querySelector('i');
-    if (icon) {
-      icon.className = collapsed ? 'fas fa-angle-double-right' : 'fas fa-angle-double-left';
-    }
-  }
-}
-
 // =============== 进入/退出工作台 ===============
 async function enterWorkspace(factory, system) {
   workingFactory = factory;
@@ -273,22 +254,9 @@ function exitWorkspace() {
   const treeHost = qs('#left-nav-tree');
   const jsonBox  = qs('#json-preview-content');
   const rightBox = qs('#full-layers-container');
-  const nav      = qs('.parser-left-nav');
   const layout   = qs('.parser-three-column');
-
-  if (nav) {
-    nav.classList.remove('is-collapsed');
-    nav.dataset.state = 'expanded';
-  }
   if (layout) {
-    layout.classList.remove('nav-collapsed');
-  }
-  const navBtn = qs('#parser-nav-toggle');
-  if (navBtn) {
-    navBtn.setAttribute('aria-expanded', 'true');
-    navBtn.setAttribute('title', '收起导航');
-    const icon = navBtn.querySelector('i');
-    if (icon) icon.className = 'fas fa-angle-double-left';
+    layout.classList.remove('preview-collapsed');
   }
 
   if (treeHost) {
