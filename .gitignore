@@ -15,6 +15,7 @@ venv/
 *.log
 *.tmp
 *.swp
+*.bak
 .DS_Store
 Thumbs.db
 
