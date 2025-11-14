@@ -59,6 +59,16 @@ function activateTab(tabName) {
   qsa('.tab').forEach(el => el.classList.remove('active'));
   const activeTab = qs(`.tab[data-tab="${tabName}"]`);
   if (activeTab) activeTab.classList.add('active');
+
+  const tabsWrapper = qs('.tabs');
+  if (tabsWrapper && activeTab) {
+    const wrapperRect = tabsWrapper.getBoundingClientRect();
+    const activeRect = activeTab.getBoundingClientRect();
+    const offset = Math.max(activeRect.left - wrapperRect.left + 6, 0);
+    const width = Math.max(activeRect.width - 12, 40);
+    tabsWrapper.style.setProperty('--tab-offset', `${offset}px`);
+    tabsWrapper.style.setProperty('--tab-indicator-width', `${width}px`);
+  }
 }
 
 async function switchTab(tabName) {

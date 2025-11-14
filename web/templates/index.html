@@ -4,101 +4,15 @@
     <meta charset="UTF-8">
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
     <title>日志分析系统</title>
-    <style>
-      /* 关键首屏样式：完全脱离主 CSS，保证动画第一时间出现 */
-      .preloader{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 20% 20%,rgba(59,130,246,.4),transparent 55%),radial-gradient(circle at 80% 0,rgba(14,165,233,.35),transparent 40%),linear-gradient(135deg,#020617 0%,#0f172a 60%,#1e1b4b 100%);color:#fff;z-index:9999;overflow:hidden;letter-spacing:clamp(.2rem,1vw,.55rem);isolation:isolate;font-family:'Space Grotesk','Poppins','Segoe UI',sans-serif;text-transform:uppercase;}
-      .preloader::after{content:"";position:absolute;inset:-35%;background:radial-gradient(circle,rgba(14,165,233,.4),transparent 65%);filter:blur(100px);opacity:.85;z-index:-1;}
-      .preloader::before{content:"";position:absolute;inset:0;background-image:linear-gradient(120deg,rgba(255,255,255,.06) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.04) 50%,rgba(255,255,255,.04) 75%,transparent 75%,transparent);background-size:180px 180px;mix-blend-mode:screen;opacity:.45;}
-      .preloader__letters{display:flex;gap:clamp(10px,2.6vw,36px);font-size:clamp(3rem,10vw,6rem);font-weight:700;position:relative;z-index:1;}
-      .preloader__letters span{display:inline-block;letter-spacing:.2em;animation:letterPulse 1.8s cubic-bezier(.22,1,.36,1) infinite;text-shadow:0 22px 40px rgba(2,6,23,.6);transform-origin:50% 80%;}
-      .preloader__letters span:nth-child(2){animation-delay:.12s;}
-      .preloader__letters span:nth-child(3){animation-delay:.24s;}
-      .preloader__letters span:nth-child(4){animation-delay:.36s;}
-      .preloader.is-complete{animation:preloaderOutro .85s ease forwards;pointer-events:none;}
-      @keyframes letterPulse{0%{opacity:0;transform:translateY(32px) scale(.6);}30%{opacity:1;transform:translateY(-8px) scale(1.08);}55%{transform:translateY(0) scale(.98);}70%{transform:translateY(0) scale(1);}100%{opacity:0;transform:translateY(-40px) scale(.9);}}
-      @keyframes preloaderOutro{0%{opacity:1;}100%{opacity:0;transform:scale(.98);}}
-      @media (prefers-reduced-motion:reduce){.preloader,.preloader::before,.preloader::after{animation:none;}.preloader__letters span{animation:none;}}
-    </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="/static/css/style.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
     <script type="module" src="/static/js/app.js"></script>
 <!--    <script defer src="/static/js/main-simple.js"></script>-->
 </head>
 <body>
-<div class="preloader" aria-hidden="true" data-min-duration="2200">
-    <div class="preloader__letters">
-        <span>I</span>
-        <span>T</span>
-        <span>C</span>
-        <span>C</span>
-    </div>
-</div>
-<script>
-  (function(){
-    const preloader = document.querySelector('.preloader');
-    if (!preloader) {
-      window.__preloader = { finish: () => Promise.resolve() };
-      return;
-    }
-
-    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-    const parseDuration = value => {
-      if (!value) return 0;
-      return value.includes('ms') ? parseFloat(value) : parseFloat(value || '0') * 1000;
-    };
-    const minDuration = Number(preloader.dataset.minDuration) || 2200;
-    const start = performance.now();
-    const animatedLetter = preloader.querySelector('.preloader__letters span');
-
-    const waitForFullCycle = () => new Promise(resolve => {
-      if (!animatedLetter) {
-        resolve();
-        return;
-      }
-      const styles = window.getComputedStyle(animatedLetter);
-      const hasAnimation = styles && styles.animationName !== 'none';
-      if (!hasAnimation) {
-        resolve();
-        return;
-      }
-      const duration = parseDuration(styles.animationDuration);
-      const handle = () => {
-        animatedLetter.removeEventListener('animationiteration', handle);
-        resolve();
-      };
-      animatedLetter.addEventListener('animationiteration', handle, { once: true });
-      if (duration > 0) {
-        setTimeout(() => {
-          animatedLetter.removeEventListener('animationiteration', handle);
-          resolve();
-        }, duration + 100);
-      }
-    });
-
-    let finishingPromise;
-    const finish = async () => {
-      if (finishingPromise) return finishingPromise;
-      finishingPromise = (async () => {
-        const elapsed = performance.now() - start;
-        if (elapsed < minDuration) {
-          await sleep(minDuration - elapsed);
-        }
-        await waitForFullCycle();
-        preloader.classList.add('is-complete');
-        await new Promise(resolve => preloader.addEventListener('animationend', () => {
-          preloader.remove();
-          resolve();
-        }, { once: true }));
-      })();
-      return finishingPromise;
-    };
-
-    window.__preloader = { finish };
-  })();
-</script>
 <div class="container">
     <!-- 头部 -->
     <header>
@@ -119,12 +33,12 @@
     <!-- 日志下载标签页 -->
     <!-- 下载日志 -->
     <div id="download-tab" class="tab-content">
-      <div class="selection-panel">
-        <div class="selection-header">
-          <h3><i class="fas fa-download"></i> 日志下载</h3>
+        <h2><i class="fas fa-download"></i> 日志下载</h2>
+
+        <div class="message-container" id="download-messages">
+          <div class="message-empty"></div>
         </div>
 
-        <div class="message-container" id="download-messages"></div>
 
         <div class="config-layout">
           <!-- 左：搜索与结果 -->
@@ -222,7 +136,6 @@
             </div>
           </aside>
         </div>
-      </div>
     </div>
 
 
