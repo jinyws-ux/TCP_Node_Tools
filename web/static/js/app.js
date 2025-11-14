@@ -36,9 +36,15 @@ async function loadModule(tabName) {
       }));
       break;
     case 'parser-config':
-      modPromise = import('./modules/parser-config.js').catch(() => ({
-        init: () => messages.showMessage('warning', '解析配置模块稍后提供', 'parser-config-messages')
-      }));
+      modPromise = import('./modules/parser-config.js')
+        .catch((err) => {
+          console.error('[app] 解析配置模块加载失败', err);
+          const msg = err?.message || '解析配置模块暂不可用';
+          messages.showMessage('error', `解析配置模块加载失败：${msg}`, 'parser-config-messages');
+          return {
+            init: () => messages.showMessage('warning', '解析配置模块暂不可用', 'parser-config-messages')
+          };
+        });
       break;
     default:
       modPromise = Promise.resolve({ init: () => {} });
