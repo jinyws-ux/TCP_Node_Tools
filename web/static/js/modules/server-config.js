@@ -15,15 +15,6 @@ const state = {
 
 const $ = (sel, scope = document) => scope.querySelector(sel);
 
-function formatTimestamp(tsSec) {
-  if (!tsSec) return '';
-  try {
-    return new Date(tsSec * 1000).toLocaleString();
-  } catch (_) {
-    return '';
-  }
-}
-
 function renderList() {
   const container = document.getElementById('server-configs-container');
   const empty = document.getElementById('no-server-configs-message');
@@ -31,9 +22,11 @@ function renderList() {
 
   container.innerHTML = '';
   if (!state.configs.length) {
+    container.style.display = 'none';
     if (empty) empty.style.display = 'block';
     return;
   }
+  container.style.display = '';
   if (empty) empty.style.display = 'none';
 
   const filtered = getFilteredConfigs();
@@ -121,36 +114,25 @@ function buildFactoryGroup(factoryKey, configs) {
 
 function buildConfigCard(cfg) {
   const item = document.createElement('div');
-  item.className = 'config-item config-item--slim' + (state.editingId === cfg.id ? ' editing' : '');
+  item.className = 'config-item config-item--compact server-config-card' + (state.editingId === cfg.id ? ' editing' : '');
+
+  const factoryLabel = escapeHtml(cfg.factory || '未指定');
+  const systemLabel = escapeHtml(cfg.system || '未指定');
+  const aliasLabel = escapeHtml(cfg.server?.alias || '未命名');
 
   const info = document.createElement('div');
-  info.className = 'config-info';
-  const created = formatTimestamp(cfg.created_time);
-  const updated = cfg.updated_time ? formatTimestamp(cfg.updated_time) : '';
-  const factoryLabel = escapeHtml(cfg.factory || '');
-  const systemLabel = escapeHtml(cfg.system || '');
-  const aliasLabel = escapeHtml(cfg.server?.alias || '未命名');
-  const hostLabel = escapeHtml(cfg.server?.hostname || '-');
-  const userLabel = escapeHtml(cfg.server?.username || '-');
-  const createdText = escapeHtml(created || '-');
-  const updatedText = updated ? escapeHtml(updated) : '';
   info.innerHTML = `
-    <div class="config-title-row">
-      <h3>${factoryLabel} / ${systemLabel}</h3>
-      <span class="config-chip">${aliasLabel}</span>
+    <div class="config-compact-head">
+      <span>${factoryLabel}</span>
+      <span>${systemLabel}</span>
     </div>
-    <div class="config-meta-grid">
-      <span><i class="fas fa-server"></i> ${hostLabel}</span>
-      <span><i class="fas fa-user"></i> ${userLabel}</span>
-    </div>
-    <div class="config-timestamps">
-      <span>创建：${createdText}</span>
-      ${updatedText ? `<span>更新：${updatedText}</span>` : ''}
+    <div class="config-compact-title">
+      <div class="config-compact-alias">${aliasLabel}</div>
     </div>`;
   item.appendChild(info);
 
   const actions = document.createElement('div');
-  actions.className = 'config-actions config-actions--stacked';
+  actions.className = 'config-compact-actions config-compact-actions--two';
   const btnEdit = document.createElement('button');
   btnEdit.className = 'btn btn-sm btn-edit';
   btnEdit.dataset.act = 'edit';

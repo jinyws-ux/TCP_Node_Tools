@@ -145,14 +145,15 @@ header::after {
 
 /* ======================= Tabs ======================= */
 .tabs {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 18px;
   margin-bottom: 24px;
 }
 
 .tab {
   padding: 18px 20px;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -397,6 +398,18 @@ textarea:focus {
   cursor: pointer;
   font-size: 0.9rem;
   transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn:focus,
+button:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.btn:focus-visible,
+button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
 }
 
 .btn:hover {
@@ -926,15 +939,46 @@ tbody tr:hover {
   display: block;
 }
 
+.config-list-section .config-list,
+.template-panel .config-list {
+  min-height: 520px;
+  height: 580px;
+  max-height: 580px;
+  display: flex;
+  flex-direction: column;
+}
+
+#server-configs-container,
+#template-list {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.template-panel .list-footer,
+.config-list .list-footer {
+  margin-top: 12px;
+  flex-shrink: 0;
+}
+
 .config-item {
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 16px 18px;
-  margin-bottom: 10px;
+  margin-bottom: 0;
   background: rgba(255, 255, 255, 0.92);
   display: flex;
   align-items: flex-start;
   gap: 16px;
+}
+
+.config-item.editing {
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.18);
 }
 
 .config-item--slim {
@@ -942,9 +986,82 @@ tbody tr:hover {
   gap: 18px;
 }
 
+.config-item--compact {
+  flex-direction: column;
+  gap: 12px;
+}
+
 .template-panel .config-item {
   background: var(--card);
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+.config-compact-head {
+  display: flex;
+  gap: 10px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.config-compact-head span {
+  flex: 1;
+  padding: 4px 10px;
+  background: rgba(15, 23, 42, 0.05);
+  border-radius: 10px;
+  text-align: center;
+  font-weight: 600;
+  color: var(--muted-strong);
+}
+
+.config-compact-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.config-compact-title h3,
+.config-compact-alias {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--muted-strong);
+}
+
+.config-compact-alias {
+  word-break: break-all;
+}
+
+.config-compact-meta {
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.config-compact-meta i {
+  margin-right: 6px;
+  color: rgba(59, 130, 246, 0.8);
+}
+
+.config-compact-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.config-compact-actions .btn {
+  flex: 1 1 120px;
+}
+
+.config-compact-actions--two .btn {
+  flex: 1 1 48%;
+}
+
+.config-compact-actions.tpl-actions .btn {
+  flex: 1 1 calc(33% - 8px);
+  min-width: 110px;
 }
 
 .config-title-row {
@@ -1187,8 +1304,8 @@ tbody tr:hover {
   border: 1px solid rgba(15, 23, 42, 0.12);
   border-radius: var(--radius);
   box-shadow: 0 18px 30px rgba(15, 23, 42, 0.12);
-  height: 72vh;
-  min-height: 520px;
+  height: 78vh;
+  min-height: 560px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1290,6 +1407,7 @@ tbody tr:hover {
   overflow-y: auto;
   padding-right: 6px;
   margin-top: 14px;
+  scrollbar-gutter: stable;
 }
 
 .parser-nav-tree ul {
@@ -1306,12 +1424,12 @@ tbody tr:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-radius: 10px;
   cursor: pointer;
   transition: background 0.2s ease, border 0.2s ease, box-shadow 0.2s ease;
   border: 1px solid transparent;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--muted-strong);
   background: rgba(255, 255, 255, 0.4);
 }
@@ -1349,8 +1467,8 @@ tbody tr:hover {
 }
 
 .tree-toggle {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   border-radius: 8px;
   border: 1px solid var(--line);
   background: #fff;
@@ -1359,6 +1477,7 @@ tbody tr:hover {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  font-size: 0.65rem;
 }
 
 .tree-dot {
@@ -1523,6 +1642,7 @@ tbody tr:hover {
   font-family: 'JetBrains Mono', 'Consolas', monospace;
   font-size: 12px;
   color: var(--muted-strong);
+  scrollbar-gutter: stable;
 }
 
 .parser-json-placeholder {
@@ -1684,9 +1804,13 @@ footer {
     width: 100%;
   }
 
-  .tabs {
-    flex-wrap: wrap;
+  .config-list-section .config-list,
+  .template-panel .config-list {
+    height: auto;
+    max-height: none;
+    min-height: auto;
   }
+
 }
 
 @media (max-width: 640px) {
