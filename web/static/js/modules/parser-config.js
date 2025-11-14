@@ -54,6 +54,10 @@ function deepCopy(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function cloneConfig(value) {
+  return deepCopy(value);
+}
+
 function hasClipboard(type) {
   return clipboardState.type === type && clipboardState.data != null;
 }
@@ -947,7 +951,7 @@ async function renameVersion(mt, oldVer) {
   if (!newVer || newVer === oldVer) return;
   // 整包保存：复制版本对象 -> 新 key；删除旧 key
   try {
-    const clone = structuredClone(workingConfig);
+    const clone = cloneConfig(workingConfig);
     if (!clone?.[mt]?.Versions?.[oldVer]) throw new Error('版本不存在');
     clone[mt].Versions[newVer] = clone[mt].Versions[oldVer];
     delete clone[mt].Versions[oldVer];
@@ -968,7 +972,7 @@ async function renameField(mt, ver, oldField) {
   const newField = prompt('新字段名：', oldField);
   if (!newField || newField === oldField) return;
   try {
-    const clone = structuredClone(workingConfig);
+    const clone = cloneConfig(workingConfig);
     const verObj = clone?.[mt]?.Versions?.[ver];
     if (!verObj?.Fields?.[oldField]) throw new Error('字段不存在');
     verObj.Fields[newField] = verObj.Fields[oldField];
@@ -1051,7 +1055,7 @@ async function saveEscapeValue(mt, ver, fd, key) {
 }
 
 async function deleteEscape(mt, ver, fd, key, opts = {}) {
-  const clone = structuredClone(workingConfig);
+  const clone = cloneConfig(workingConfig);
   const escMap = clone?.[mt]?.Versions?.[ver]?.Fields?.[fd]?.Escapes;
   if (!escMap || !Object.prototype.hasOwnProperty.call(escMap, key)) {
     throw new Error('未找到转义项');
@@ -1451,41 +1455,36 @@ async function saveFullConfig(newConfig, opts = {}) {
     config: newConfig
   });
   if (!data.success) throw new Error(data.error || '保存失败');
-  workingConfig = structuredClone(newConfig);
+  workingConfig = cloneConfig(newConfig);
   if (!opts.silent) renderJsonPreview();
   return data;
 }
 
 // =============== 兼容旧 inline onclick（可选） ===============
-window.enterConfigWorkspace   = () => {
-  const f = qs('#parser-factory-select')?.value || '';
-  const s = qs('#parser-system-select')?.value || '';
-  if (!f || !s) {
-    showMessage('error', '请先选择厂区与系统', 'parser-config-messages');
-    return;
-  }
-  enterWorkspace(f, s);
-};
-window.exitConfigWorkspace    = exitWorkspace;
-window.expandAllLayers        = expandAllLayers;
-window.collapseAllLayers      = collapseAllLayers;
-window.copyJsonPreview        = copyJsonPreview;
-window.showAddMessageTypeModal= showAddMessageTypeModal;
-window.hideAddMessageTypeModal= hideAddMessageTypeModal;
-window.showAddVersionModal    = showAddVersionModal;
-window.hideAddVersionModal    = hideAddVersionModal;
-window.showAddFieldModal      = showAddFieldModal;
-window.hideAddFieldModal      = hideAddFieldModal;
-window.showAddEscapeModal     = showAddEscapeModal;
-window.hideAddEscapeModal     = hideAddEscapeModal;
-window.submitMessageTypeForm  = submitMessageTypeForm;
-window.submitVersionForm      = submitVersionForm;
-window.submitFieldForm        = submitFieldForm;
-window.submitEscapeForm       = submitEscapeForm;
-  host.querySelectorAll('.esc-copy').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const key = e.currentTarget.closest('tr')?.dataset.k;
-      if (!key) return;
-      copyEscape(mt, ver, fd, key);
-    });
-  });
+if (typeof window !== 'undefined') {
+  window.enterConfigWorkspace   = () => {
+    const f = qs('#parser-factory-select')?.value || '';
+    const s = qs('#parser-system-select')?.value || '';
+    if (!f || !s) {
+      showMessage('error', '请先选择厂区与系统', 'parser-config-messages');
+      return;
+    }
+    enterWorkspace(f, s);
+  };
+  window.exitConfigWorkspace    = exitWorkspace;
+  window.expandAllLayers        = expandAllLayers;
+  window.collapseAllLayers      = collapseAllLayers;
+  window.copyJsonPreview        = copyJsonPreview;
+  window.showAddMessageTypeModal= showAddMessageTypeModal;
+  window.hideAddMessageTypeModal= hideAddMessageTypeModal;
+  window.showAddVersionModal    = showAddVersionModal;
+  window.hideAddVersionModal    = hideAddVersionModal;
+  window.showAddFieldModal      = showAddFieldModal;
+  window.hideAddFieldModal      = hideAddFieldModal;
+  window.showAddEscapeModal     = showAddEscapeModal;
+  window.hideAddEscapeModal     = hideAddEscapeModal;
+  window.submitMessageTypeForm  = submitMessageTypeForm;
+  window.submitVersionForm      = submitVersionForm;
+  window.submitFieldForm        = submitFieldForm;
+  window.submitEscapeForm       = submitEscapeForm;
+}
