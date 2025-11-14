@@ -327,7 +327,11 @@ async function loadParserConfigs(options = {}) {
   const sel = $('#config-select');
   if (!sel) return;
 
-  const { preferredId, preserveSelection = true } = options;
+  const {
+    preferredId,
+    preserveSelection = true,
+    silent = false,
+  } = options;
   const before = sel.value || '';
   const targetValue = preferredId !== undefined
     ? preferredId
@@ -349,11 +353,15 @@ async function loadParserConfigs(options = {}) {
       } else if (targetValue === '') {
         sel.value = '';
       }
-    } else {
+    } else if (!silent) {
       showMessage('error', '加载解析配置失败: ' + (data.error || ''), 'analyze-messages');
     }
   } catch (e) {
-    showMessage('error', '加载解析配置失败: ' + e.message, 'analyze-messages');
+    if (!silent) {
+      showMessage('error', '加载解析配置失败: ' + e.message, 'analyze-messages');
+    } else {
+      console.warn('[analyze] 静默刷新解析配置失败:', e);
+    }
   }
 }
 
@@ -362,7 +370,8 @@ function inferConfigFilename(factory, system) {
   return `${factory}_${system}.json`;
 }
 
-function handleServerConfigsChanged(evt) {
+function handleServerConfigsChanged(evt, options = {}) {
+  const { silent = false } = options;
   const detail = evt?.detail || {};
   const action = detail.action;
   const config = detail.config || {};
@@ -374,18 +383,22 @@ function handleServerConfigsChanged(evt) {
   const newId = inferConfigFilename(config.factory, config.system);
 
   if (action === 'update' && currentValue && currentValue === oldId && newId) {
-    loadParserConfigs({ preferredId: newId, preserveSelection: false });
-    showMessage('info', '服务器配置改名，解析配置已自动同步', 'analyze-messages');
+    loadParserConfigs({ preferredId: newId, preserveSelection: false, silent });
+    if (!silent) {
+      showMessage('info', '服务器配置改名，解析配置已自动同步', 'analyze-messages');
+    }
     return;
   }
 
   if (action === 'delete' && currentValue && currentValue === oldId) {
-    loadParserConfigs({ preferredId: '', preserveSelection: false });
-    showMessage('warning', '服务器配置被删除，请重新选择解析配置', 'analyze-messages');
+    loadParserConfigs({ preferredId: '', preserveSelection: false, silent });
+    if (!silent) {
+      showMessage('warning', '服务器配置被删除，请重新选择解析配置', 'analyze-messages');
+    }
     return;
   }
 
-  loadParserConfigs({ preserveSelection: true });
+  loadParserConfigs({ preserveSelection: true, silent });
 }
 
 /* ---------- 模块入口 ---------- */
@@ -412,9 +425,8 @@ export function init() {
     console.log('[analyze] 解析配置变更 → 自动刷新配置列表');
     loadParserConfigs({ preserveSelection: true });
   });
+}
 
-  window.addEventListener('server-configs:changed', (evt) => {
-    console.log('[analyze] 服务器配置变更 → 检查解析下拉');
-    handleServerConfigsChanged(evt);
-  });
+export function handleServerConfigsEvent(evt) {
+  handleServerConfigsChanged(evt, { silent: !inited });
 }

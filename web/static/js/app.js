@@ -68,6 +68,17 @@ async function switchTab(tabName) {
   }
 }
 
+// 让分析模块即便未显式打开也能收到服务器配置变更
+window.addEventListener('server-configs:changed', (evt) => {
+  loadModule('analyze')
+    .then((mod) => {
+      if (mod && typeof mod.handleServerConfigsEvent === 'function') {
+        mod.handleServerConfigsEvent(evt);
+      }
+    })
+    .catch((err) => console.warn('[app] 无法通知分析模块服务器配置变化', err));
+});
+
 /* ---------- 初始化 ---------- */
 function initTopTabs() {
   const firstTab = qs('.tab');
