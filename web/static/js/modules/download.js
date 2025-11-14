@@ -507,28 +507,26 @@ function renderTemplateList(items, append = false) {
     const systemName = t.system || t.system_name || '-';
     const nodesPreview = nodes.slice(0, 4).join(', ');
     const el = document.createElement('div');
-    el.className = 'config-item';
+    const previewText = nodesPreview
+      ? `${nodesPreview}${nodes.length > 4 ? ' …' : ''}`
+      : '暂无示例';
+    el.className = 'config-item config-item--slim template-card';
     el.innerHTML = `
       <div class="config-info">
-        <h3>${escapeHtml(t.name)}</h3>
-        <p>${escapeHtml(factoryName)} - ${escapeHtml(systemName)}</p>
-      </div>
-      <div class="template-meta">
-        <div>
-          <span>节点数</span>
-          <strong>${nodes.length}</strong>
+        <div class="config-title-row">
+          <h3>${escapeHtml(t.name)}</h3>
+          <span class="config-chip">${nodes.length} 节点</span>
         </div>
-        <div>
-          <span>示例节点</span>
-          <code>${nodesPreview ? escapeHtml(nodesPreview + (nodes.length > 4 ? ' …' : '')) : '无'}</code>
+        <div class="config-meta-grid template-meta-grid">
+          <span><i class="fas fa-industry"></i> ${escapeHtml(factoryName)}</span>
+          <span><i class="fas fa-layer-group"></i> ${escapeHtml(systemName)}</span>
+          <span class="template-nodes"><i class="fas fa-stream"></i> ${escapeHtml(previewText)}</span>
         </div>
       </div>
-      <div class="config-actions tpl-actions">
+      <div class="config-actions config-actions--stacked tpl-actions">
         <button class="btn btn-primary btn-sm tpl-select">选择区域</button>
-        <div class="config-actions" style="gap:8px;">
-          <button class="btn btn-secondary btn-sm tpl-edit">编辑</button>
-          <button class="btn btn-danger btn-sm tpl-del">删除</button>
-        </div>
+        <button class="btn btn-secondary btn-sm tpl-edit">编辑</button>
+        <button class="btn btn-danger btn-sm tpl-del">删除</button>
       </div>
     `;
 

@@ -2,6 +2,7 @@
 import { api } from '../core/api.js';
 import { showMessage } from '../core/messages.js';
 import { setButtonLoading } from '../core/ui.js';
+import { escapeHtml } from '../core/utils.js';
 
 const state = {
   configs: [],
@@ -120,25 +121,36 @@ function buildFactoryGroup(factoryKey, configs) {
 
 function buildConfigCard(cfg) {
   const item = document.createElement('div');
-  item.className = 'config-item' + (state.editingId === cfg.id ? ' editing' : '');
+  item.className = 'config-item config-item--slim' + (state.editingId === cfg.id ? ' editing' : '');
+
   const info = document.createElement('div');
   info.className = 'config-info';
-  const title = document.createElement('h3');
-  title.textContent = `${cfg.factory || ''} - ${cfg.system || ''}`;
-  info.appendChild(title);
-  const serverLine = document.createElement('p');
-  serverLine.textContent = `服务器: ${cfg.server?.alias || ''} (${cfg.server?.hostname || ''})`;
-  info.appendChild(serverLine);
-  const meta = document.createElement('p');
-  meta.className = 'config-meta';
   const created = formatTimestamp(cfg.created_time);
-  const updated = cfg.updated_time ? ` | 更新: ${formatTimestamp(cfg.updated_time)}` : '';
-  meta.textContent = `创建: ${created}${updated}`;
-  info.appendChild(meta);
+  const updated = cfg.updated_time ? formatTimestamp(cfg.updated_time) : '';
+  const factoryLabel = escapeHtml(cfg.factory || '');
+  const systemLabel = escapeHtml(cfg.system || '');
+  const aliasLabel = escapeHtml(cfg.server?.alias || '未命名');
+  const hostLabel = escapeHtml(cfg.server?.hostname || '-');
+  const userLabel = escapeHtml(cfg.server?.username || '-');
+  const createdText = escapeHtml(created || '-');
+  const updatedText = updated ? escapeHtml(updated) : '';
+  info.innerHTML = `
+    <div class="config-title-row">
+      <h3>${factoryLabel} / ${systemLabel}</h3>
+      <span class="config-chip">${aliasLabel}</span>
+    </div>
+    <div class="config-meta-grid">
+      <span><i class="fas fa-server"></i> ${hostLabel}</span>
+      <span><i class="fas fa-user"></i> ${userLabel}</span>
+    </div>
+    <div class="config-timestamps">
+      <span>创建：${createdText}</span>
+      ${updatedText ? `<span>更新：${updatedText}</span>` : ''}
+    </div>`;
   item.appendChild(info);
 
   const actions = document.createElement('div');
-  actions.className = 'config-actions';
+  actions.className = 'config-actions config-actions--stacked';
   const btnEdit = document.createElement('button');
   btnEdit.className = 'btn btn-sm btn-edit';
   btnEdit.dataset.act = 'edit';
@@ -259,6 +271,16 @@ function resetForm() {
   fillForm({ factory: '', system: '', server: {} });
   state.editingId = null;
   setEditMode(false);
+  const pwdInput = $('#server-password');
+  const toggleBtn = document.getElementById('toggle-password-visibility');
+  if (pwdInput) {
+    pwdInput.setAttribute('type', 'password');
+  }
+  if (toggleBtn) {
+    toggleBtn.setAttribute('aria-pressed', 'false');
+    const icon = toggleBtn.querySelector('i');
+    if (icon) icon.className = 'fas fa-eye';
+  }
 }
 
 async function handleSave() {
@@ -366,6 +388,21 @@ function bindListEvents() {
   });
 }
 
+function bindPasswordToggle() {
+  const input = $('#server-password');
+  const btn = document.getElementById('toggle-password-visibility');
+  if (!input || !btn) return;
+  btn.addEventListener('click', () => {
+    const isHidden = input.getAttribute('type') === 'password';
+    input.setAttribute('type', isHidden ? 'text' : 'password');
+    btn.setAttribute('aria-pressed', isHidden ? 'true' : 'false');
+    const icon = btn.querySelector('i');
+    if (icon) {
+      icon.className = isHidden ? 'fas fa-eye-slash' : 'fas fa-eye';
+    }
+  });
+}
+
 function bindFormEvents() {
   const saveBtn = document.getElementById('save-config-btn');
   const cancelBtn = document.getElementById('cancel-edit-btn');
@@ -400,6 +437,7 @@ export function init() {
   if (state.initialized) return;
   state.initialized = true;
   bindFormEvents();
+  bindPasswordToggle();
   bindSearchBox();
   bindListEvents();
   loadServerConfigs();

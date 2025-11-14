@@ -284,82 +284,9 @@ function focusPreviewPath(path) {
   const selector = `[data-path="${cssEscape(path)}"]`;
   const target = box.querySelector(selector);
   if (!target) return;
-  box.querySelectorAll('.preview-node.is-focused').forEach((el) => el.classList.remove('is-focused'));
+  box.querySelectorAll('.json-line.is-focused').forEach((el) => el.classList.remove('is-focused'));
   target.classList.add('is-focused');
   box.scrollTo({ top: Math.max(0, target.offsetTop - 16), behavior: 'smooth' });
-}
-
-function formatPreviewMeta(node) {
-  if (node.type === 'field') {
-    const startText = node.start == null ? 0 : node.start;
-    const lenText = node.length == null ? '到结尾' : node.length;
-    return `起点 ${startText} · 长度 ${lenText}`;
-  }
-  if (node.type === 'escape') {
-    return `→ ${String(node.value ?? '')}`;
-  }
-  if (node.type === 'version' && node.description) {
-    return node.description;
-  }
-  if (node.type === 'message_type' && node.description) {
-    return node.description;
-  }
-  return '';
-}
-
-function buildPreviewNodeElement(node, depth = 0) {
-  const wrapper = document.createElement('div');
-  wrapper.className = 'preview-node';
-  wrapper.style.setProperty('--depth', depth);
-  const pathMeta = { type: node.type };
-  if (node.type === 'message_type') {
-    pathMeta.messageType = node.name;
-  } else if (node.type === 'version') {
-    pathMeta.messageType = node.parent;
-    pathMeta.version = node.name;
-  } else if (node.type === 'field') {
-    pathMeta.messageType = node.parent;
-    pathMeta.version = node.version;
-    pathMeta.field = node.name;
-  } else if (node.type === 'escape') {
-    pathMeta.messageType = node.parent;
-    pathMeta.version = node.version;
-    pathMeta.field = node.field;
-    pathMeta.escapeKey = node.name;
-  }
-  const pathKey = node.path || buildNodePath(pathMeta);
-  if (pathKey) {
-    wrapper.dataset.path = pathKey;
-  }
-
-  const line = document.createElement('div');
-  line.className = 'preview-line';
-  const label = document.createElement('span');
-  label.className = 'preview-label';
-  label.textContent = TYPE_LABELS[node.type] || node.type || '';
-  const title = document.createElement('span');
-  title.className = 'preview-title';
-  title.textContent = node.name || '-';
-  line.appendChild(label);
-  line.appendChild(title);
-  const metaText = formatPreviewMeta(node);
-  if (metaText) {
-    const metaEl = document.createElement('span');
-    metaEl.className = 'preview-meta';
-    metaEl.textContent = metaText;
-    line.appendChild(metaEl);
-  }
-  wrapper.appendChild(line);
-
-  if (node.children && node.children.length) {
-    const childrenWrap = document.createElement('div');
-    childrenWrap.className = 'preview-children';
-    node.children.forEach((child) => {
-      childrenWrap.appendChild(buildPreviewNodeElement(child, depth + 1));
-    });
-    wrapper.appendChild(childrenWrap);
-  }
-  return wrapper;
 }
 
 // =============== 进入/退出工作台 ===============
@@ -994,9 +921,7 @@ function renderEditorFor(node) {
         <button class="btn btn-primary" id="btn-save-fd"><i class="fas fa-save"></i> 保存</button>
         <button class="btn btn-secondary" id="btn-rename-fd"><i class="fas fa-i-cursor"></i> 重命名</button>
         <button class="btn btn-danger" id="btn-del-fd"><i class="fas fa-trash"></i> 删除字段</button>
-      </div>
-      <h5 style="margin-top:12px;">Escapes</h5>
-      <div id="esc-list"></div>`;
+      </div>`;
 
     qs('#btn-save-fd')?.addEventListener('click', () => saveField(mt, ver, fd));
     qs('#btn-rename-fd')?.addEventListener('click', () => renameField(mt, ver, fd));
@@ -1005,7 +930,6 @@ function renderEditorFor(node) {
     qs('#btn-add-esc')?.addEventListener('click', () => showAddEscapeModal(mt, ver, fd));
     qs('#btn-paste-escape')?.addEventListener('click', () => pasteEscape(mt, ver, fd));
 
-    renderEscapesList(mt, ver, fd, fcfg.Escapes || {});
     focusPreviewPath(nodePath);
     return;
   }
@@ -1192,65 +1116,6 @@ async function renameField(mt, ver, oldField) {
   } catch (e) {
     showMessage('error', '重命名失败：' + e.message, 'parser-config-messages');
   }
-}
-
-// =============== Escapes 列表 & 增删 ===============
-function renderEscapesList(mt, ver, fd, esc = {}) {
-  const host = qs('#esc-list');
-  if (!host) return;
-  const keys = Object.keys(esc);
-  if (!keys.length) {
-    host.innerHTML = '<div class="message-empty">暂无转义</div>';
-    return;
-  }
-  const grid = document.createElement('div');
-  grid.className = 'escape-grid';
-  keys.forEach((k) => {
-    const card = document.createElement('div');
-    card.className = 'escape-card';
-    card.dataset.k = k;
-    card.innerHTML = `
-      <div class="escape-card__key">${escapeHtml(k)}</div>
-      <div class="escape-card__value">${escapeHtml(String(esc[k]))}</div>
-      <div class="escape-card__actions">
-        <button class="btn btn-xs btn-outline esc-copy">复制</button>
-        <button class="btn btn-xs btn-secondary esc-edit">编辑</button>
-        <button class="btn btn-xs btn-danger esc-del">删除</button>
-      </div>`;
-    grid.appendChild(card);
-  });
-  host.innerHTML = '';
-  host.appendChild(grid);
-
-  host.querySelectorAll('.esc-edit').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const key = e.currentTarget.closest('.escape-card')?.dataset.k;
-      if (!key) return;
-      renderEditorFor({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: key });
-    });
-  });
-
-  host.querySelectorAll('.esc-del').forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
-      const card = e.currentTarget.closest('.escape-card');
-      const key = card?.dataset.k;
-      if (!key) return;
-      if (!confirm(`删除转义 "${key}" ?`)) return;
-      try {
-        await deleteEscape(mt, ver, fd, key, { renderNode: { type: 'field', messageType: mt, version: ver, field: fd } });
-      } catch (err) {
-        showMessage('error', '删除失败：' + err.message, 'parser-config-messages');
-      }
-    });
-  });
-
-  host.querySelectorAll('.esc-copy').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const key = e.currentTarget.closest('.escape-card')?.dataset.k;
-      if (!key) return;
-      copyEscape(mt, ver, fd, key);
-    });
-  });
 }
 
 async function saveEscapeValue(mt, ver, fd, key) {
@@ -1555,8 +1420,8 @@ function renderJsonPreview() {
   const box = qs('#json-preview-content');
   if (!box) return;
   box.innerHTML = '';
-  const tree = Array.isArray(workingTree) ? workingTree : [];
-  if (!tree.length) {
+  const config = workingConfig && Object.keys(workingConfig).length ? workingConfig : null;
+  if (!config) {
     box.innerHTML = `
       <div class="parser-json-placeholder">
         <i class="fas fa-code"></i>
@@ -1564,19 +1429,107 @@ function renderJsonPreview() {
       </div>`;
     return;
   }
-  const fragment = document.createDocumentFragment();
-  tree.forEach((node) => {
-    fragment.appendChild(buildPreviewNodeElement(node, 0));
+  const lines = buildJsonLinesFromConfig(config);
+  const pre = document.createElement('pre');
+  pre.className = 'json-code';
+  lines.forEach((line, idx) => {
+    const span = document.createElement('span');
+    span.className = 'json-line';
+    span.textContent = line.text;
+    if (line.path) {
+      span.dataset.path = line.path;
+    }
+    pre.appendChild(span);
+    if (idx !== lines.length - 1) {
+      pre.appendChild(document.createTextNode('\n'));
+    }
   });
-  box.appendChild(fragment);
+  box.appendChild(pre);
 }
 
 function copyJsonPreview() {
-  const pre = qs('#json-preview-content pre');
+  const pre = qs('#json-preview-content .json-code');
   if (!pre) return;
   navigator?.clipboard?.writeText(pre.textContent)
     .then(()=> showMessage('success', 'JSON 已复制', 'parser-config-messages'))
     .catch(err => showMessage('error', '复制失败：' + err.message, 'parser-config-messages'));
+}
+
+function formatJsonValue(value) {
+  if (value === null || value === undefined) return 'null';
+  if (typeof value === 'number' && !Number.isNaN(value)) return String(value);
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  return JSON.stringify(value);
+}
+
+function buildJsonLinesFromConfig(config) {
+  const indentUnit = '  ';
+  const lines = [];
+  const pushLine = (text, level, path) => {
+    lines.push({ text: `${indentUnit.repeat(level)}${text}`, path });
+  };
+  const mtKeys = Object.keys(config || {});
+  if (!mtKeys.length) {
+    pushLine('{}', 0);
+    return lines;
+  }
+  pushLine('{', 0);
+  mtKeys.forEach((mtKey, mtIndex) => {
+    const mtObj = config[mtKey] || {};
+    const versions = mtObj.Versions || {};
+    const versionKeys = Object.keys(versions);
+    const mtPath = buildNodePath({ type: 'message_type', messageType: mtKey });
+    pushLine(`"${mtKey}": {`, 1, mtPath);
+    if (mtObj.Description !== undefined && mtObj.Description !== '') {
+      pushLine(`"Description": ${JSON.stringify(mtObj.Description)}${versionKeys.length ? ',' : ''}`, 2);
+    }
+    if (versionKeys.length) {
+      pushLine('"Versions": {', 2);
+      versionKeys.forEach((verKey, verIndex) => {
+        const verPath = buildNodePath({ type: 'version', messageType: mtKey, version: verKey });
+        const fields = versions[verKey]?.Fields || {};
+        const fieldKeys = Object.keys(fields);
+        pushLine(`"${verKey}": {`, 3, verPath);
+        if (fieldKeys.length) {
+          pushLine('"Fields": {', 4);
+          fieldKeys.forEach((fdKey, fdIndex) => {
+            const field = fields[fdKey] || {};
+            const escapes = field.Escapes || {};
+            const escapeKeys = Object.keys(escapes);
+            const fieldPath = buildNodePath({ type: 'field', messageType: mtKey, version: verKey, field: fdKey });
+            pushLine(`"${fdKey}": {`, 5, fieldPath);
+            pushLine(`"Start": ${formatJsonValue(field.Start ?? 0)},`, 6);
+            pushLine(`"Length": ${formatJsonValue(field.Length ?? null)},`, 6);
+            if (escapeKeys.length) {
+              pushLine('"Escapes": {', 6);
+              escapeKeys.forEach((escKey, escIndex) => {
+                const escPath = buildNodePath({ type: 'escape', messageType: mtKey, version: verKey, field: fdKey, escapeKey: escKey });
+                const suffix = escIndex === escapeKeys.length - 1 ? '' : ',';
+                pushLine(`"${escKey}": ${formatJsonValue(escapes[escKey])}${suffix}`, 7, escPath);
+              });
+              pushLine('}', 6);
+            } else {
+              pushLine('"Escapes": {}', 6);
+            }
+            const fieldSuffix = fdIndex === fieldKeys.length - 1 ? '' : ',';
+            pushLine(`}${fieldSuffix}`, 5);
+          });
+          pushLine('}', 4);
+        } else {
+          pushLine('"Fields": {}', 4);
+        }
+        const verSuffix = verIndex === versionKeys.length - 1 ? '' : ',';
+        pushLine(`}${verSuffix}`, 3);
+      });
+      pushLine('}', 2);
+    } else {
+      pushLine('"Versions": {}', 2);
+    }
+    const mtSuffix = mtIndex === mtKeys.length - 1 ? '' : ',';
+    pushLine(`}${mtSuffix}`, 1);
+  });
+  pushLine('}', 0);
+  return lines;
 }
 
 function pushHistory() {
