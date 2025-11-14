@@ -4,9 +4,6 @@
     <meta charset="UTF-8">
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
     <title>日志分析系统</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <style>
       /* 关键首屏样式：完全脱离主 CSS，保证动画第一时间出现 */
       .preloader{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 20% 20%,rgba(59,130,246,.4),transparent 55%),radial-gradient(circle at 80% 0,rgba(14,165,233,.35),transparent 40%),linear-gradient(135deg,#020617 0%,#0f172a 60%,#1e1b4b 100%);color:#fff;z-index:9999;overflow:hidden;letter-spacing:clamp(.2rem,1vw,.55rem);isolation:isolate;font-family:'Space Grotesk','Poppins','Segoe UI',sans-serif;text-transform:uppercase;}
@@ -22,6 +19,9 @@
       @keyframes preloaderOutro{0%{opacity:1;}100%{opacity:0;transform:scale(.98);}}
       @media (prefers-reduced-motion:reduce){.preloader,.preloader::before,.preloader::after{animation:none;}.preloader__letters span{animation:none;}}
     </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <link href="/static/css/style.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
     <script type="module" src="/static/js/app.js"></script>

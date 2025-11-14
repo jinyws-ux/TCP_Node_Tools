@@ -13,7 +13,7 @@
   },
   {
     "id": "2",
-    "factory": "铁西",
+    "factory": "铁西1",
     "system": "1",
     "server": {
       "alias": "1",
@@ -21,6 +21,6 @@
       "username": "1",
       "password": "1"
     },
-    "created_time": 1762994150.64939
+    "updated_time": 1763078108.2398098
   }
 ]
