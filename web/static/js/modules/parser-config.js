@@ -15,6 +15,18 @@ let workingTree    = [];   // 树结构缓存
 const historyStack = [];   // 本地撤销快照
 const HISTORY_LIMIT = 15;
 const escapeModalDefaults = { messageType: '', version: '', field: '' };
+const TYPE_LABELS = {
+  message_type: '报文类型',
+  version: '版本',
+  field: '字段',
+  escape: '转义',
+};
+const clipboardState = {
+  type: null,
+  label: '',
+  data: null,
+  meta: {},
+};
 
 // 工具
 const qs  = (sel, scope = document) => scope.querySelector(sel);
@@ -32,6 +44,89 @@ function setSelectValue(sel, val) {
     return true;
   }
   return false;
+}
+
+function deepCopy(value) {
+  if (value == null) return value;
+  if (typeof structuredClone === 'function') {
+    return structuredClone(value);
+  }
+  return JSON.parse(JSON.stringify(value));
+}
+
+function hasClipboard(type) {
+  return clipboardState.type === type && clipboardState.data != null;
+}
+
+function formatClipboardLabel() {
+  if (!clipboardState.type || !clipboardState.label) return '尚未复制任何配置';
+  const typeLabel = TYPE_LABELS[clipboardState.type] || clipboardState.type;
+  return `${typeLabel}：${clipboardState.label}`;
+}
+
+function formatClipboardHint() {
+  if (!clipboardState.type) {
+    return '从左侧选择项目后点击“复制”按钮';
+  }
+  const hintMap = {
+    message_type: '任意报文类型列表',
+    version: '目标报文类型中的“粘贴版本”',
+    field: '目标版本中的“粘贴字段”',
+    escape: '字段内的“粘贴转义”',
+  };
+  return `可粘贴到 ${hintMap[clipboardState.type] || '对应层级'}`;
+}
+
+function renderClipboardBanner() {
+  const banner = qs('#parser-clipboard');
+  if (!banner) return;
+  const labelEl = qs('#clipboard-label');
+  const hintEl = qs('#clipboard-hint');
+  if (!clipboardState.type || !clipboardState.data) {
+    banner.dataset.state = 'empty';
+    if (labelEl) labelEl.textContent = '尚未复制任何配置';
+    if (hintEl) hintEl.textContent = '从左侧选择项目后点击“复制”按钮';
+    return;
+  }
+  banner.dataset.state = 'filled';
+  if (labelEl) labelEl.textContent = formatClipboardLabel();
+  if (hintEl) hintEl.textContent = formatClipboardHint();
+}
+
+function clearClipboard() {
+  clipboardState.type = null;
+  clipboardState.label = '';
+  clipboardState.data = null;
+  clipboardState.meta = {};
+  renderClipboardBanner();
+}
+
+function setClipboard(type, label, data, meta = {}) {
+  if (data == null) {
+    showMessage('warning', '没有可复制的内容', 'parser-config-messages');
+    return;
+  }
+  clipboardState.type = type;
+  clipboardState.label = label;
+  clipboardState.data = deepCopy(data);
+  clipboardState.meta = meta;
+  renderClipboardBanner();
+  const typeLabel = TYPE_LABELS[type] || type;
+  showMessage('success', `${typeLabel}已复制到剪贴板`, 'parser-config-messages');
+}
+
+function suggestName(base, existingList = []) {
+  const normalized = (base || '复制项').trim() || '复制项';
+  const baseName = normalized.replace(/\s+/g, '_');
+  const existing = new Set(existingList);
+  if (!existing.has(baseName)) return baseName;
+  let counter = 2;
+  let candidate = `${baseName}_${counter}`;
+  while (existing.has(candidate)) {
+    counter += 1;
+    candidate = `${baseName}_${counter}`;
+  }
+  return candidate;
 }
 
 function notifyParserConfigChanged(action, detail = {}) {
@@ -76,6 +171,8 @@ export function init() {
   bindIfExists('[data-action="open-add-message-type"]', 'click', showAddMessageTypeModal);
   bindIfExists('#undo-btn', 'click', undoLastOperation);
   bindIfExists('#msg-type-search', 'input', searchMessageType);
+  bindIfExists('#parser-preview-toggle', 'click', togglePreviewPanel);
+  bindIfExists('[data-action="clear-clipboard"]', 'click', clearClipboard);
 
   // “添加”模态框 —— 兼容你现有 HTML
   bindIfExists('#mt-submit-btn', 'click', submitMessageTypeForm);
@@ -91,6 +188,7 @@ export function init() {
 
   // 首次载入：填厂区列表（沿用你已有逻辑：在 app.js/其他模块里也会拉一次，这里兜底）
   loadParserFactoriesSafe();
+  renderClipboardBanner();
 
   window.addEventListener('server-configs:changed', (evt) => {
     handleServerConfigsEvent(evt).catch((err) => {
@@ -102,6 +200,24 @@ export function init() {
 function bindIfExists(sel, evt, fn) {
   const el = qs(sel);
   if (el) el.addEventListener(evt, fn);
+}
+
+function togglePreviewPanel() {
+  const panel = qs('#parser-preview-panel');
+  const layout = qs('.parser-three-column');
+  if (!panel || !layout) return;
+  const collapsed = panel.classList.toggle('is-collapsed');
+  panel.dataset.state = collapsed ? 'collapsed' : 'expanded';
+  layout.classList.toggle('preview-collapsed', collapsed);
+  const btn = qs('#parser-preview-toggle');
+  if (btn) {
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    btn.setAttribute('title', collapsed ? '展开实时预览' : '收起实时预览');
+    const icon = btn.querySelector('i');
+    if (icon) {
+      icon.className = collapsed ? 'fas fa-chevron-left' : 'fas fa-chevron-right';
+    }
+  }
 }
 
 // =============== 进入/退出工作台 ===============
@@ -414,6 +530,169 @@ function buildTreeNode(node) {
   return wrapper;
 }
 
+// =============== 剪贴板：复制 / 粘贴 ===============
+function copyMessageType(mt) {
+  const data = workingConfig?.[mt];
+  if (!data) {
+    showMessage('error', '未找到报文类型', 'parser-config-messages');
+    return;
+  }
+  setClipboard('message_type', mt, data, { messageType: mt });
+}
+
+function copyVersion(mt, ver) {
+  const data = workingConfig?.[mt]?.Versions?.[ver];
+  if (!data) {
+    showMessage('error', '未找到版本', 'parser-config-messages');
+    return;
+  }
+  setClipboard('version', `${mt} / ${ver}`, data, { messageType: mt, version: ver });
+}
+
+function copyField(mt, ver, field) {
+  const data = workingConfig?.[mt]?.Versions?.[ver]?.Fields?.[field];
+  if (!data) {
+    showMessage('error', '未找到字段', 'parser-config-messages');
+    return;
+  }
+  setClipboard('field', `${mt} / ${ver} / ${field}`, data, { messageType: mt, version: ver, field });
+}
+
+function copyEscape(mt, ver, field, key) {
+  const data = workingConfig?.[mt]?.Versions?.[ver]?.Fields?.[field]?.Escapes?.[key];
+  if (data === undefined) {
+    showMessage('error', '未找到转义项', 'parser-config-messages');
+    return;
+  }
+  setClipboard('escape', `${field} → ${key}`, data, { messageType: mt, version: ver, field, escapeKey: key });
+}
+
+async function pasteMessageType() {
+  if (!hasClipboard('message_type')) {
+    showMessage('warning', '剪贴板中没有报文类型', 'parser-config-messages');
+    return;
+  }
+  const existing = Object.keys(workingConfig || {});
+  const suggested = suggestName(clipboardState.meta?.messageType || clipboardState.label, existing);
+  const newName = prompt('粘贴为新的报文类型：', suggested);
+  if (!newName) return;
+  if (existing.includes(newName)) {
+    showMessage('error', '该报文类型已存在', 'parser-config-messages');
+    return;
+  }
+  const updates = { [newName]: deepCopy(clipboardState.data) };
+  try {
+    await postJSON('/api/update-parser-config', {
+      factory: workingFactory,
+      system: workingSystem,
+      updates,
+    });
+    showMessage('success', '报文类型已粘贴', 'parser-config-messages');
+    await refreshFullConfig();
+    await refreshTree();
+    renderEditorFor({ type: 'message_type', messageType: newName });
+    notifyParserConfigChanged('paste', { type: 'message_type', name: newName });
+  } catch (err) {
+    showMessage('error', '粘贴失败：' + err.message, 'parser-config-messages');
+  }
+}
+
+async function pasteVersion(targetMt) {
+  if (!targetMt) return;
+  if (!hasClipboard('version')) {
+    showMessage('warning', '剪贴板中没有版本', 'parser-config-messages');
+    return;
+  }
+  const versions = workingConfig?.[targetMt]?.Versions || {};
+  const base = clipboardState.meta?.version || clipboardState.label?.split('/')?.pop() || '新版本';
+  const suggested = suggestName(base, Object.keys(versions));
+  const newVersion = prompt(`粘贴到 ${targetMt} 的版本名称：`, suggested);
+  if (!newVersion) return;
+  if (versions[newVersion]) {
+    showMessage('error', '该版本已存在', 'parser-config-messages');
+    return;
+  }
+  const path = `${targetMt}.Versions.${newVersion}`;
+  try {
+    await postJSON('/api/update-parser-config', {
+      factory: workingFactory,
+      system: workingSystem,
+      updates: { [path]: deepCopy(clipboardState.data) },
+    });
+    showMessage('success', '版本已粘贴', 'parser-config-messages');
+    await refreshFullConfig();
+    await refreshTree();
+    renderEditorFor({ type: 'version', messageType: targetMt, version: newVersion });
+    notifyParserConfigChanged('paste', { type: 'version', messageType: targetMt, version: newVersion });
+  } catch (err) {
+    showMessage('error', '粘贴失败：' + err.message, 'parser-config-messages');
+  }
+}
+
+async function pasteField(targetMt, targetVer) {
+  if (!targetMt || !targetVer) return;
+  if (!hasClipboard('field')) {
+    showMessage('warning', '剪贴板中没有字段', 'parser-config-messages');
+    return;
+  }
+  const fields = workingConfig?.[targetMt]?.Versions?.[targetVer]?.Fields || {};
+  const base = clipboardState.meta?.field || clipboardState.label?.split('/')?.pop() || '新字段';
+  const suggested = suggestName(base, Object.keys(fields));
+  const newField = prompt(`粘贴到 ${targetMt}/${targetVer} 的字段名：`, suggested);
+  if (!newField) return;
+  if (fields[newField]) {
+    showMessage('error', '该字段已存在', 'parser-config-messages');
+    return;
+  }
+  const path = `${targetMt}.Versions.${targetVer}.Fields.${newField}`;
+  try {
+    await postJSON('/api/update-parser-config', {
+      factory: workingFactory,
+      system: workingSystem,
+      updates: { [path]: deepCopy(clipboardState.data) },
+    });
+    showMessage('success', '字段已粘贴', 'parser-config-messages');
+    await refreshFullConfig();
+    await refreshTree();
+    renderEditorFor({ type: 'field', messageType: targetMt, version: targetVer, field: newField });
+    notifyParserConfigChanged('paste', { type: 'field', messageType: targetMt, version: targetVer, field: newField });
+  } catch (err) {
+    showMessage('error', '粘贴失败：' + err.message, 'parser-config-messages');
+  }
+}
+
+async function pasteEscape(targetMt, targetVer, targetField) {
+  if (!targetMt || !targetVer || !targetField) return;
+  if (!hasClipboard('escape')) {
+    showMessage('warning', '剪贴板中没有转义', 'parser-config-messages');
+    return;
+  }
+  const escMap = workingConfig?.[targetMt]?.Versions?.[targetVer]?.Fields?.[targetField]?.Escapes || {};
+  const base = clipboardState.meta?.escapeKey || '新转义';
+  const suggested = suggestName(base, Object.keys(escMap));
+  const newKey = prompt(`粘贴到 ${targetField} 的转义键：`, suggested);
+  if (!newKey) return;
+  if (Object.prototype.hasOwnProperty.call(escMap, newKey)) {
+    showMessage('error', '该转义键已存在', 'parser-config-messages');
+    return;
+  }
+  const path = `${targetMt}.Versions.${targetVer}.Fields.${targetField}.Escapes.${newKey}`;
+  try {
+    await postJSON('/api/update-parser-config', {
+      factory: workingFactory,
+      system: workingSystem,
+      updates: { [path]: deepCopy(clipboardState.data) },
+    });
+    showMessage('success', '转义已粘贴', 'parser-config-messages');
+    await refreshFullConfig();
+    await refreshTree();
+    renderEditorFor({ type: 'field', messageType: targetMt, version: targetVer, field: targetField });
+    notifyParserConfigChanged('paste', { type: 'escape', messageType: targetMt, version: targetVer, field: targetField, key: newKey });
+  } catch (err) {
+    showMessage('error', '粘贴失败：' + err.message, 'parser-config-messages');
+  }
+}
+
 function expandAllLayers() {
   qsa('#left-nav-tree .parser-children').forEach(d => d.style.display = 'block');
 }
@@ -429,6 +708,12 @@ function renderEditorFor(node) {
   if (node.type === 'message_type') {
     const mt = node.messageType;
     const desc = (workingConfig?.[mt]?.Description) || '';
+    const pasteTypeBtn = hasClipboard('message_type')
+      ? '<button class="btn btn-outline" id="btn-paste-mt"><i class="fas fa-paste"></i> 粘贴报文类型</button>'
+      : '';
+    const pasteVersionBtn = hasClipboard('version')
+      ? '<button class="btn btn-outline" id="btn-paste-version-into-mt"><i class="fas fa-paste"></i> 粘贴版本</button>'
+      : '';
     box.innerHTML = `
       <h4><i class="fas fa-envelope"></i> 报文类型：${escapeHtml(mt)}</h4>
       <div class="form-group">
@@ -438,36 +723,52 @@ function renderEditorFor(node) {
       <div class="form-actions">
         <button class="btn btn-primary" id="btn-save-mt"><i class="fas fa-save"></i> 保存描述</button>
         <button class="btn btn-secondary" id="btn-rename-mt"><i class="fas fa-i-cursor"></i> 重命名</button>
+        <button class="btn btn-outline" id="btn-copy-mt"><i class="fas fa-copy"></i> 复制</button>
         <button class="btn btn-danger" id="btn-del-mt"><i class="fas fa-trash"></i> 删除</button>
         <button class="btn" id="btn-add-ver"><i class="fas fa-plus"></i> 添加版本</button>
+        ${pasteTypeBtn}
+        ${pasteVersionBtn}
       </div>`;
     qs('#btn-save-mt')?.addEventListener('click', () => saveMessageTypeDesc(mt));
     qs('#btn-rename-mt')?.addEventListener('click', () => renameMessageType(mt));
+    qs('#btn-copy-mt')?.addEventListener('click', () => copyMessageType(mt));
     qs('#btn-del-mt')?.addEventListener('click', () => deleteConfigItem('message_type', mt));
     qs('#btn-add-ver')?.addEventListener('click', () => {
       showAddVersionModal(mt);
     });
+    qs('#btn-paste-mt')?.addEventListener('click', () => pasteMessageType());
+    qs('#btn-paste-version-into-mt')?.addEventListener('click', () => pasteVersion(mt));
     return;
   }
 
   if (node.type === 'version') {
     const { messageType: mt, version: ver } = node;
+    const pasteFieldBtn = hasClipboard('field')
+      ? '<button class="btn btn-outline" id="btn-paste-field"><i class="fas fa-paste"></i> 粘贴字段</button>'
+      : '';
     box.innerHTML = `
       <h4><i class="fas fa-code-branch"></i> 版本：${escapeHtml(mt)} / ${escapeHtml(ver)}</h4>
       <div class="form-actions">
         <button class="btn btn-secondary" id="btn-rename-ver"><i class="fas fa-i-cursor"></i> 重命名</button>
+        <button class="btn btn-outline" id="btn-copy-ver"><i class="fas fa-copy"></i> 复制</button>
         <button class="btn btn-danger" id="btn-del-ver"><i class="fas fa-trash"></i> 删除版本</button>
         <button class="btn" id="btn-add-field"><i class="fas fa-plus"></i> 添加字段</button>
+        ${pasteFieldBtn}
       </div>`;
     qs('#btn-rename-ver')?.addEventListener('click', () => renameVersion(mt, ver));
+    qs('#btn-copy-ver')?.addEventListener('click', () => copyVersion(mt, ver));
     qs('#btn-del-ver')?.addEventListener('click', () => deleteConfigItem('version', mt, ver));
     qs('#btn-add-field')?.addEventListener('click', () => showAddFieldModal(mt, ver));
+    qs('#btn-paste-field')?.addEventListener('click', () => pasteField(mt, ver));
     return;
   }
 
   if (node.type === 'field') {
     const { messageType: mt, version: ver, field: fd } = node;
     const fcfg = workingConfig?.[mt]?.Versions?.[ver]?.Fields?.[fd] || { Start: 0, Length: null, Escapes: {} };
+    const pasteEscapeBtn = hasClipboard('escape')
+      ? '<button class="btn btn-outline" id="btn-paste-escape"><i class="fas fa-paste"></i> 粘贴转义</button>'
+      : '';
     box.innerHTML = `
       <h4><i class="fas fa-tag"></i> 字段：${escapeHtml(mt)} / ${escapeHtml(ver)} / ${escapeHtml(fd)}</h4>
       <div class="form-row">
@@ -483,16 +784,20 @@ function renderEditorFor(node) {
       <div class="form-actions">
         <button class="btn btn-primary" id="btn-save-fd"><i class="fas fa-save"></i> 保存</button>
         <button class="btn btn-secondary" id="btn-rename-fd"><i class="fas fa-i-cursor"></i> 重命名</button>
+        <button class="btn btn-outline" id="btn-copy-fd"><i class="fas fa-copy"></i> 复制</button>
         <button class="btn btn-danger" id="btn-del-fd"><i class="fas fa-trash"></i> 删除字段</button>
         <button class="btn" id="btn-add-esc"><i class="fas fa-plus"></i> 添加转义</button>
+        ${pasteEscapeBtn}
       </div>
       <h5 style="margin-top:12px;">Escapes</h5>
       <div id="esc-list"></div>`;
 
     qs('#btn-save-fd')?.addEventListener('click', () => saveField(mt, ver, fd));
     qs('#btn-rename-fd')?.addEventListener('click', () => renameField(mt, ver, fd));
+    qs('#btn-copy-fd')?.addEventListener('click', () => copyField(mt, ver, fd));
     qs('#btn-del-fd')?.addEventListener('click', () => deleteConfigItem('field', mt, ver, fd));
     qs('#btn-add-esc')?.addEventListener('click', () => showAddEscapeModal(mt, ver, fd));
+    qs('#btn-paste-escape')?.addEventListener('click', () => pasteEscape(mt, ver, fd));
 
     renderEscapesList(mt, ver, fd, fcfg.Escapes || {});
     return;
@@ -528,10 +833,12 @@ function renderEscapeEditor(node) {
     </div>
     <div class="form-actions">
       <button class="btn btn-primary" id="btn-save-escape"><i class="fas fa-save"></i> 保存</button>
+      <button class="btn btn-outline" id="btn-copy-escape"><i class="fas fa-copy"></i> 复制</button>
       <button class="btn btn-danger" id="btn-del-escape"><i class="fas fa-trash"></i> 删除</button>
     </div>`;
 
   qs('#btn-save-escape')?.addEventListener('click', () => saveEscapeValue(mt, ver, fd, key));
+  qs('#btn-copy-escape')?.addEventListener('click', () => copyEscape(mt, ver, fd, key));
   qs('#btn-del-escape')?.addEventListener('click', () => {
     if (!confirm('确认删除此转义？')) return;
     deleteEscape(mt, ver, fd, key, { renderNode: { type: 'field', messageType: mt, version: ver, field: fd } });
@@ -690,10 +997,11 @@ function renderEscapesList(mt, ver, fd, esc = {}) {
   }
   const tbl = document.createElement('table');
   tbl.innerHTML = `
-    <thead><tr><th>Key</th><th>Value</th><th style="width:140px;">操作</th></tr></thead>
+    <thead><tr><th>Key</th><th>Value</th><th style="width:180px;">操作</th></tr></thead>
     <tbody>${keys.map(k=>`<tr data-k="${escapeAttr(k)}">
       <td>${escapeHtml(k)}</td><td>${escapeHtml(String(esc[k]))}</td>
       <td style="text-align:right;">
+        <button class="btn btn-sm btn-outline esc-copy">复制</button>
         <button class="btn btn-sm btn-secondary esc-edit">编辑</button>
         <button class="btn btn-sm btn-danger esc-del">删除</button>
       </td>
@@ -1174,3 +1482,10 @@ window.submitMessageTypeForm  = submitMessageTypeForm;
 window.submitVersionForm      = submitVersionForm;
 window.submitFieldForm        = submitFieldForm;
 window.submitEscapeForm       = submitEscapeForm;
+  host.querySelectorAll('.esc-copy').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const key = e.currentTarget.closest('tr')?.dataset.k;
+      if (!key) return;
+      copyEscape(mt, ver, fd, key);
+    });
+  });

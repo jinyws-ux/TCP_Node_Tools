@@ -317,6 +317,22 @@
                 </div>
             </div>
 
+            <!-- 剪贴板状态 -->
+            <div class="parser-clipboard" id="parser-clipboard" data-state="empty">
+                <div class="parser-clipboard__icon">
+                    <i class="fas fa-clipboard-list"></i>
+                </div>
+                <div class="parser-clipboard__content">
+                    <p id="clipboard-label">尚未复制任何配置</p>
+                    <small id="clipboard-hint">从左侧选择项目后点击“复制”按钮</small>
+                </div>
+                <div class="parser-clipboard__actions">
+                    <button class="btn btn-sm btn-secondary" data-action="clear-clipboard">
+                        <i class="fas fa-times-circle"></i> 清空
+                    </button>
+                </div>
+            </div>
+
             <!-- 三列布局 -->
             <div class="parser-three-column">
                 <!-- 左列：导航树 -->
@@ -352,18 +368,23 @@
                 </div>
 
                 <!-- 右列：JSON预览 -->
-                <div class="parser-right-json">
-                    <div class="parser-json-header">
-                        <h5>JSON实时预览</h5>
-                    </div>
-                    <div id="json-preview-content" class="parser-json-preview">
-                        <div class="parser-json-placeholder">
-                            <i class="fas fa-code"></i>
-                            <p>配置变更后实时刷新</p>
+                <div class="parser-right-json" id="parser-preview-panel" data-state="expanded">
+                    <button class="parser-preview-toggle" id="parser-preview-toggle" aria-expanded="true" title="收起实时预览">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <div class="parser-preview-body">
+                        <div class="parser-json-header">
+                            <h5>JSON实时预览</h5>
                         </div>
-                    </div>
-                    <div class="parser-json-tools">
-                        <button class="btn btn-sm btn-primary" data-action="copy-json"><i class="fas fa-copy"></i> 复制JSON</button>
+                        <div id="json-preview-content" class="parser-json-preview">
+                            <div class="parser-json-placeholder">
+                                <i class="fas fa-code"></i>
+                                <p>配置变更后实时刷新</p>
+                            </div>
+                        </div>
+                        <div class="parser-json-tools">
+                            <button class="btn btn-sm btn-primary" data-action="copy-json"><i class="fas fa-copy"></i> 复制JSON</button>
+                        </div>
                     </div>
                 </div>
             </div>
