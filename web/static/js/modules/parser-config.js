@@ -844,22 +844,23 @@ function renderEditorFor(node) {
         ${pasteVersionBtn}
       </div>
       <p class="parser-edit-label">报文类型</p>
-      <h4>${escapeHtml(mt)}</h4>
+      <div class="form-group">
+        <label>报文类型名称</label>
+        <input id="mt-name" type="text" value="${escapeAttr(mt)}">
+      </div>
       <div class="form-group">
         <label>描述</label>
         <input id="mt-desc" type="text" value="${escapeAttr(desc)}">
       </div>
       <div class="parser-card-actions parser-card-actions--bottom">
-        <button class="btn btn-primary" id="btn-save-mt"><i class="fas fa-save"></i> 保存描述</button>
-        <button class="btn btn-secondary" id="btn-rename-mt"><i class="fas fa-i-cursor"></i> 重命名</button>
+        <button class="btn btn-primary" id="btn-save-mt"><i class="fas fa-save"></i> 保存信息</button>
         <button class="btn btn-danger" id="btn-del-mt"><i class="fas fa-trash"></i> 删除</button>
       </div>`;
-    qs('#btn-save-mt')?.addEventListener('click', () => saveMessageTypeDesc(mt));
-    qs('#btn-rename-mt')?.addEventListener('click', () => renameMessageType(mt));
+    qs('#btn-save-mt')?.addEventListener('click', () => saveMessageType(mt));
     qs('#btn-copy-mt')?.addEventListener('click', () => copyMessageType(mt));
     qs('#btn-del-mt')?.addEventListener('click', () => deleteConfigItem('message_type', mt));
     qs('#btn-add-ver')?.addEventListener('click', () => {
-      showAddVersionModal(mt);
+      addVersionInline(mt);
     });
     qs('#btn-paste-mt')?.addEventListener('click', () => pasteMessageType());
     qs('#btn-paste-version-into-mt')?.addEventListener('click', () => pasteVersion(mt));
@@ -879,15 +880,18 @@ function renderEditorFor(node) {
         ${pasteFieldBtn}
       </div>
       <p class="parser-edit-label">版本</p>
-      <h4>${escapeHtml(mt)} / ${escapeHtml(ver)}</h4>
+      <div class="form-group">
+        <label>版本号</label>
+        <input id="ver-name" type="text" value="${escapeAttr(ver)}">
+      </div>
       <div class="parser-card-actions parser-card-actions--bottom">
-        <button class="btn btn-secondary" id="btn-rename-ver"><i class="fas fa-i-cursor"></i> 重命名</button>
+        <button class="btn btn-primary" id="btn-save-ver"><i class="fas fa-save"></i> 保存版本</button>
         <button class="btn btn-danger" id="btn-del-ver"><i class="fas fa-trash"></i> 删除版本</button>
       </div>`;
-    qs('#btn-rename-ver')?.addEventListener('click', () => renameVersion(mt, ver));
+    qs('#btn-save-ver')?.addEventListener('click', () => saveVersion(mt, ver));
     qs('#btn-copy-ver')?.addEventListener('click', () => copyVersion(mt, ver));
     qs('#btn-del-ver')?.addEventListener('click', () => deleteConfigItem('version', mt, ver));
-    qs('#btn-add-field')?.addEventListener('click', () => showAddFieldModal(mt, ver));
+    qs('#btn-add-field')?.addEventListener('click', () => addFieldInline(mt, ver));
     qs('#btn-paste-field')?.addEventListener('click', () => pasteField(mt, ver));
     focusPreviewPath(nodePath);
     return;
@@ -906,7 +910,10 @@ function renderEditorFor(node) {
         ${pasteEscapeBtn}
       </div>
       <p class="parser-edit-label">字段</p>
-      <h4>${escapeHtml(mt)} / ${escapeHtml(ver)} / ${escapeHtml(fd)}</h4>
+      <div class="form-group">
+        <label>字段名称</label>
+        <input id="fd-name" type="text" value="${escapeAttr(fd)}">
+      </div>
       <div class="form-row">
         <div class="form-group">
           <label>Start</label>
@@ -919,15 +926,13 @@ function renderEditorFor(node) {
       </div>
       <div class="parser-card-actions parser-card-actions--bottom">
         <button class="btn btn-primary" id="btn-save-fd"><i class="fas fa-save"></i> 保存</button>
-        <button class="btn btn-secondary" id="btn-rename-fd"><i class="fas fa-i-cursor"></i> 重命名</button>
         <button class="btn btn-danger" id="btn-del-fd"><i class="fas fa-trash"></i> 删除字段</button>
       </div>`;
 
     qs('#btn-save-fd')?.addEventListener('click', () => saveField(mt, ver, fd));
-    qs('#btn-rename-fd')?.addEventListener('click', () => renameField(mt, ver, fd));
     qs('#btn-copy-fd')?.addEventListener('click', () => copyField(mt, ver, fd));
     qs('#btn-del-fd')?.addEventListener('click', () => deleteConfigItem('field', mt, ver, fd));
-    qs('#btn-add-esc')?.addEventListener('click', () => showAddEscapeModal(mt, ver, fd));
+    qs('#btn-add-esc')?.addEventListener('click', () => addEscapeInline(mt, ver, fd));
     qs('#btn-paste-escape')?.addEventListener('click', () => pasteEscape(mt, ver, fd));
 
     focusPreviewPath(nodePath);
@@ -956,8 +961,8 @@ function renderEscapeEditor(node) {
   box.innerHTML = `
     <h4><i class="fas fa-exchange-alt"></i> 转义：${escapeHtml(mt)} / ${escapeHtml(ver)} / ${escapeHtml(fd)} / ${escapeHtml(key)}</h4>
     <div class="form-group">
-      <label>原始值</label>
-      <input type="text" value="${escapeAttr(key)}" disabled>
+      <label>转义键</label>
+      <input id="escape-key-input" type="text" value="${escapeAttr(key)}">
     </div>
     <div class="form-group">
       <label>转义后值</label>
@@ -978,21 +983,47 @@ function renderEscapeEditor(node) {
 }
 
 // =============== 右侧：保存/删除/重命名等 ===============
-async function saveMessageTypeDesc(mt) {
-  const desc = qs('#mt-desc')?.value ?? '';
+async function saveMessageType(mt) {
+  const name = (qs('#mt-name')?.value || '').trim() || mt;
+  const desc = (qs('#mt-desc')?.value || '').trim();
   try {
     await postJSON('/api/update-message-type', {
       factory: workingFactory,
       system: workingSystem,
       old_name: mt,
-      new_name: mt,
+      new_name: name,
       description: desc
     });
-    showMessage('success', '描述已保存', 'parser-config-messages');
+    showMessage('success', '报文类型已保存', 'parser-config-messages');
     await refreshFullConfig();
     await refreshTree();
+    renderEditorFor({ type: 'message_type', messageType: name });
 
-    notifyParserConfigChanged('update-desc', { mt });
+    notifyParserConfigChanged(mt === name ? 'update-mt' : 'rename-mt', { oldName: mt, newName: name, mt: name });
+  } catch (e) {
+    showMessage('error', '保存失败：' + e.message, 'parser-config-messages');
+  }
+}
+
+async function saveVersion(mt, ver) {
+  const newVer = (qs('#ver-name')?.value || '').trim() || ver;
+  if (newVer === ver) {
+    showMessage('info', '版本名称未变化', 'parser-config-messages');
+    return;
+  }
+  try {
+    const clone = cloneConfig(workingConfig);
+    if (!clone?.[mt]?.Versions?.[ver]) throw new Error('版本不存在');
+    if (clone[mt].Versions[newVer]) throw new Error('版本已存在');
+    clone[mt].Versions[newVer] = clone[mt].Versions[ver];
+    delete clone[mt].Versions[ver];
+    await saveFullConfig(clone);
+    showMessage('success', '版本已保存', 'parser-config-messages');
+    await refreshFullConfig();
+    await refreshTree();
+    renderEditorFor({ type: 'version', messageType: mt, version: newVer });
+
+    notifyParserConfigChanged('rename-ver', { mt, oldVer: ver, newVer, ver: newVer });
   } catch (e) {
     showMessage('error', '保存失败：' + e.message, 'parser-config-messages');
   }
@@ -1003,23 +1034,40 @@ async function saveField(mt, ver, fd) {
   const lenRaw = (qs('#fd-length')?.value ?? '').trim();
   const length = (lenRaw === '') ? null : parseInt(lenRaw, 10);
 
-  const base = `${mt}.Versions.${ver}.Fields.${fd}`;
-  const updates = {};
-  if (!Number.isNaN(start)) updates[`${base}.Start`] = start;
-  updates[`${base}.Length`] = (length === null ? null : (Number.isNaN(length) ? null : length));
+  const newFieldName = (qs('#fd-name')?.value || '').trim() || fd;
+  const startValue = Number.isNaN(start) ? 0 : start;
+  const lengthValue = (length === null || Number.isNaN(length)) ? null : length;
+  const needsRename = newFieldName !== fd;
 
   try {
-    await postJSON('/api/update-parser-config', {
-      factory: workingFactory,
-      system: workingSystem,
-      updates
-    });
+    if (needsRename) {
+      const clone = cloneConfig(workingConfig);
+      const verObj = clone?.[mt]?.Versions?.[ver];
+      if (!verObj?.Fields?.[fd]) throw new Error('字段不存在');
+      if (verObj.Fields[newFieldName]) throw new Error('字段已存在');
+      const fieldData = deepCopy(verObj.Fields[fd]);
+      fieldData.Start = startValue;
+      fieldData.Length = lengthValue;
+      verObj.Fields[newFieldName] = fieldData;
+      delete verObj.Fields[fd];
+      await saveFullConfig(clone);
+    } else {
+      const base = `${mt}.Versions.${ver}.Fields.${fd}`;
+      const updates = {};
+      updates[`${base}.Start`] = startValue;
+      updates[`${base}.Length`] = lengthValue;
+      await postJSON('/api/update-parser-config', {
+        factory: workingFactory,
+        system: workingSystem,
+        updates
+      });
+    }
     showMessage('success', '字段已保存', 'parser-config-messages');
     await refreshFullConfig();
     await refreshTree();
-    renderEditorFor({ type: 'field', messageType: mt, version: ver, field: fd });
+    renderEditorFor({ type: 'field', messageType: mt, version: ver, field: newFieldName });
 
-    notifyParserConfigChanged('update-field', { mt, ver, fd });
+    notifyParserConfigChanged(needsRename ? 'rename-field' : 'update-field', { mt, ver, oldField: fd, field: newFieldName, fd: newFieldName });
   } catch (e) {
     showMessage('error', '保存失败：' + e.message, 'parser-config-messages');
   }
@@ -1053,85 +1101,36 @@ async function deleteConfigItem(type, name1, name2 = '', name3 = '') {
   }
 }
 
-async function renameMessageType(oldName) {
-  const newName = prompt('新报文类型名称：', oldName);
-  if (!newName || newName === oldName) return;
-  try {
-    await postJSON('/api/update-message-type', {
-      factory: workingFactory,
-      system: workingSystem,
-      old_name: oldName,
-      new_name: newName,
-      description: workingConfig?.[oldName]?.Description || ''
-    });
-    showMessage('success', '已重命名', 'parser-config-messages');
-    await refreshFullConfig();
-    await refreshTree();
-
-    notifyParserConfigChanged('rename-mt', { oldName, newName });
-  } catch (e) {
-    showMessage('error', '重命名失败：' + e.message, 'parser-config-messages');
-  }
-}
-
-async function renameVersion(mt, oldVer) {
-  const newVer = prompt('新版本号：', oldVer);
-  if (!newVer || newVer === oldVer) return;
-  // 整包保存：复制版本对象 -> 新 key；删除旧 key
-  try {
-    const clone = cloneConfig(workingConfig);
-    if (!clone?.[mt]?.Versions?.[oldVer]) throw new Error('版本不存在');
-    clone[mt].Versions[newVer] = clone[mt].Versions[oldVer];
-    delete clone[mt].Versions[oldVer];
-
-    await saveFullConfig(clone);
-    showMessage('success', '已重命名', 'parser-config-messages');
-    await refreshFullConfig();
-    await refreshTree();
-    renderEditorFor({ type: 'version', messageType: mt, version: newVer });
-
-    notifyParserConfigChanged('rename-ver', { mt, oldVer, newVer });
-  } catch (e) {
-    showMessage('error', '重命名失败：' + e.message, 'parser-config-messages');
-  }
-}
-
-async function renameField(mt, ver, oldField) {
-  const newField = prompt('新字段名：', oldField);
-  if (!newField || newField === oldField) return;
-  try {
-    const clone = cloneConfig(workingConfig);
-    const verObj = clone?.[mt]?.Versions?.[ver];
-    if (!verObj?.Fields?.[oldField]) throw new Error('字段不存在');
-    verObj.Fields[newField] = verObj.Fields[oldField];
-    delete verObj.Fields[oldField];
-
-    await saveFullConfig(clone);
-    showMessage('success', '已重命名', 'parser-config-messages');
-    await refreshFullConfig();
-    await refreshTree();
-    renderEditorFor({ type: 'field', messageType: mt, version: ver, field: newField });
-
-    notifyParserConfigChanged('rename-field', { mt, ver, oldField, newField });
-  } catch (e) {
-    showMessage('error', '重命名失败：' + e.message, 'parser-config-messages');
-  }
-}
-
 async function saveEscapeValue(mt, ver, fd, key) {
   const value = qs('#escape-value-input')?.value ?? '';
-  const base = `${mt}.Versions.${ver}.Fields.${fd}.Escapes.${key}`;
+  const newKey = (qs('#escape-key-input')?.value || '').trim() || key;
+  const needsRename = newKey !== key;
   try {
-    await postJSON('/api/update-parser-config', {
-      factory: workingFactory,
-      system: workingSystem,
-      updates: { [base]: value }
-    });
+    if (needsRename) {
+      const clone = cloneConfig(workingConfig);
+      const escMap = clone?.[mt]?.Versions?.[ver]?.Fields?.[fd]?.Escapes;
+      if (!escMap || !Object.prototype.hasOwnProperty.call(escMap, key)) {
+        throw new Error('转义不存在');
+      }
+      if (Object.prototype.hasOwnProperty.call(escMap, newKey)) {
+        throw new Error('转义键已存在');
+      }
+      delete escMap[key];
+      escMap[newKey] = value;
+      await saveFullConfig(clone);
+    } else {
+      const base = `${mt}.Versions.${ver}.Fields.${fd}.Escapes.${key}`;
+      await postJSON('/api/update-parser-config', {
+        factory: workingFactory,
+        system: workingSystem,
+        updates: { [base]: value }
+      });
+    }
     showMessage('success', '转义已保存', 'parser-config-messages');
     await refreshFullConfig();
     await refreshTree();
-    renderEditorFor({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: key });
-    notifyParserConfigChanged('update-escape', { mt, ver, fd, key });
+    renderEditorFor({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: newKey });
+    notifyParserConfigChanged(needsRename ? 'rename-escape' : 'update-escape', { mt, ver, fd, field: fd, oldKey: key, key: newKey, escapeKey: newKey });
   } catch (err) {
     showMessage('error', '保存转义失败：' + err.message, 'parser-config-messages');
   }
@@ -1254,7 +1253,7 @@ function handleEscapeFieldChange(e) {
   if (submitBtn) submitBtn.disabled = !escapeModalDefaults.field;
 }
 
-async function submitEscapeRaw(mt, ver, fd, key, val) {
+async function submitEscapeRaw(mt, ver, fd, key, val, opts = {}) {
   if (!fd) {
     showMessage('error', '请选择要添加转义的字段', 'parser-config-messages');
     return;
@@ -1268,9 +1267,13 @@ async function submitEscapeRaw(mt, ver, fd, key, val) {
     showMessage('success', '转义已添加', 'parser-config-messages');
     await refreshFullConfig();
     await refreshTree();
-    renderEditorFor({ type: 'field', messageType: mt, version: ver, field: fd });
+    if (opts.focusEscape) {
+      renderEditorFor({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: key });
+    } else {
+      renderEditorFor({ type: 'field', messageType: mt, version: ver, field: fd });
+    }
 
-    notifyParserConfigChanged('add-escape', { mt, ver, fd: fd, key, val });
+    notifyParserConfigChanged('add-escape', { mt, ver, fd: fd, field: fd, key, val });
   } catch (e) {
     showMessage('error', '添加失败：' + e.message, 'parser-config-messages');
   }
@@ -1287,11 +1290,29 @@ function submitEscapeForm() {
     return;
   }
   hideAddEscapeModal();
-  submitEscapeRaw(mt, ver, fd, key, val);
+  submitEscapeRaw(mt, ver, fd, key, val, { focusEscape: true });
 }
 
 function hideAddEscapeModal() {
   const m = qs('#add-escape-modal'); if (m) m.style.display = 'none';
+}
+
+function addVersionInline(mt) {
+  const versions = Object.keys(workingConfig?.[mt]?.Versions || {});
+  const newName = suggestName('新版本', versions);
+  submitVersionRaw(mt, newName);
+}
+
+function addFieldInline(mt, ver) {
+  const fields = Object.keys(workingConfig?.[mt]?.Versions?.[ver]?.Fields || {});
+  const name = suggestName('新字段', fields);
+  submitFieldRaw(mt, ver, name, 0, -1);
+}
+
+function addEscapeInline(mt, ver, fd) {
+  const escMap = workingConfig?.[mt]?.Versions?.[ver]?.Fields?.[fd]?.Escapes || {};
+  const key = suggestName('新转义', Object.keys(escMap));
+  submitEscapeRaw(mt, ver, fd, key, '', { focusEscape: true });
 }
 
 // =============== “添加”模态框：报文类型/版本/字段 ===============

@@ -510,20 +510,18 @@ function renderTemplateList(items, append = false) {
     const previewText = nodesPreview
       ? `${nodesPreview}${nodes.length > 4 ? ' …' : ''}`
       : '暂无示例';
-    el.className = 'config-item config-item--slim template-card';
+    el.className = 'config-item config-item--compact template-card';
     el.innerHTML = `
-      <div class="config-info">
-        <div class="config-title-row">
-          <h3>${escapeHtml(t.name)}</h3>
-          <span class="config-chip">${nodes.length} 节点</span>
-        </div>
-        <div class="config-meta-grid template-meta-grid">
-          <span><i class="fas fa-industry"></i> ${escapeHtml(factoryName)}</span>
-          <span><i class="fas fa-layer-group"></i> ${escapeHtml(systemName)}</span>
-          <span class="template-nodes"><i class="fas fa-stream"></i> ${escapeHtml(previewText)}</span>
-        </div>
+      <div class="config-compact-head">
+        <span>${escapeHtml(factoryName)}</span>
+        <span>${escapeHtml(systemName)}</span>
       </div>
-      <div class="config-actions config-actions--stacked tpl-actions">
+      <div class="config-compact-title">
+        <h3>${escapeHtml(t.name)}</h3>
+        <span class="config-chip">${nodes.length} 节点</span>
+      </div>
+      <div class="config-compact-meta"><i class="fas fa-stream"></i> ${escapeHtml(previewText)}</div>
+      <div class="config-compact-actions tpl-actions">
         <button class="btn btn-primary btn-sm tpl-select">选择区域</button>
         <button class="btn btn-secondary btn-sm tpl-edit">编辑</button>
         <button class="btn btn-danger btn-sm tpl-del">删除</button>
