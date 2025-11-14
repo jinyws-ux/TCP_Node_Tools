@@ -32,6 +32,55 @@ function updateSelectedLogs() {
   updateAnalyzeButton();
 }
 
+function formatDuration(ms) {
+  const value = Number(ms);
+  if (!Number.isFinite(value)) return '-';
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(2)} s`;
+  }
+  return `${value.toFixed(1)} ms`;
+}
+
+function renderAnalysisStats(stats = []) {
+  const container = document.getElementById('analysis-stats-body');
+  if (!container) return;
+  if (!Array.isArray(stats) || stats.length === 0) {
+    container.innerHTML = '<div class="message-empty">暂无阶段统计</div>';
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'analysis-stats-table';
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>阶段</th>
+        <th>输入数量</th>
+        <th>输出数量</th>
+        <th>耗时</th>
+      </tr>
+    </thead>
+  `;
+
+  const tbody = document.createElement('tbody');
+  stats.forEach((stage, index) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${index + 1}</td>
+      <td>${escapeHtml(stage.stage || '-')}</td>
+      <td>${Number.isFinite(stage.input_items) ? stage.input_items : '-'}</td>
+      <td>${Number.isFinite(stage.output_items) ? stage.output_items : '-'}</td>
+      <td>${formatDuration(stage.duration_ms)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  container.innerHTML = '';
+  container.appendChild(table);
+}
+
 function toggleSelectAllLogs() {
   const checked = this.checked;
   $$('#logs-body input[type="checkbox"]').forEach(chk => (chk.checked = checked));
@@ -73,9 +122,15 @@ function addLogRow(log) {
   tdNode.textContent = log.node || '';
   tr.appendChild(tdNode);
 
+  // 日志时间
+  const tdLogTime = document.createElement('td');
+  tdLogTime.textContent = log.log_time || log.source_mtime || log.remote_mtime || '';
+  tr.appendChild(tdLogTime);
+
   // 下载时间
   const tdTime = document.createElement('td');
-  tdTime.textContent = new Date(log.timestamp).toLocaleString();
+  const downloadTime = log.download_time || log.timestamp || '';
+  tdTime.textContent = downloadTime ? new Date(downloadTime).toLocaleString() : '';
   tr.appendChild(tdTime);
 
   // 大小
@@ -251,6 +306,7 @@ async function analyzeLogs() {
       showMessage('success', `日志分析完成！生成 ${res.log_entries_count} 条日志记录`, 'analyze-messages');
       // 刷新列表，显示新的报告按钮
       loadDownloadedLogs();
+      renderAnalysisStats(res.stats || []);
     } else {
       showMessage('error', '分析失败: ' + (res.error || ''), 'analyze-messages');
     }
@@ -262,12 +318,23 @@ async function analyzeLogs() {
 
 /* ---------- 解析配置下拉 ---------- */
 
-async function loadParserConfigs() {
+function selectHasOption(sel, val) {
+  if (!sel) return false;
+  return Array.from(sel.options || []).some((opt) => opt.value === val);
+}
+
+async function loadParserConfigs(options = {}) {
+  const sel = $('#config-select');
+  if (!sel) return;
+
+  const { preferredId, preserveSelection = true } = options;
+  const before = sel.value || '';
+  const targetValue = preferredId !== undefined
+    ? preferredId
+    : (preserveSelection ? before : '');
+
   try {
     const data = await api.getParserConfigs();
-    const sel = $('#config-select');
-    if (!sel) return;
-
     sel.innerHTML = '<option value="">-- 请选择解析配置 --</option>';
     if (data.success) {
       (data.configs || []).forEach(cfg => {
@@ -276,12 +343,49 @@ async function loadParserConfigs() {
         opt.textContent = (cfg.name || '').replace('.json', '');
         sel.appendChild(opt);
       });
+
+      if (targetValue && selectHasOption(sel, targetValue)) {
+        sel.value = targetValue;
+      } else if (targetValue === '') {
+        sel.value = '';
+      }
     } else {
       showMessage('error', '加载解析配置失败: ' + (data.error || ''), 'analyze-messages');
     }
   } catch (e) {
     showMessage('error', '加载解析配置失败: ' + e.message, 'analyze-messages');
   }
+}
+
+function inferConfigFilename(factory, system) {
+  if (!factory || !system) return '';
+  return `${factory}_${system}.json`;
+}
+
+function handleServerConfigsChanged(evt) {
+  const detail = evt?.detail || {};
+  const action = detail.action;
+  const config = detail.config || {};
+  const previous = detail.previous || {};
+  const currentSelect = $('#config-select');
+  const currentValue = currentSelect?.value || '';
+
+  const oldId = inferConfigFilename(previous.factory, previous.system);
+  const newId = inferConfigFilename(config.factory, config.system);
+
+  if (action === 'update' && currentValue && currentValue === oldId && newId) {
+    loadParserConfigs({ preferredId: newId, preserveSelection: false });
+    showMessage('info', '服务器配置改名，解析配置已自动同步', 'analyze-messages');
+    return;
+  }
+
+  if (action === 'delete' && currentValue && currentValue === oldId) {
+    loadParserConfigs({ preferredId: '', preserveSelection: false });
+    showMessage('warning', '服务器配置被删除，请重新选择解析配置', 'analyze-messages');
+    return;
+  }
+
+  loadParserConfigs({ preserveSelection: true });
 }
 
 /* ---------- 模块入口 ---------- */
@@ -302,9 +406,15 @@ export function init() {
 
   // 初始按钮状态
   updateAnalyzeButton();
+  renderAnalysisStats([]);
 
   window.addEventListener('parser-config:changed', () => {
     console.log('[analyze] 解析配置变更 → 自动刷新配置列表');
-    loadParserConfigs(); // 自动重新载入解析配置
+    loadParserConfigs({ preserveSelection: true });
+  });
+
+  window.addEventListener('server-configs:changed', (evt) => {
+    console.log('[analyze] 服务器配置变更 → 检查解析下拉');
+    handleServerConfigsChanged(evt);
   });
 }

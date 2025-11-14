@@ -3,6 +3,7 @@
 import { escapeHtml, escapeAttr } from '../core/utils.js';
 import { showMessage } from '../core/messages.js';
 import { setButtonLoading } from '../core/ui.js';
+import { api } from '../core/api.js';
 
 let inited = false;
 
@@ -13,10 +14,25 @@ let workingConfig  = {};   // 全量 JSON（内存）
 let workingTree    = [];   // 树结构缓存
 const historyStack = [];   // 本地撤销快照
 const HISTORY_LIMIT = 15;
+const escapeModalDefaults = { messageType: '', version: '', field: '' };
 
 // 工具
 const qs  = (sel, scope = document) => scope.querySelector(sel);
 const qsa = (sel, scope = document) => Array.from(scope.querySelectorAll(sel));
+
+function selectHasOption(sel, val) {
+  if (!sel || val === undefined || val === null) return false;
+  return Array.from(sel.options || []).some((opt) => opt.value == val);
+}
+
+function setSelectValue(sel, val) {
+  if (!sel) return false;
+  if (selectHasOption(sel, val)) {
+    sel.value = val;
+    return true;
+  }
+  return false;
+}
 
 function notifyParserConfigChanged(action, detail = {}) {
   window.dispatchEvent(new CustomEvent('parser-config:changed', {
@@ -57,6 +73,7 @@ export function init() {
   bindIfExists('[data-action="export-config"]', 'click', exportConfig);
   bindIfExists('[data-action="import-config"]', 'click', importConfig);
   bindIfExists('[data-action="copy-json"]', 'click', copyJsonPreview);
+  bindIfExists('[data-action="open-add-message-type"]', 'click', showAddMessageTypeModal);
   bindIfExists('#undo-btn', 'click', undoLastOperation);
   bindIfExists('#msg-type-search', 'input', searchMessageType);
 
@@ -65,12 +82,21 @@ export function init() {
   bindIfExists('#ver-submit-btn', 'click', submitVersionForm);
   bindIfExists('#field-submit-btn', 'click', submitFieldForm);
   bindIfExists('#escape-submit-btn', 'click', submitEscapeForm);
+  bindIfExists('#escape-message-type', 'change', handleEscapeMessageTypeChange);
+  bindIfExists('#escape-version', 'change', handleEscapeVersionChange);
+  bindIfExists('#escape-field', 'change', handleEscapeFieldChange);
 
   // 退出按钮（若 HTML 有）
   bindIfExists('#exit-workspace-btn', 'click', exitWorkspace);
 
   // 首次载入：填厂区列表（沿用你已有逻辑：在 app.js/其他模块里也会拉一次，这里兜底）
   loadParserFactoriesSafe();
+
+  window.addEventListener('server-configs:changed', (evt) => {
+    handleServerConfigsEvent(evt).catch((err) => {
+      console.error('[parser-config] server-configs:changed 处理失败', err);
+    });
+  });
 }
 
 function bindIfExists(sel, evt, fn) {
@@ -146,8 +172,7 @@ async function loadParserFactoriesSafe() {
   const sel = qs('#parser-factory-select');
   if (!sel) return;
   try {
-    const res = await fetch('/api/factories');
-    const list = await res.json();
+    const list = await api.getFactories();
     sel.innerHTML = '<option value="">-- 请选择厂区 --</option>';
     (list || []).forEach(f => {
       const opt = document.createElement('option');
@@ -166,8 +191,7 @@ async function loadParserSystems() {
     return;
   }
   try {
-    const res = await fetch(`/api/systems?factory=${encodeURIComponent(factoryId)}`);
-    const list = await res.json();
+    const list = await api.getSystems(factoryId);
     sel.innerHTML = '<option value="">-- 请选择系统 --</option>';
     (list || []).forEach(s => {
       const opt = document.createElement('option');
@@ -179,28 +203,110 @@ async function loadParserSystems() {
   }
 }
 
+async function handleServerConfigsEvent(evt) {
+  const factorySel = qs('#parser-factory-select');
+  if (!factorySel) return;
+  const systemSel = qs('#parser-system-select');
+  const beforeFactory = factorySel.value || '';
+  const beforeSystem = systemSel?.value || '';
+  const detail = evt?.detail || {};
+  const { action, config, previous } = detail;
+
+  await loadParserFactoriesSafe();
+  if (beforeFactory) {
+    if (!setSelectValue(factorySel, beforeFactory)) {
+      factorySel.value = '';
+    }
+  }
+
+  if (action === 'update' && previous && config && beforeFactory === previous.factory) {
+    setSelectValue(factorySel, config.factory);
+  } else if (
+    action === 'delete'
+    && previous
+    && beforeFactory === previous.factory
+    && !selectHasOption(factorySel, beforeFactory)
+  ) {
+    factorySel.value = '';
+  }
+
+  await loadParserSystems();
+  if (systemSel && beforeSystem) {
+    if (!setSelectValue(systemSel, beforeSystem)) {
+      systemSel.value = '';
+    }
+  }
+
+  if (
+    action === 'update'
+    && previous
+    && config
+    && beforeFactory === previous.factory
+    && beforeSystem === previous.system
+    && systemSel
+    && factorySel.value === (config.factory || previous.factory)
+  ) {
+    setSelectValue(systemSel, config.system);
+  } else if (
+    action === 'delete'
+    && previous
+    && systemSel
+    && factorySel.value === previous.factory
+    && !selectHasOption(systemSel, beforeSystem)
+  ) {
+    systemSel.value = '';
+  }
+
+  const afterFactory = factorySel.value || '';
+  const afterSystem = systemSel?.value || '';
+  const selectionChanged = afterFactory !== beforeFactory || afterSystem !== beforeSystem;
+  const workspaceAffected = Boolean(
+    previous
+    && workingFactory
+    && workingSystem
+    && previous.factory === workingFactory
+    && previous.system === workingSystem
+  );
+
+  if (workspaceAffected) {
+    if (action === 'delete') {
+      exitWorkspace();
+      showMessage('warning', '当前工作台对应的厂区/系统已删除，请重新选择', 'parser-config-messages');
+    } else if (action === 'update' && config) {
+      workingFactory = config.factory;
+      workingSystem  = config.system;
+      const fCrumb = qs('#current-factory-breadcrumb');
+      const sCrumb = qs('#current-system-breadcrumb');
+      if (fCrumb) fCrumb.textContent = workingFactory;
+      if (sCrumb) sCrumb.textContent = workingSystem;
+      try {
+        await Promise.all([refreshTree(), refreshFullConfig(), refreshStats()]);
+        showMessage('info', '服务器配置改名，已同步至当前工作台', 'parser-config-messages');
+      } catch (err) {
+        console.error(err);
+        showMessage('error', '重载解析配置失败：' + (err?.message || err), 'parser-config-messages');
+      }
+    }
+  } else if (selectionChanged && action === 'delete') {
+    showMessage('warning', '服务器配置调整后，请重新选择厂区与系统', 'parser-config-messages');
+  }
+}
+
 // =============== 刷新树/配置/统计 ===============
 async function refreshTree() {
-  const url = `/api/parser-config-tree?factory=${encodeURIComponent(workingFactory)}&system=${encodeURIComponent(workingSystem)}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (!data.success) throw new Error(data.error || '加载树失败');
-  workingTree = data.tree || [];
+  const tree = await api.fetchParserConfigTree(workingFactory, workingSystem);
+  workingTree = tree;
   renderTree(workingTree);
 }
 
 async function refreshFullConfig() {
-  const url = `/api/parser-config?factory=${encodeURIComponent(workingFactory)}&system=${encodeURIComponent(workingSystem)}&format=full`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (!data.success) throw new Error(data.error || '加载配置失败');
-  workingConfig = data.config || {};
+  workingConfig = await api.fetchParserConfig(workingFactory, workingSystem);
   renderJsonPreview();
 }
 
 async function refreshStats() {
   try {
-    await fetch(`/api/parser-config-stats?factory=${encodeURIComponent(workingFactory)}&system=${encodeURIComponent(workingSystem)}`);
+    await api.fetchParserConfigStats(workingFactory, workingSystem);
   } catch(_) {}
 }
 
@@ -219,52 +325,13 @@ function renderTree(tree) {
     return;
   }
 
-  const ul = document.createElement('ul');
-  tree.forEach(mt => {
-    const liMt = document.createElement('li');
-    liMt.innerHTML = `
-      <div class="parser-item" data-type="message_type" data-msg="${escapeAttr(mt.name)}" data-path="${escapeAttr(mt.path)}">
-        <i class="fas fa-envelope"></i>
-        <span class="label">${escapeHtml(mt.name)}</span>
-        ${mt.description ? `<span class="desc">— ${escapeHtml(mt.description)}</span>` : ''}
-      </div>`;
-    const chMt = document.createElement('div'); chMt.className = 'parser-children';
+  const fragment = document.createDocumentFragment();
+  tree.forEach((node) => fragment.appendChild(buildTreeNode(node)));
+  host.appendChild(fragment);
 
-    (mt.children || []).forEach(ver => {
-      const liV = document.createElement('div');
-      liV.innerHTML = `
-        <div class="parser-item" data-type="version" data-msg="${escapeAttr(mt.name)}" data-ver="${escapeAttr(ver.name)}" data-path="${escapeAttr(ver.path)}">
-          <i class="fas fa-code-branch"></i>
-          <span class="label">${escapeHtml(ver.name)}</span>
-        </div>`;
-      const chV = document.createElement('div'); chV.className = 'parser-children';
-
-      (ver.children || []).forEach(f => {
-        const liF = document.createElement('div');
-        liF.innerHTML = `
-          <div class="parser-item" data-type="field" data-msg="${escapeAttr(mt.name)}" data-ver="${escapeAttr(ver.name)}" data-field="${escapeAttr(f.name)}" data-path="${escapeAttr(f.path)}">
-            <i class="fas fa-tag"></i>
-            <span class="label">${escapeHtml(f.name)}</span>
-            <span class="meta">[Start=${f.start}, Length=${f.length==null?-1:f.length}]</span>
-            ${f.has_escapes ? '<span class="status-badge status-warning">Escapes</span>' : ''}
-          </div>`;
-        chV.appendChild(liF);
-      });
-
-      liV.appendChild(chV);
-      chMt.appendChild(liV);
-    });
-
-    liMt.appendChild(chMt);
-    ul.appendChild(liMt);
-  });
-
-  host.appendChild(ul);
-
-  // 选择事件
-  host.querySelectorAll('.parser-item').forEach(el => {
+  host.querySelectorAll('.parser-item').forEach((el) => {
     el.addEventListener('click', () => {
-      host.querySelectorAll('.parser-item.active').forEach(a => a.classList.remove('active'));
+      host.querySelectorAll('.parser-item.active').forEach((a) => a.classList.remove('active'));
       el.classList.add('active');
       const t = el.dataset.type;
       if (t === 'message_type') {
@@ -273,9 +340,78 @@ function renderTree(tree) {
         renderEditorFor({ type: 'version', messageType: el.dataset.msg, version: el.dataset.ver, path: el.dataset.path });
       } else if (t === 'field') {
         renderEditorFor({ type: 'field', messageType: el.dataset.msg, version: el.dataset.ver, field: el.dataset.field, path: el.dataset.path });
+      } else if (t === 'escape') {
+        renderEditorFor({ type: 'escape', messageType: el.dataset.msg, version: el.dataset.ver, field: el.dataset.field, escapeKey: el.dataset.escape });
       }
     });
   });
+}
+
+function buildTreeNode(node) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'parser-tree-node';
+
+  const iconMap = {
+    message_type: 'fa-envelope',
+    version: 'fa-code-branch',
+    field: 'fa-tag',
+    escape: 'fa-exchange-alt',
+  };
+
+  const el = document.createElement('div');
+  el.className = `parser-item parser-item-${node.type}`;
+  el.dataset.type = node.type;
+  if (node.path) el.dataset.path = node.path;
+
+  if (node.type === 'message_type') {
+    el.dataset.msg = node.name;
+  } else if (node.type === 'version') {
+    el.dataset.msg = node.parent;
+    el.dataset.ver = node.name;
+  } else if (node.type === 'field') {
+    el.dataset.msg = node.parent;
+    el.dataset.ver = node.version;
+    el.dataset.field = node.name;
+  } else if (node.type === 'escape') {
+    el.dataset.msg = node.parent;
+    el.dataset.ver = node.version;
+    el.dataset.field = node.field;
+    el.dataset.escape = node.name;
+  }
+
+  const icon = iconMap[node.type] || 'fa-circle';
+  let meta = '';
+  if (node.type === 'field') {
+    const lenText = node.length == null ? -1 : node.length;
+    meta = `<span class="meta">[Start=${node.start}, Length=${lenText}]</span>`;
+    if (node.children && node.children.length) {
+      meta += ' <span class="status-badge status-warning">转义</span>';
+    }
+  }
+  if (node.type === 'escape') {
+    meta = `<span class="meta">→ ${escapeHtml(String(node.value ?? ''))}</span>`;
+  }
+
+  const desc = node.description ? `<span class="desc">— ${escapeHtml(node.description)}</span>` : '';
+  el.innerHTML = `
+    <i class="fas ${icon}"></i>
+    <span class="label">${escapeHtml(node.name || '')}</span>
+    ${desc}
+    ${meta}
+  `;
+
+  wrapper.appendChild(el);
+
+  if (Array.isArray(node.children) && node.children.length) {
+    const childrenWrap = document.createElement('div');
+    childrenWrap.className = 'parser-children';
+    node.children.forEach((child) => {
+      childrenWrap.appendChild(buildTreeNode(child));
+    });
+    wrapper.appendChild(childrenWrap);
+  }
+
+  return wrapper;
 }
 
 function expandAllLayers() {
@@ -362,12 +498,44 @@ function renderEditorFor(node) {
     return;
   }
 
+  if (node.type === 'escape') {
+    renderEscapeEditor(node);
+    return;
+  }
+
   // 默认
   box.innerHTML = `
     <div class="parser-layers-placeholder">
       <i class="fas fa-mouse-pointer"></i>
       <p>请从左侧选择要配置的项</p>
     </div>`;
+}
+
+function renderEscapeEditor(node) {
+  const box = qs('#full-layers-container');
+  if (!box) return;
+  const { messageType: mt, version: ver, field: fd, escapeKey: key } = node;
+  const value = workingConfig?.[mt]?.Versions?.[ver]?.Fields?.[fd]?.Escapes?.[key];
+  box.innerHTML = `
+    <h4><i class="fas fa-exchange-alt"></i> 转义：${escapeHtml(mt)} / ${escapeHtml(ver)} / ${escapeHtml(fd)} / ${escapeHtml(key)}</h4>
+    <div class="form-group">
+      <label>原始值</label>
+      <input type="text" value="${escapeAttr(key)}" disabled>
+    </div>
+    <div class="form-group">
+      <label>转义后值</label>
+      <input id="escape-value-input" type="text" value="${value == null ? '' : escapeAttr(String(value))}">
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" id="btn-save-escape"><i class="fas fa-save"></i> 保存</button>
+      <button class="btn btn-danger" id="btn-del-escape"><i class="fas fa-trash"></i> 删除</button>
+    </div>`;
+
+  qs('#btn-save-escape')?.addEventListener('click', () => saveEscapeValue(mt, ver, fd, key));
+  qs('#btn-del-escape')?.addEventListener('click', () => {
+    if (!confirm('确认删除此转义？')) return;
+    deleteEscape(mt, ver, fd, key, { renderNode: { type: 'field', messageType: mt, version: ver, field: fd } });
+  });
 }
 
 // =============== 右侧：保存/删除/重命名等 ===============
@@ -522,14 +690,23 @@ function renderEscapesList(mt, ver, fd, esc = {}) {
   }
   const tbl = document.createElement('table');
   tbl.innerHTML = `
-    <thead><tr><th>Key</th><th>Value</th><th style="width:100px;">操作</th></tr></thead>
+    <thead><tr><th>Key</th><th>Value</th><th style="width:140px;">操作</th></tr></thead>
     <tbody>${keys.map(k=>`<tr data-k="${escapeAttr(k)}">
       <td>${escapeHtml(k)}</td><td>${escapeHtml(String(esc[k]))}</td>
       <td style="text-align:right;">
+        <button class="btn btn-sm btn-secondary esc-edit">编辑</button>
         <button class="btn btn-sm btn-danger esc-del">删除</button>
       </td>
     </tr>`).join('')}</tbody>`;
   host.innerHTML = ''; host.appendChild(tbl);
+
+  host.querySelectorAll('.esc-edit').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const key = e.currentTarget.closest('tr')?.dataset.k;
+      if (!key) return;
+      renderEditorFor({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: key });
+    });
+  });
 
   host.querySelectorAll('.esc-del').forEach(btn => {
     btn.addEventListener('click', async (e) => {
@@ -538,18 +715,7 @@ function renderEscapesList(mt, ver, fd, esc = {}) {
       if (!key) return;
       if (!confirm(`删除转义 "${key}" ?`)) return;
       try {
-        const clone = structuredClone(workingConfig);
-        const escMap = clone?.[mt]?.Versions?.[ver]?.Fields?.[fd]?.Escapes;
-        if (escMap && Object.prototype.hasOwnProperty.call(escMap, key)) {
-          delete escMap[key];
-        }
-        await saveFullConfig(clone); // 整包保存，保证删除键
-        showMessage('success', '已删除转义', 'parser-config-messages');
-        await refreshFullConfig();
-        await refreshTree();
-        renderEditorFor({ type: 'field', messageType: mt, version: ver, field: fd });
-
-        notifyParserConfigChanged('delete-escape', { mt, ver, fd, key });
+        await deleteEscape(mt, ver, fd, key, { renderNode: { type: 'field', messageType: mt, version: ver, field: fd } });
       } catch (err) {
         showMessage('error', '删除失败：' + err.message, 'parser-config-messages');
       }
@@ -557,32 +723,146 @@ function renderEscapesList(mt, ver, fd, esc = {}) {
   });
 }
 
+async function saveEscapeValue(mt, ver, fd, key) {
+  const value = qs('#escape-value-input')?.value ?? '';
+  const base = `${mt}.Versions.${ver}.Fields.${fd}.Escapes.${key}`;
+  try {
+    await postJSON('/api/update-parser-config', {
+      factory: workingFactory,
+      system: workingSystem,
+      updates: { [base]: value }
+    });
+    showMessage('success', '转义已保存', 'parser-config-messages');
+    await refreshFullConfig();
+    await refreshTree();
+    renderEditorFor({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: key });
+    notifyParserConfigChanged('update-escape', { mt, ver, fd, key });
+  } catch (err) {
+    showMessage('error', '保存转义失败：' + err.message, 'parser-config-messages');
+  }
+}
+
+async function deleteEscape(mt, ver, fd, key, opts = {}) {
+  const clone = structuredClone(workingConfig);
+  const escMap = clone?.[mt]?.Versions?.[ver]?.Fields?.[fd]?.Escapes;
+  if (!escMap || !Object.prototype.hasOwnProperty.call(escMap, key)) {
+    throw new Error('未找到转义项');
+  }
+  delete escMap[key];
+  await saveFullConfig(clone);
+  showMessage('success', '已删除转义', 'parser-config-messages');
+  await refreshFullConfig();
+  await refreshTree();
+  const nextNode = opts.renderNode || { type: 'field', messageType: mt, version: ver, field: fd };
+  renderEditorFor(nextNode);
+  notifyParserConfigChanged('delete-escape', { mt, ver, fd, key });
+}
+
 function showAddEscapeModal(mt, ver, fd) {
   const modal = qs('#add-escape-modal');
   if (!modal) {
     // 退化：弹窗输入
+    const fallbackMt = prompt('所属报文类型：', mt || '')?.trim();
+    const fallbackVer = prompt('所属版本：', ver || '')?.trim();
+    const fallbackField = prompt('所属字段：', fd || '')?.trim();
+    if (!fallbackMt || !fallbackVer || !fallbackField) {
+      showMessage('error', '请完整填写转义所属层级', 'parser-config-messages');
+      return;
+    }
     const key = prompt('转义原值：', '');
     if (key == null || key === '') return;
     const val = prompt('转义后值：', '');
     if (val == null) return;
-    submitEscapeRaw(mt, ver, fd, key, val);
+    submitEscapeRaw(fallbackMt, fallbackVer, fallbackField, key, val);
     return;
   }
+  escapeModalDefaults.messageType = mt || escapeModalDefaults.messageType || '';
+  escapeModalDefaults.version = ver || escapeModalDefaults.version || '';
+  escapeModalDefaults.field = fd || escapeModalDefaults.field || '';
+  rebuildEscapeModalOptions({ ...escapeModalDefaults });
   modal.style.display = 'flex';
-  const mtSel = qs('#escape-message-type'); const vSel = qs('#escape-version');
-  if (mtSel) { mtSel.innerHTML = `<option value="${escapeAttr(mt)}">${escapeHtml(mt)}</option>`; mtSel.value = mt; }
-  if (vSel)  { vSel.innerHTML  = `<option value="${escapeAttr(ver)}">${escapeHtml(ver)}</option>`; vSel.value = ver; }
-  modal.dataset.field = fd || ''; // 如果是从字段页点开的
+  qs('#escape-original')?.focus();
+}
+
+function rebuildEscapeModalOptions(pref = {}) {
+  const mtSel = qs('#escape-message-type');
+  if (!mtSel) return;
+  const mts = Object.keys(workingConfig || {});
+  mtSel.innerHTML = '<option value="">-- 请选择报文类型 --</option>';
+  mts.forEach((name) => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    mtSel.appendChild(opt);
+  });
+  const targetMt = mts.includes(pref.messageType) ? pref.messageType : (mts[0] || '');
+  setSelectValue(mtSel, targetMt);
+  rebuildEscapeVersionOptions(targetMt, pref.version, pref.field);
+}
+
+function rebuildEscapeVersionOptions(mt, preferredVersion = '', preferredField = '') {
+  const vSel = qs('#escape-version');
+  if (!vSel) return;
+  const versions = Object.keys(workingConfig?.[mt]?.Versions || {});
+  vSel.innerHTML = '<option value="">-- 请选择版本 --</option>';
+  versions.forEach((name) => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    vSel.appendChild(opt);
+  });
+  const targetVer = versions.includes(preferredVersion) ? preferredVersion : (versions[0] || '');
+  setSelectValue(vSel, targetVer);
+  rebuildEscapeFieldOptions(mt, targetVer, preferredField);
+}
+
+function rebuildEscapeFieldOptions(mt, ver, preferredField = '') {
+  const fSel = qs('#escape-field');
+  const submitBtn = qs('#escape-submit-btn');
+  if (!fSel) return;
+  const fields = Object.keys(workingConfig?.[mt]?.Versions?.[ver]?.Fields || {});
+  fSel.innerHTML = '<option value="">-- 请选择字段 --</option>';
+  fields.forEach((name) => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    fSel.appendChild(opt);
+  });
+  let targetField = preferredField;
+  if (!fields.includes(targetField)) {
+    targetField = fields[0] || '';
+  }
+  if (targetField) {
+    setSelectValue(fSel, targetField);
+  } else {
+    fSel.value = '';
+  }
+  escapeModalDefaults.messageType = mt || '';
+  escapeModalDefaults.version = ver || '';
+  escapeModalDefaults.field = targetField || '';
+  if (submitBtn) submitBtn.disabled = !targetField;
+}
+
+function handleEscapeMessageTypeChange(e) {
+  const mt = e.target.value || '';
+  rebuildEscapeVersionOptions(mt, '', '');
+}
+
+function handleEscapeVersionChange(e) {
+  const mt = qs('#escape-message-type')?.value || '';
+  rebuildEscapeFieldOptions(mt, e.target.value || '', '');
+}
+
+function handleEscapeFieldChange(e) {
+  escapeModalDefaults.field = e.target.value || '';
+  const submitBtn = qs('#escape-submit-btn');
+  if (submitBtn) submitBtn.disabled = !escapeModalDefaults.field;
 }
 
 async function submitEscapeRaw(mt, ver, fd, key, val) {
   if (!fd) {
-    // 如果没传 field，就选第一个字段（与旧逻辑一致）
-    fd = guessFirstField(mt, ver);
-    if (!fd) {
-      showMessage('error', '当前版本暂无字段可添加转义', 'parser-config-messages');
-      return;
-    }
+    showMessage('error', '请选择要添加转义的字段', 'parser-config-messages');
+    return;
   }
   try {
     await postJSON('/api/add-escape', {
@@ -602,25 +882,17 @@ async function submitEscapeRaw(mt, ver, fd, key, val) {
 }
 
 function submitEscapeForm() {
-  const modal = qs('#add-escape-modal');
   const mt = qs('#escape-message-type')?.value?.trim();
   const ver= qs('#escape-version')?.value?.trim();
   const key = qs('#escape-original')?.value?.trim();
   const val = qs('#escape-target')?.value?.trim();
-  let fd = modal?.dataset.field || '';
-  if (!mt || !ver || !key) {
+  const fd = qs('#escape-field')?.value?.trim();
+  if (!mt || !ver || !key || !fd) {
     showMessage('error','请完整填写转义信息','parser-config-messages');
     return;
   }
-  if (!fd) fd = guessFirstField(mt, ver);
   hideAddEscapeModal();
   submitEscapeRaw(mt, ver, fd, key, val);
-}
-
-function guessFirstField(mt, ver) {
-  const fields = workingConfig?.[mt]?.Versions?.[ver]?.Fields || {};
-  const keys = Object.keys(fields);
-  return keys.length ? keys[0] : '';
 }
 
 function hideAddEscapeModal() {
@@ -865,18 +1137,11 @@ async function postJSON(url, body) {
 }
 
 async function saveFullConfig(newConfig, opts = {}) {
-  // 验证/保存整包
-  const res = await fetch('/api/save-parser-config', {
-    method: 'POST',
-    headers: { 'Content-Type':'application/json' },
-    body: JSON.stringify({
-      factory: workingFactory,
-      system: workingSystem,
-      config: newConfig
-    })
+  const data = await api.saveParserConfig({
+    factory: workingFactory,
+    system: workingSystem,
+    config: newConfig
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
   if (!data.success) throw new Error(data.error || '保存失败');
   workingConfig = structuredClone(newConfig);
   if (!opts.silent) renderJsonPreview();

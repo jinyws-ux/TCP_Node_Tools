@@ -297,6 +297,43 @@ tr:hover{ background:#f9fafb; }
 .config-actions .btn:hover{ transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,.08); }
 .config-actions .btn i{ margin-right:6px; }
 
+.server-config-header{ display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
+.server-config-hint{ color:var(--muted); font-size:.85rem; }
+.server-config-search{
+  display:flex; align-items:center; gap:8px; margin-bottom:12px;
+  border:1px solid var(--line); border-radius:var(--control-radius);
+  padding:0 10px; background:#f8fafc;
+}
+.server-config-search i{ color:var(--muted); }
+.server-config-search input{
+  border:none; background:transparent; flex:1; height:40px; padding:0;
+}
+.server-config-search input:focus{ outline:none; box-shadow:none; }
+.server-config-search .btn-clear-search{
+  position:static; transform:none; width:auto; height:auto;
+  border-radius:var(--control-radius); padding:4px 8px;
+}
+
+.server-config-group{
+  border:1px solid var(--line); border-radius:var(--radius-sm);
+  margin-bottom:12px; overflow:hidden; background:#fff;
+}
+.server-factory-header{
+  display:flex; align-items:center; gap:12px; padding:10px 12px;
+  background:#f1f5f9; cursor:pointer;
+}
+.factory-toggle{
+  border:none; background:transparent; color:var(--primary);
+  font-size:18px; cursor:pointer; transition:transform .2s ease;
+}
+.factory-title h4{ margin:0; font-size:1rem; color:#0f172a; }
+.factory-title span{ font-size:.85rem; color:var(--muted); }
+.factory-systems{ display:none; padding:4px 0; }
+.server-config-group.expanded .factory-systems{ display:block; }
+.server-config-group.expanded .factory-toggle{ transform:rotate(90deg); }
+.factory-systems .config-item{ border-bottom:1px solid var(--line); }
+.factory-systems .config-item:last-child{ border-bottom:none; }
+
 /* ---------- Message Empty State ---------- */
 .message-empty{
   text-align:center;
@@ -474,3 +511,48 @@ footer{
 }
 .btn-edit:hover{ background: var(--indigo-600); }
 
+
+/* ---------- 分析统计卡片 ---------- */
+.analysis-stats-card{
+  margin-top:18px;
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  padding:18px;
+  background:var(--card);
+  box-shadow:0 2px 8px rgba(15,23,42,.05);
+}
+.analysis-stats-card__header h3{
+  margin:0;
+  color:#0f172a;
+  font-size:1.2rem;
+}
+.analysis-stats-card__header p{
+  margin:4px 0 0;
+  color:var(--muted);
+  font-size:.9rem;
+}
+.analysis-stats-body{
+  margin-top:12px;
+  overflow-x:auto;
+}
+.analysis-stats-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:13px;
+}
+.analysis-stats-table th,
+.analysis-stats-table td{
+  padding:8px 10px;
+  border:1px solid var(--line);
+  text-align:left;
+}
+.analysis-stats-table th{
+  background:var(--primary-50);
+  color:#1d4ed8;
+  font-weight:600;
+}
+.analysis-stats-table td:first-child,
+.analysis-stats-table th:first-child{
+  width:60px;
+  text-align:center;
+}

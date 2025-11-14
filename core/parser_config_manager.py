@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import shutil
 import time
 from typing import Dict, Any, Optional
 
@@ -57,6 +58,49 @@ class ParserConfigManager:
             return True
         except Exception as e:
             self.logger.error(f"保存解析配置失败: {config_path}, 错误: {str(e)}")
+            return False
+
+    def rename_namespace(
+        self,
+        old_factory: str,
+        old_system: str,
+        new_factory: str,
+        new_system: str,
+    ) -> bool:
+        """将解析配置从旧厂区/系统移动到新名称下。"""
+        try:
+            src = self.get_config_path(old_factory, old_system)
+            if not os.path.exists(src):
+                return False
+
+            dst = self.get_config_path(new_factory, new_system)
+            os.makedirs(self.config_dir, exist_ok=True)
+
+            if os.path.exists(dst):
+                backup = f"{dst}.backup.{int(time.time())}"
+                shutil.copy2(dst, backup)
+                self.logger.warning(
+                    "解析配置重命名时检测到目标已存在，已备份到: %s", backup
+                )
+
+            shutil.move(src, dst)
+            self.logger.info(
+                "解析配置已从 %s/%s 重命名为 %s/%s",
+                old_factory,
+                old_system,
+                new_factory,
+                new_system,
+            )
+            return True
+        except Exception as e:
+            self.logger.error(
+                "重命名解析配置失败: %s/%s -> %s/%s, 错误: %s",
+                old_factory,
+                old_system,
+                new_factory,
+                new_system,
+                str(e),
+            )
             return False
 
     def add_message_type(self, factory: str, system: str, msg_type: str, description: str) -> bool:
