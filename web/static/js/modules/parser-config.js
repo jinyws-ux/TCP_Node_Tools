@@ -28,6 +28,11 @@ const clipboardState = {
   meta: {},
 };
 
+const cssEscape = (value) => {
+  if (typeof value !== 'string') value = String(value ?? '');
+  return window.CSS?.escape ? window.CSS.escape(value) : value.replace(/[^a-zA-Z0-9_-]/g, (ch) => `\\${ch}`);
+};
+
 // 工具
 const qs  = (sel, scope = document) => scope.querySelector(sel);
 const qsa = (sel, scope = document) => Array.from(scope.querySelectorAll(sel));
@@ -117,6 +122,34 @@ function setClipboard(type, label, data, meta = {}) {
   renderClipboardBanner();
   const typeLabel = TYPE_LABELS[type] || type;
   showMessage('success', `${typeLabel}已复制到剪贴板`, 'parser-config-messages');
+}
+
+function buildNodePath(meta = {}) {
+  const type = meta.type;
+  const mt = meta.messageType || meta.parent || meta.msg || meta.name;
+  if (!type) return '';
+  if (type === 'message_type') {
+    return mt ? `mt:${mt}` : '';
+  }
+  if (type === 'version') {
+    const ver = meta.version || meta.name;
+    if (!mt || !ver) return '';
+    return `mt:${mt}/ver:${ver}`;
+  }
+  if (type === 'field') {
+    const ver = meta.version || meta.ver;
+    const field = meta.field || meta.name;
+    if (!mt || !ver || !field) return '';
+    return `mt:${mt}/ver:${ver}/field:${field}`;
+  }
+  if (type === 'escape') {
+    const ver = meta.version || meta.ver;
+    const field = meta.field || meta.fieldName;
+    const key = meta.escapeKey || meta.name;
+    if (!mt || !ver || !field || !key) return '';
+    return `mt:${mt}/ver:${ver}/field:${field}/escape:${key}`;
+  }
+  return '';
 }
 
 function suggestName(base, existingList = []) {
@@ -229,6 +262,104 @@ function togglePreviewPanel() {
   panel.dataset.state = collapsed ? 'collapsed' : 'expanded';
   layout.classList.toggle('preview-collapsed', collapsed);
   updatePreviewToggleUI(collapsed);
+}
+
+function ensurePreviewExpanded() {
+  const panel = qs('#parser-preview-panel');
+  const layout = qs('.parser-three-column');
+  if (!panel || !layout) return;
+  if (panel.classList.contains('is-collapsed')) {
+    panel.classList.remove('is-collapsed');
+    panel.dataset.state = 'expanded';
+    layout.classList.remove('preview-collapsed');
+    updatePreviewToggleUI(false);
+  }
+}
+
+function focusPreviewPath(path) {
+  if (!path) return;
+  ensurePreviewExpanded();
+  const box = qs('#json-preview-content');
+  if (!box) return;
+  const selector = `[data-path="${cssEscape(path)}"]`;
+  const target = box.querySelector(selector);
+  if (!target) return;
+  box.querySelectorAll('.preview-node.is-focused').forEach((el) => el.classList.remove('is-focused'));
+  target.classList.add('is-focused');
+  box.scrollTo({ top: Math.max(0, target.offsetTop - 16), behavior: 'smooth' });
+}
+
+function formatPreviewMeta(node) {
+  if (node.type === 'field') {
+    const startText = node.start == null ? 0 : node.start;
+    const lenText = node.length == null ? '到结尾' : node.length;
+    return `起点 ${startText} · 长度 ${lenText}`;
+  }
+  if (node.type === 'escape') {
+    return `→ ${String(node.value ?? '')}`;
+  }
+  if (node.type === 'version' && node.description) {
+    return node.description;
+  }
+  if (node.type === 'message_type' && node.description) {
+    return node.description;
+  }
+  return '';
+}
+
+function buildPreviewNodeElement(node, depth = 0) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'preview-node';
+  wrapper.style.setProperty('--depth', depth);
+  const pathMeta = { type: node.type };
+  if (node.type === 'message_type') {
+    pathMeta.messageType = node.name;
+  } else if (node.type === 'version') {
+    pathMeta.messageType = node.parent;
+    pathMeta.version = node.name;
+  } else if (node.type === 'field') {
+    pathMeta.messageType = node.parent;
+    pathMeta.version = node.version;
+    pathMeta.field = node.name;
+  } else if (node.type === 'escape') {
+    pathMeta.messageType = node.parent;
+    pathMeta.version = node.version;
+    pathMeta.field = node.field;
+    pathMeta.escapeKey = node.name;
+  }
+  const pathKey = node.path || buildNodePath(pathMeta);
+  if (pathKey) {
+    wrapper.dataset.path = pathKey;
+  }
+
+  const line = document.createElement('div');
+  line.className = 'preview-line';
+  const label = document.createElement('span');
+  label.className = 'preview-label';
+  label.textContent = TYPE_LABELS[node.type] || node.type || '';
+  const title = document.createElement('span');
+  title.className = 'preview-title';
+  title.textContent = node.name || '-';
+  line.appendChild(label);
+  line.appendChild(title);
+  const metaText = formatPreviewMeta(node);
+  if (metaText) {
+    const metaEl = document.createElement('span');
+    metaEl.className = 'preview-meta';
+    metaEl.textContent = metaText;
+    line.appendChild(metaEl);
+  }
+  wrapper.appendChild(line);
+
+  if (node.children && node.children.length) {
+    const childrenWrap = document.createElement('div');
+    childrenWrap.className = 'preview-children';
+    node.children.forEach((child) => {
+      childrenWrap.appendChild(buildPreviewNodeElement(child, depth + 1));
+    });
+    wrapper.appendChild(childrenWrap);
+  }
+  return wrapper;
 }
 
 // =============== 进入/退出工作台 ===============
@@ -434,6 +565,7 @@ async function refreshTree() {
   const tree = await api.fetchParserConfigTree(workingFactory, workingSystem);
   workingTree = tree;
   renderTree(workingTree);
+  renderJsonPreview();
 }
 
 async function refreshFullConfig() {
@@ -500,40 +632,54 @@ function buildTreeNode(node) {
   const el = document.createElement('div');
   el.className = `parser-item parser-item-${node.type}`;
   el.dataset.type = node.type;
-  if (node.path) el.dataset.path = node.path;
-
+  const pathMeta = { type: node.type };
   if (node.type === 'message_type') {
     el.dataset.msg = node.name;
+    pathMeta.messageType = node.name;
   } else if (node.type === 'version') {
     el.dataset.msg = node.parent;
     el.dataset.ver = node.name;
+    pathMeta.messageType = node.parent;
+    pathMeta.version = node.name;
   } else if (node.type === 'field') {
     el.dataset.msg = node.parent;
     el.dataset.ver = node.version;
     el.dataset.field = node.name;
+    pathMeta.messageType = node.parent;
+    pathMeta.version = node.version;
+    pathMeta.field = node.name;
   } else if (node.type === 'escape') {
     el.dataset.msg = node.parent;
     el.dataset.ver = node.version;
     el.dataset.field = node.field;
     el.dataset.escape = node.name;
+    pathMeta.messageType = node.parent;
+    pathMeta.version = node.version;
+    pathMeta.field = node.field;
+    pathMeta.escapeKey = node.name;
+  }
+
+  const nodePath = node.path || buildNodePath(pathMeta);
+  if (nodePath) {
+    el.dataset.path = nodePath;
   }
 
   let meta = '';
   if (node.type === 'field') {
-    const lenText = node.length == null ? -1 : node.length;
-    meta = `<span class="meta">[Start=${node.start}, Length=${lenText}]</span>`;
-    if (node.children && node.children.length) {
-      meta += ' <span class="status-badge status-warning">转义</span>';
-    }
-  }
-  if (node.type === 'escape') {
+    const lenText = node.length == null ? '到结尾' : node.length;
+    const startText = node.start == null ? 0 : node.start;
+    const hasEscape = node.children && node.children.length ? ' · 转义' : '';
+    meta = `<span class="meta">起点 ${startText} / 长度 ${lenText}${hasEscape}</span>`;
+  } else if (node.type === 'escape') {
     meta = `<span class="meta">→ ${escapeHtml(String(node.value ?? ''))}</span>`;
+  } else if (node.description && node.type !== 'message_type' && node.type !== 'version') {
+    meta = `<span class="meta">${escapeHtml(node.description)}</span>`;
   }
 
-  const desc = node.description ? `<span class="desc">— ${escapeHtml(node.description)}</span>` : '';
-  const typeBadge = TYPE_LABELS[node.type] ? `<span class="node-pill">${TYPE_LABELS[node.type]}</span>` : '';
+  const desc = (node.description && (node.type === 'message_type' || node.type === 'version'))
+    ? `<span class="desc">— ${escapeHtml(node.description)}</span>`
+    : '';
   el.innerHTML = `
-    ${typeBadge}
     <span class="label">${escapeHtml(node.name || '')}</span>
     ${desc}
     ${meta}
@@ -752,6 +898,7 @@ function collapseAllLayers() {
 function renderEditorFor(node) {
   const box = qs('#full-layers-container');
   if (!box) return;
+  const nodePath = node.path || buildNodePath(node);
 
   if (node.type === 'message_type') {
     const mt = node.messageType;
@@ -789,6 +936,7 @@ function renderEditorFor(node) {
     });
     qs('#btn-paste-mt')?.addEventListener('click', () => pasteMessageType());
     qs('#btn-paste-version-into-mt')?.addEventListener('click', () => pasteVersion(mt));
+    focusPreviewPath(nodePath);
     return;
   }
 
@@ -814,6 +962,7 @@ function renderEditorFor(node) {
     qs('#btn-del-ver')?.addEventListener('click', () => deleteConfigItem('version', mt, ver));
     qs('#btn-add-field')?.addEventListener('click', () => showAddFieldModal(mt, ver));
     qs('#btn-paste-field')?.addEventListener('click', () => pasteField(mt, ver));
+    focusPreviewPath(nodePath);
     return;
   }
 
@@ -857,11 +1006,13 @@ function renderEditorFor(node) {
     qs('#btn-paste-escape')?.addEventListener('click', () => pasteEscape(mt, ver, fd));
 
     renderEscapesList(mt, ver, fd, fcfg.Escapes || {});
+    focusPreviewPath(nodePath);
     return;
   }
 
   if (node.type === 'escape') {
     renderEscapeEditor(node);
+    focusPreviewPath(nodePath);
     return;
   }
 
@@ -1049,34 +1200,40 @@ function renderEscapesList(mt, ver, fd, esc = {}) {
   if (!host) return;
   const keys = Object.keys(esc);
   if (!keys.length) {
-    host.innerHTML = '<div style="color:#6c757d;">暂无转义</div>';
+    host.innerHTML = '<div class="message-empty">暂无转义</div>';
     return;
   }
-  const tbl = document.createElement('table');
-  tbl.innerHTML = `
-    <thead><tr><th>Key</th><th>Value</th><th style="width:180px;">操作</th></tr></thead>
-    <tbody>${keys.map(k=>`<tr data-k="${escapeAttr(k)}">
-      <td>${escapeHtml(k)}</td><td>${escapeHtml(String(esc[k]))}</td>
-      <td style="text-align:right;">
-        <button class="btn btn-sm btn-outline esc-copy">复制</button>
-        <button class="btn btn-sm btn-secondary esc-edit">编辑</button>
-        <button class="btn btn-sm btn-danger esc-del">删除</button>
-      </td>
-    </tr>`).join('')}</tbody>`;
-  host.innerHTML = ''; host.appendChild(tbl);
+  const grid = document.createElement('div');
+  grid.className = 'escape-grid';
+  keys.forEach((k) => {
+    const card = document.createElement('div');
+    card.className = 'escape-card';
+    card.dataset.k = k;
+    card.innerHTML = `
+      <div class="escape-card__key">${escapeHtml(k)}</div>
+      <div class="escape-card__value">${escapeHtml(String(esc[k]))}</div>
+      <div class="escape-card__actions">
+        <button class="btn btn-xs btn-outline esc-copy">复制</button>
+        <button class="btn btn-xs btn-secondary esc-edit">编辑</button>
+        <button class="btn btn-xs btn-danger esc-del">删除</button>
+      </div>`;
+    grid.appendChild(card);
+  });
+  host.innerHTML = '';
+  host.appendChild(grid);
 
   host.querySelectorAll('.esc-edit').forEach((btn) => {
     btn.addEventListener('click', (e) => {
-      const key = e.currentTarget.closest('tr')?.dataset.k;
+      const key = e.currentTarget.closest('.escape-card')?.dataset.k;
       if (!key) return;
       renderEditorFor({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: key });
     });
   });
 
-  host.querySelectorAll('.esc-del').forEach(btn => {
+  host.querySelectorAll('.esc-del').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
-      const tr = e.currentTarget.closest('tr');
-      const key = tr?.dataset.k;
+      const card = e.currentTarget.closest('.escape-card');
+      const key = card?.dataset.k;
       if (!key) return;
       if (!confirm(`删除转义 "${key}" ?`)) return;
       try {
@@ -1084,6 +1241,14 @@ function renderEscapesList(mt, ver, fd, esc = {}) {
       } catch (err) {
         showMessage('error', '删除失败：' + err.message, 'parser-config-messages');
       }
+    });
+  });
+
+  host.querySelectorAll('.esc-copy').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const key = e.currentTarget.closest('.escape-card')?.dataset.k;
+      if (!key) return;
+      copyEscape(mt, ver, fd, key);
     });
   });
 }
@@ -1389,13 +1554,21 @@ function submitFieldForm() {
 function renderJsonPreview() {
   const box = qs('#json-preview-content');
   if (!box) return;
-  const pre = document.createElement('pre');
-  try {
-    pre.textContent = JSON.stringify(workingConfig, null, 2);
-  } catch (e) {
-    pre.textContent = '配置序列化失败：' + (e?.message || e);
+  box.innerHTML = '';
+  const tree = Array.isArray(workingTree) ? workingTree : [];
+  if (!tree.length) {
+    box.innerHTML = `
+      <div class="parser-json-placeholder">
+        <i class="fas fa-code"></i>
+        <p>选择左侧配置查看结构</p>
+      </div>`;
+    return;
   }
-  box.innerHTML = ''; box.appendChild(pre);
+  const fragment = document.createDocumentFragment();
+  tree.forEach((node) => {
+    fragment.appendChild(buildPreviewNodeElement(node, 0));
+  });
+  box.appendChild(fragment);
 }
 
 function copyJsonPreview() {
