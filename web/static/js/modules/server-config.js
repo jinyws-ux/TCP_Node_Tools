@@ -122,17 +122,14 @@ function buildConfigCard(cfg) {
 
   const info = document.createElement('div');
   info.innerHTML = `
-    <div class="config-compact-head">
-      <span>${factoryLabel}</span>
-      <span>${systemLabel}</span>
-    </div>
+    <p class="config-compact-subline">${factoryLabel} - ${systemLabel}</p>
     <div class="config-compact-title">
-      <div class="config-compact-alias">${aliasLabel}</div>
+      <div class="config-compact-alias-chip">${aliasLabel}</div>
     </div>`;
   item.appendChild(info);
 
   const actions = document.createElement('div');
-  actions.className = 'config-compact-actions config-compact-actions--two';
+  actions.className = 'config-compact-actions config-compact-actions--stack';
   const btnEdit = document.createElement('button');
   btnEdit.className = 'btn btn-sm btn-edit';
   btnEdit.dataset.act = 'edit';
@@ -228,7 +225,7 @@ function fillForm(cfg) {
 }
 
 function setEditMode(isEditing) {
-  const form = document.querySelector('.config-form');
+  const form = document.querySelector('#server-config-tab .config-form');
   const saveBtn = $('#save-config-btn');
   const cancelBtn = $('#cancel-edit-btn');
 

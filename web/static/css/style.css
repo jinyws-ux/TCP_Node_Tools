@@ -145,15 +145,15 @@ header::after {
 
 /* ======================= Tabs ======================= */
 .tabs {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
   margin-bottom: 24px;
 }
 
 .tab {
   padding: 18px 20px;
-  width: 100%;
+  width: auto;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -167,6 +167,18 @@ header::after {
   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   color: var(--muted);
   min-height: 94px;
+}
+
+@media (max-width: 1200px) {
+  .tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .tabs {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+  }
 }
 
 .tab:hover,
@@ -998,19 +1010,15 @@ tbody tr:hover {
 
 .config-compact-head {
   display: flex;
-  gap: 10px;
-  font-size: 0.8rem;
-  color: var(--muted);
+  flex-direction: column;
+  gap: 4px;
 }
 
-.config-compact-head span {
-  flex: 1;
-  padding: 4px 10px;
-  background: rgba(15, 23, 42, 0.05);
-  border-radius: 10px;
-  text-align: center;
+.config-compact-subline {
+  font-size: 0.82rem;
+  color: var(--muted);
   font-weight: 600;
-  color: var(--muted-strong);
+  margin: 0 0 2px;
 }
 
 .config-compact-title {
@@ -1029,6 +1037,17 @@ tbody tr:hover {
 
 .config-compact-alias {
   word-break: break-all;
+}
+
+.config-compact-alias-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--muted-strong);
+  font-weight: 600;
+  font-size: 0.85rem;
 }
 
 .config-compact-meta {
@@ -1062,6 +1081,17 @@ tbody tr:hover {
 .config-compact-actions.tpl-actions .btn {
   flex: 1 1 calc(33% - 8px);
   min-width: 110px;
+}
+
+.config-compact-actions--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.config-compact-actions--stack .btn {
+  flex: 1 1 auto;
+  width: 100%;
 }
 
 .config-title-row {
@@ -1313,7 +1343,9 @@ tbody tr:hover {
 
 .parser-left-nav {
   padding: 18px;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
 }
 
 .parser-middle-edit {
@@ -1326,6 +1358,9 @@ tbody tr:hover {
 .parser-right-json {
   position: relative;
   padding: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
 }
 
 .parser-nav-card {
@@ -1333,6 +1368,7 @@ tbody tr:hover {
   flex-direction: column;
   gap: 12px;
   flex: 1;
+  min-height: 0;
 }
 
 .parser-nav-header {
@@ -1404,10 +1440,9 @@ tbody tr:hover {
 
 .parser-nav-tree {
   flex: 1;
-  overflow-y: auto;
   padding-right: 6px;
   margin-top: 14px;
-  scrollbar-gutter: stable;
+  min-height: 0;
 }
 
 .parser-nav-tree ul {
@@ -1423,13 +1458,13 @@ tbody tr:hover {
 .parser-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  border-radius: 10px;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 8px;
   cursor: pointer;
   transition: background 0.2s ease, border 0.2s ease, box-shadow 0.2s ease;
   border: 1px solid transparent;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   color: var(--muted-strong);
   background: rgba(255, 255, 255, 0.4);
 }
@@ -1456,9 +1491,9 @@ tbody tr:hover {
 }
 
 .parser-children {
-  margin-left: 20px;
+  margin-left: 16px;
   border-left: 1px dashed rgba(15, 23, 42, 0.08);
-  padding-left: 12px;
+  padding-left: 10px;
   transition: height 0.2s ease, opacity 0.2s ease;
 }
 
@@ -1467,17 +1502,17 @@ tbody tr:hover {
 }
 
 .tree-toggle {
-  width: 18px;
-  height: 18px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: #fff;
+  width: 16px;
+  height: 16px;
+  border-radius: 6px;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  background: rgba(255, 255, 255, 0.85);
   color: var(--muted);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 0.65rem;
+  font-size: 0.6rem;
 }
 
 .tree-dot {
@@ -1615,6 +1650,7 @@ tbody tr:hover {
   flex: 1;
   padding: 20px 22px 22px;
   gap: 14px;
+  min-height: 0;
 }
 
 .parser-right-json.is-collapsed .parser-preview-body {
@@ -1643,6 +1679,7 @@ tbody tr:hover {
   font-size: 12px;
   color: var(--muted-strong);
   scrollbar-gutter: stable;
+  min-height: 0;
 }
 
 .parser-json-placeholder {

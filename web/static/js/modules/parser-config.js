@@ -530,6 +530,7 @@ function renderTree(tree) {
       host.querySelectorAll('.parser-item.active').forEach((a) => a.classList.remove('active'));
       el.classList.add('active');
       const t = el.dataset.type;
+      const nodePath = el.dataset.path || '';
       if (t === 'message_type') {
         renderEditorFor({ type: 'message_type', messageType: el.dataset.msg, path: el.dataset.path });
       } else if (t === 'version') {
@@ -537,7 +538,10 @@ function renderTree(tree) {
       } else if (t === 'field') {
         renderEditorFor({ type: 'field', messageType: el.dataset.msg, version: el.dataset.ver, field: el.dataset.field, path: el.dataset.path });
       } else if (t === 'escape') {
-        renderEditorFor({ type: 'escape', messageType: el.dataset.msg, version: el.dataset.ver, field: el.dataset.field, escapeKey: el.dataset.escape });
+        renderEditorFor({ type: 'escape', messageType: el.dataset.msg, version: el.dataset.ver, field: el.dataset.field, escapeKey: el.dataset.escape, path: el.dataset.path });
+      }
+      if (nodePath) {
+        focusPreviewPath(nodePath);
       }
     });
   });
