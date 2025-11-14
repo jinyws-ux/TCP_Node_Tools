@@ -63,16 +63,23 @@
     <!-- 日志下载标签页 -->
     <!-- 下载日志 -->
     <div id="download-tab" class="tab-content">
-      <div class="selection-panel">
-        <div class="selection-header">
-          <h3><i class="fas fa-download"></i> 日志下载</h3>
+      <div class="panel-hero neon-hero">
+        <div class="hero-text">
+          <p class="hero-label">Download Pipeline</p>
+          <h3>日志下载工作台</h3>
+          <p>实时 / 归档日志一体化调度，模板与节点联动呈现。</p>
         </div>
+        <div class="hero-accent">
+          <span class="glow-tag"><i class="fas fa-bolt"></i> MULTI-NODE</span>
+          <span class="glow-tag"><i class="fas fa-layer-group"></i> TEMPLATE MODE</span>
+        </div>
+      </div>
 
-        <div class="message-container" id="download-messages"></div>
+      <div class="message-container" id="download-messages"></div>
 
-        <div class="config-layout">
+      <div class="config-layout neon-grid">
           <!-- 左：搜索与结果 -->
-          <section class="config-form-section">
+          <section class="config-form-section neon-card">
             <!-- 添加模板模式提示条（默认隐藏） -->
             <div id="template-hint" class="message message-info" style="display:none; margin-bottom:12px;">
               正在添加区域：请选择厂区与系统，并在“节点”填入多个节点（英文逗号分隔，例如：2001,2002,2003）。
@@ -143,29 +150,33 @@
           </section>
 
           <!-- 右：区域模板 -->
-          <aside class="config-list-section">
+          <aside class="config-list-section neon-card template-panel">
             <div class="config-list">
-              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-                <h4 style="margin:0;">区域模板</h4>
+              <div class="panel-heading">
+                <div>
+                  <p class="panel-label">Templates</p>
+                  <h4>区域模板</h4>
+                </div>
                 <button class="btn btn-primary" id="btn-add-template"><i class="fas fa-plus"></i> 添加区域</button>
               </div>
 
-              <div class="search-box" style="margin-bottom:12px;">
+              <div class="search-box search-box--pill">
                 <i class="fas fa-search"></i>
                 <input id="template-search-input" class="search-input" placeholder="搜索名称 / 节点">
-                <button class="btn-clear-search" id="template-clear-search" title="清空">&times;</button>
+                <button class="btn-clear-search" id="template-clear-search" title="清空">
+                  <i class="fas fa-times"></i>
+                </button>
               </div>
 
               <div id="template-list">
                 <div class="message-empty">暂无模板</div>
               </div>
 
-              <div style="display:flex; justify-content:center; margin-top:10px;">
+              <div class="list-footer">
                 <button class="btn" id="btn-more-templates" style="display:none;">加载更多</button>
               </div>
             </div>
           </aside>
-        </div>
       </div>
     </div>
 
@@ -242,7 +253,7 @@
             <div class="message-empty"></div>
         </div>
         <div class="config-layout">
-            <div class="config-form-section">
+            <div class="config-form-section neon-card">
                 <div class="config-form">
                     <h3>添加/编辑配置</h3>
                     <div class="form-group">
@@ -279,7 +290,7 @@
                     </div>
                 </div>
             </div>
-            <div class="config-list-section">
+            <div class="config-list-section neon-card">
                 <div class="config-list">
                     <div class="server-config-header">
                         <h3>现有配置</h3>
