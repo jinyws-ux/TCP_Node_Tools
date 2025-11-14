@@ -338,110 +338,116 @@
 
         <!-- 配置工作台 -->
         <div class="simple-config-workspace" style="display: none;">
-            <!-- 顶部工具栏 -->
-            <div class="parser-workspace-header">
-                <div class="breadcrumb">
-                    配置路径 · <span id="current-factory-breadcrumb">未知厂区</span> / <span id="current-system-breadcrumb">未知系统</span>
+            <div class="parser-shell">
+                <!-- 顶部工具栏 -->
+                <div class="parser-shell__toolbar">
+                    <div class="parser-breadcrumb">
+                        <span class="breadcrumb-label">当前范围</span>
+                        <strong id="current-factory-breadcrumb">未知厂区</strong>
+                        <span>/</span>
+                        <strong id="current-system-breadcrumb">未知系统</strong>
+                    </div>
+                    <div class="parser-toolbar-actions">
+                        <button class="btn btn-secondary" data-action="import-config"><i class="fas fa-upload"></i> 导入</button>
+                        <button class="btn btn-secondary" data-action="export-config"><i class="fas fa-download"></i> 导出</button>
+                        <button class="btn btn-tertiary" id="exit-workspace-btn"><i class="fas fa-arrow-left"></i> 退出控制台</button>
+                    </div>
                 </div>
-                <div class="parser-global-tools">
-                    <button class="btn btn-secondary" data-action="import-config"><i class="fas fa-upload"></i> 导入</button>
-                    <button class="btn btn-secondary" data-action="export-config"><i class="fas fa-download"></i> 导出</button>
-                    <button class="btn btn-tertiary" id="exit-workspace-btn"><i class="fas fa-arrow-left"></i> 退出控制台</button>
-                </div>
-            </div>
 
-            <!-- 剪贴板状态 -->
-            <div class="parser-clipboard" id="parser-clipboard" data-state="empty">
-                <div class="parser-clipboard__icon">
-                    <i class="fas fa-clipboard-list"></i>
+                <!-- 剪贴板状态 -->
+                <div class="parser-clipboard" id="parser-clipboard" data-state="empty">
+                    <div class="parser-clipboard__icon">
+                        <i class="fas fa-clipboard-list"></i>
+                    </div>
+                    <div class="parser-clipboard__content">
+                        <p id="clipboard-label">尚未复制任何配置</p>
+                        <small id="clipboard-hint">从左侧选择项目后点击“复制”按钮</small>
+                    </div>
+                    <div class="parser-clipboard__actions">
+                        <button class="btn btn-sm btn-ghost" data-action="clear-clipboard">
+                            <i class="fas fa-times-circle"></i> 清空
+                        </button>
+                    </div>
                 </div>
-                <div class="parser-clipboard__content">
-                    <p id="clipboard-label">尚未复制任何配置</p>
-                    <small id="clipboard-hint">从左侧选择项目后点击“复制”按钮</small>
+
+                <!-- 三列布局 -->
+                <div class="parser-three-column">
+                    <!-- 左列：导航树 -->
+                    <aside class="parser-left-nav">
+                        <div class="parser-nav-card">
+                            <div class="parser-nav-header">
+                                <div>
+                                    <p class="parser-nav-label">配置导航</p>
+                                    <h4>报文类型结构</h4>
+                                    <small>展开查看版本 / 字段 / 转义</small>
+                                </div>
+                                <div class="parser-nav-actions">
+                                    <button class="btn btn-icon" data-action="expand-all" title="展开全部"><i class="fas fa-expand-alt"></i></button>
+                                    <button class="btn btn-icon" data-action="collapse-all" title="折叠全部"><i class="fas fa-compress-alt"></i></button>
+                                </div>
+                            </div>
+                            <div class="parser-search-row">
+                                <div class="parser-search-box">
+                                    <i class="fas fa-search"></i>
+                                    <input type="text" id="msg-type-search" placeholder="搜索报文类型 / 版本">
+                                </div>
+                                <button class="btn btn-primary btn-sm" data-action="open-add-message-type"><i class="fas fa-plus"></i> 新增类型</button>
+                            </div>
+                            <div id="left-nav-tree" class="parser-nav-tree">
+                                <div class="parser-tree-placeholder">
+                                    <i class="fas fa-folder-open"></i>
+                                    <p>暂无报文类型，点击"新增类型"开始配置</p>
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <!-- 中列：编辑面板 -->
+                    <section class="parser-middle-edit">
+                        <div class="parser-edit-card">
+                            <div class="parser-edit-header">
+                                <div>
+                                    <p class="parser-edit-label">编辑区域</p>
+                                    <h4>配置编辑器</h4>
+                                    <small>选中左侧任意层级后，可在此处新增、复制或粘贴</small>
+                                </div>
+                                <div class="parser-edit-actions">
+                                    <button class="btn btn-ghost" id="undo-btn" onclick="undoLastOperation()" disabled><i class="fas fa-undo"></i> 撤销</button>
+                                    <span id="history-count" class="history-counter">0/10</span>
+                                </div>
+                            </div>
+                            <div id="full-layers-container" class="parser-full-layers">
+                                <div class="parser-layers-placeholder">
+                                    <i class="fas fa-mouse-pointer"></i>
+                                    <p>请从左侧选择要配置的项</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- 右列：JSON预览 -->
+                    <aside class="parser-right-json" id="parser-preview-panel" data-state="expanded">
+                        <button class="parser-preview-toggle" id="parser-preview-toggle" aria-expanded="true" title="收起实时预览">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                        <div class="parser-preview-body">
+                            <div class="parser-json-header">
+                                <div>
+                                    <p class="parser-edit-label">实时预览</p>
+                                    <h5>JSON 实时预览</h5>
+                                    <small>每次保存或粘贴后自动刷新</small>
+                                </div>
+                                <button class="btn btn-sm btn-secondary" data-action="copy-json"><i class="fas fa-copy"></i> 复制</button>
+                            </div>
+                            <div id="json-preview-content" class="parser-json-preview">
+                                <div class="parser-json-placeholder">
+                                    <i class="fas fa-code"></i>
+                                    <p>配置变更后实时刷新</p>
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
                 </div>
-                <div class="parser-clipboard__actions">
-                    <button class="btn btn-sm btn-ghost" data-action="clear-clipboard">
-                        <i class="fas fa-times-circle"></i> 清空
-                    </button>
-                </div>
-            </div>
-
-            <!-- 三列布局 -->
-            <div class="parser-three-column">
-                <!-- 左列：导航树 -->
-                <aside class="parser-left-nav" data-state="expanded">
-                    <button class="parser-nav-toggle" id="parser-nav-toggle" aria-expanded="true" title="收起导航">
-                        <i class="fas fa-angle-double-left"></i>
-                    </button>
-                    <div class="parser-nav-header">
-                        <div>
-                            <h4>报文类型导航</h4>
-                            <p>逐层展开或收起不同版本与字段</p>
-                        </div>
-                        <div class="parser-nav-actions">
-                            <button class="btn btn-icon" data-action="expand-all" title="展开全部"><i class="fas fa-expand-alt"></i></button>
-                            <button class="btn btn-icon" data-action="collapse-all" title="折叠全部"><i class="fas fa-compress-alt"></i></button>
-                        </div>
-                    </div>
-                    <div class="parser-search-row">
-                        <div class="parser-search-box">
-                            <i class="fas fa-search"></i>
-                            <input type="text" id="msg-type-search" placeholder="搜索报文类型 / 版本">
-                        </div>
-                        <button class="btn btn-primary btn-sm" data-action="open-add-message-type"><i class="fas fa-plus"></i> 新增类型</button>
-                    </div>
-                    <div id="left-nav-tree" class="parser-nav-tree">
-                        <div class="parser-tree-placeholder">
-                            <i class="fas fa-folder-open"></i>
-                            <p>暂无报文类型，点击"新增类型"开始配置</p>
-                        </div>
-                    </div>
-                </aside>
-
-                <!-- 中列：编辑面板 -->
-                <section class="parser-middle-edit">
-                    <div class="parser-edit-card">
-                        <div class="parser-edit-header">
-                            <div>
-                                <h4>配置编辑器</h4>
-                                <p>选中左侧任意层级后，可在此处新增、复制或粘贴</p>
-                            </div>
-                            <div class="parser-edit-actions">
-                                <button class="btn btn-ghost" id="undo-btn" onclick="undoLastOperation()" disabled><i class="fas fa-undo"></i> 撤销</button>
-                                <span id="history-count" class="history-counter">0/10</span>
-                            </div>
-                        </div>
-                        <div id="full-layers-container" class="parser-full-layers">
-                            <div class="parser-layers-placeholder">
-                                <i class="fas fa-mouse-pointer"></i>
-                                <p>请从左侧选择要配置的项</p>
-                            </div>
-                        </div>
-                        <div id="dynamic-buttons" class="parser-dynamic-btns" style="display: none;"></div>
-                    </div>
-                </section>
-
-                <!-- 右列：JSON预览 -->
-                <aside class="parser-right-json" id="parser-preview-panel" data-state="expanded">
-                    <button class="parser-preview-toggle" id="parser-preview-toggle" aria-expanded="true" title="收起实时预览">
-                        <i class="fas fa-chevron-right"></i>
-                    </button>
-                    <div class="parser-preview-body">
-                        <div class="parser-json-header">
-                            <div>
-                                <h5>JSON 实时预览</h5>
-                                <p>每次保存或粘贴后自动刷新</p>
-                            </div>
-                            <button class="btn btn-sm btn-secondary" data-action="copy-json"><i class="fas fa-copy"></i> 复制</button>
-                        </div>
-                        <div id="json-preview-content" class="parser-json-preview">
-                            <div class="parser-json-placeholder">
-                                <i class="fas fa-code"></i>
-                                <p>配置变更后实时刷新</p>
-                            </div>
-                        </div>
-                    </div>
-                </aside>
             </div>
         </div>
 
