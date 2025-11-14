@@ -505,18 +505,27 @@ function renderTemplateList(items, append = false) {
     const nodes = Array.isArray(t.nodes) ? t.nodes : [];
     const factoryName = t.factory || t.factory_name || '-';
     const systemName = t.system || t.system_name || '-';
-    const nodesPreview = nodes.slice(0, 5).join(',');
+    const nodesPreview = nodes.slice(0, 4).join(', ');
     const el = document.createElement('div');
     el.className = 'config-item';
     el.innerHTML = `
-      <div class="config-info" style="flex:1;">
+      <div class="config-info">
         <h3>${escapeHtml(t.name)}</h3>
         <p>${escapeHtml(factoryName)} - ${escapeHtml(systemName)}</p>
-        <p style="font-size:12px; color:#6b7280;">共 ${nodes.length} 节点${nodes.length ? ` · 示例：${escapeHtml(nodesPreview)}${nodes.length>5?'…':''}`:''}</p>
       </div>
-      <div style="display:flex; align-items:center; gap:8px;">
+      <div class="template-meta">
+        <div>
+          <span>节点数</span>
+          <strong>${nodes.length}</strong>
+        </div>
+        <div>
+          <span>示例节点</span>
+          <code>${nodesPreview ? escapeHtml(nodesPreview + (nodes.length > 4 ? ' …' : '')) : '无'}</code>
+        </div>
+      </div>
+      <div class="config-actions tpl-actions">
         <button class="btn btn-primary btn-sm tpl-select">选择区域</button>
-        <div class="config-actions">
+        <div class="config-actions" style="gap:8px;">
           <button class="btn btn-secondary btn-sm tpl-edit">编辑</button>
           <button class="btn btn-danger btn-sm tpl-del">删除</button>
         </div>
