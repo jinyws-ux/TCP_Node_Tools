@@ -1,29 +1,28 @@
 // web/static/js/modules/download.js
+import { api } from '../core/api.js';
 import { showMessage } from '../core/messages.js';
 import { escapeHtml } from '../core/utils.js';
 import { setButtonLoading } from '../core/ui.js';
 
 let inited = false;
 
-const qs = (s, sc = document) => sc.querySelector(s);
-const qsa = (s, sc = document) => Array.from(sc.querySelectorAll(s));
+const qs  = (sel, scope = document) => scope.querySelector(sel);
+const qsa = (sel, scope = document) => Array.from(scope.querySelectorAll(sel));
 const $msg = (type, text) => showMessage(type, text, 'download-messages');
 
-const state = {
-  mode: 'normal', // normal | adding | selected
-  selectedTemplate: null,
-  // 分页
-  pager: { page: 1, page_size: 20, total: 0, loading: false, q: '' },
-  // 右侧过滤与联动
-  filters: { factory: '', system: '' },
-  templateCache: [], // 当前页累积
+const SearchTypes = { MANUAL: 'manual', TEMPLATE: 'template' };
 
-  // 搜索结果 & 选中状态（下载用）
+const state = {
+  mode: 'normal',
+  selectedTemplate: null,
+  pager: { page: 1, page_size: 20, total: 0, loading: false, q: '' },
+  filters: { factory: '', system: '' },
+  templateCache: [],
   searchResults: [],
-  selectedLogPaths: new Set(), // remote_path/path 作为 key
+  selectedLogPaths: new Set(),
+  lastSearch: null,
 };
 
-/* ---------- 本地工具：恢复按钮文案（配合现有 core/ui.js） ---------- */
 function restoreSearchBtnLabel() {
   const btn = qs('#btn-search');
   if (!btn) return;
@@ -31,27 +30,20 @@ function restoreSearchBtnLabel() {
     ? '<i class="fas fa-search"></i> 搜索日志（模板）'
     : '<i class="fas fa-search"></i> 搜索日志';
 }
-function restoreSaveTemplateBtnLabel() {
-  const btn = qs('#btn-save-template');
-  if (!btn) return;
-  btn.innerHTML = '<i class="fas fa-save"></i> 保存区域';
-}
 
 function updateDownloadButton() {
   const btn = qs('#btn-download-logs');
-  if (!btn) return;
-  btn.disabled = !state.selectedLogPaths.size;
+  if (btn) btn.disabled = !state.selectedLogPaths.size;
 }
 
-/* 根据 state.selectedLogPaths 同步勾选框 UI （重新渲染或全选时用） */
-function syncLogCheckboxes() {
-  const tbody = qs('#logs-search-body');
-  if (!tbody) return;
-  qsa('input[type="checkbox"].log-select', tbody).forEach(chk => {
-    const path = chk.dataset.remotePath || chk.dataset.path || '';
-    chk.checked = !!(path && state.selectedLogPaths.has(path));
-  });
-  updateDownloadButton();
+function updateRefreshButton() {
+  const btn = qs('#btn-refresh');
+  if (btn) btn.disabled = !state.lastSearch;
+}
+
+function clearLastSearch() {
+  state.lastSearch = null;
+  updateRefreshButton();
 }
 
 export function init() {
@@ -62,8 +54,14 @@ export function init() {
   bindLeftForm();
   bindRightPanel();
 
-  // 初始化下拉：厂区 -> 系统（依赖后端）
   loadFactories().then(() => syncRightFiltersAndReload());
+  updateRefreshButton();
+
+  window.addEventListener('server-configs:changed', (evt) => {
+    handleServerConfigsEvent(evt).catch((err) => {
+      console.error('[download] server-configs:changed 处理失败', err);
+    });
+  });
 }
 
 function bindLeftForm() {
@@ -74,18 +72,19 @@ function bindLeftForm() {
     await loadSystems(factorySel.value);
     state.filters.factory = factorySel.value || '';
     syncRightFiltersAndReload();
+    clearLastSearch();
     if (state.mode === 'selected') unselectTemplateSilent();
   });
 
   systemSel?.addEventListener('change', () => {
     state.filters.system = systemSel.value || '';
     syncRightFiltersAndReload();
+    clearLastSearch();
     if (state.mode === 'selected') unselectTemplateSilent();
   });
 
-  // 归档 -> 日期显隐 + 必填
   const includeArchive = qs('#include-archive');
-  const dateRange      = qs('#date-range');    // 需要在 index.html 的日期容器加 id="date-range"
+  const dateRange      = qs('#date-range');
   const dateStart      = qs('#date-start');
   const dateEnd        = qs('#date-end');
   const toggleDate = () => {
@@ -95,27 +94,21 @@ function bindLeftForm() {
     if (dateEnd)   dateEnd.required   = on;
   };
   includeArchive?.addEventListener('change', toggleDate);
-  toggleDate(); // 初始化一次
+  toggleDate();
 
-  // 左侧按钮
   qs('#btn-search')?.addEventListener('click', onSearchClick);
-  qs('#btn-refresh')?.addEventListener('click', refreshDownloadedList);
-  qs('#btn-open-dir')?.addEventListener('click', openDownloadDir);
+  const refreshBtn = qs('#btn-refresh');
+  refreshBtn?.addEventListener('click', onRefreshClick);
+  if (refreshBtn) refreshBtn.disabled = true;
 
-  // 下载选中日志
   qs('#btn-download-logs')?.addEventListener('click', onDownloadLogsClick);
-
-  // 添加模板模式
   qs('#btn-save-template')?.addEventListener('click', onSaveTemplate);
   qs('#btn-cancel-template')?.addEventListener('click', exitAddTemplateMode);
-
-  // 解除选择
   qs('#btn-unselect-template')?.addEventListener('click', () => {
     exitSelectedTemplateMode();
     $msg('info', '已解除模板选择');
   });
 
-  // 可选：全选 checkbox（如果你在表头放了一个 id="logs-check-all" 的勾选框）
   qs('#logs-check-all')?.addEventListener('change', (e) => {
     const checked = e.target.checked;
     const tbody = qs('#logs-search-body');
@@ -129,18 +122,13 @@ function bindLeftForm() {
     updateDownloadButton();
   });
 
-  // 默认载入一次系统（空）
   loadSystems('');
-  // 初次拉已下载列表（如有接口，这里实现）——占位
-  refreshDownloadedList();
-
   updateDownloadButton();
 }
 
 function bindRightPanel() {
   qs('#btn-add-template')?.addEventListener('click', enterAddTemplateMode);
 
-  // 搜索框（防抖）
   let timer = null;
   qs('#template-search-input')?.addEventListener('input', (e) => {
     const q = (e.target.value || '').trim();
@@ -164,130 +152,161 @@ function bindRightPanel() {
     reloadTemplates(false);
   });
 
-  // 初次加载模板
   reloadTemplates(true);
 }
 
-/* ---------------- 左侧：搜索 ---------------- */
+/* ---------------- 搜索 ---------------- */
 
 async function onSearchClick() {
+  try {
+    const descriptor = (state.mode === 'selected' && state.selectedTemplate)
+      ? buildTemplateSearchDescriptor()
+      : buildManualSearchDescriptor();
+    await runSearch(descriptor, { remember: true, loadingTarget: 'btn-search', loadingText: '搜索中...' });
+  } catch (err) {
+    if (err?.message) {
+      $msg('error', err.message);
+    }
+  }
+}
+
+async function onRefreshClick() {
+  if (!state.lastSearch) {
+    $msg('info', '请先搜索一次日志');
+    return;
+  }
+  await runSearch(state.lastSearch, { remember: false, loadingTarget: 'btn-refresh', loadingText: '刷新中...' });
+}
+
+function buildManualSearchDescriptor() {
   const factory = qs('#factory-select')?.value || '';
   const system  = qs('#system-select')?.value || '';
-  const include_realtime = !!qs('#include-realtime')?.checked;
-  const include_archive  = !!qs('#include-archive')?.checked;
-  const date_start = qs('#date-start')?.value || '';
-  const date_end   = qs('#date-end')?.value || '';
-
   if (!factory || !system) {
-    $msg('error', '请先选择厂区与系统');
-    return;
-  }
-  if (include_archive && (!date_start || !date_end)) {
-    $msg('error', '选择归档时必须填写开始/结束日期');
-    return;
+    throw new Error('请先选择厂区与系统');
   }
 
-  // 你的 server.py 暴露的是 /api/search-logs（单节点）
-  const url = '/api/search-logs';
-  const body = {
-    factory,
-    system,
-    includeRealtime: include_realtime,
-    includeArchive: include_archive,
-    dateStart: date_start,
-    dateEnd: date_end
+  const includeRealtime = !!qs('#include-realtime')?.checked;
+  const includeArchive  = !!qs('#include-archive')?.checked;
+  const dateStart = qs('#date-start')?.value || '';
+  const dateEnd   = qs('#date-end')?.value || '';
+  if (includeArchive && (!dateStart || !dateEnd)) {
+    throw new Error('选择归档时必须填写开始/结束日期');
+  }
+
+  const nodes = parseNodes(qs('#node-input')?.value || '');
+  if (!nodes.length) {
+    $msg('warning', '建议填写至少一个节点，或使用右侧区域模板');
+  }
+
+  return {
+    type: SearchTypes.MANUAL,
+    payload: {
+      factory,
+      system,
+      nodes,
+      node: nodes[0] || '',
+      includeRealtime,
+      includeArchive,
+      dateStart,
+      dateEnd,
+    }
   };
+}
 
-  if (state.mode === 'selected' && state.selectedTemplate) {
-    // 后端目前只支持单节点：取模板里的第一个节点
-    const first = (state.selectedTemplate.nodes || [])[0] || '';
-    body.node = first;
-    if (!first) {
-      $msg('warning', '所选模板没有节点；请编辑模板或手工输入节点');
-    }
-  } else {
-    // 普通模式
-    const nodes = parseNodes(qs('#node-input')?.value || '');
-    body.node = nodes[0] || '';
-    if (!body.node) {
-      $msg('warning', '建议填写至少一个节点，或使用右侧区域模板');
-    }
+function buildTemplateSearchDescriptor() {
+  const tpl = state.selectedTemplate;
+  if (!tpl) throw new Error('请选择模板');
+
+  const includeRealtime = !!qs('#include-realtime')?.checked;
+  const includeArchive  = !!qs('#include-archive')?.checked;
+  const dateStart = qs('#date-start')?.value || '';
+  const dateEnd   = qs('#date-end')?.value || '';
+  if (includeArchive && (!dateStart || !dateEnd)) {
+    throw new Error('模板模式下，归档搜索同样需要填写开始/结束日期');
   }
 
+  return {
+    type: SearchTypes.TEMPLATE,
+    payload: {
+      template_id: tpl.id,
+      includeRealtime,
+      includeArchive,
+      dateStart,
+      dateEnd,
+    }
+  };
+}
+
+async function runSearch(descriptor, { remember = true, loadingTarget = 'btn-search', loadingText = '处理中...' } = {}) {
+  if (!descriptor) return;
+  setButtonLoading(loadingTarget, true, { text: loadingText });
   try {
-    setButtonLoading('btn-search', true);
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(body)
-    });
-    const data = await res.json();
-
-    // 后端响应：{ success, log_files: [...] }
-    const list = data?.log_files || data?.logs || [];
+    const request = descriptor.type === SearchTypes.TEMPLATE
+      ? () => api.searchLogsByTemplate(descriptor.payload)
+      : () => api.searchLogs(descriptor.payload);
+    const data = await request();
+    const list = data?.logs || data?.log_files || [];
     renderLogs(list);
-
     if (!list.length) $msg('info', '没有匹配的日志');
-  } catch (e) {
-    console.error(e);
-    $msg('error', '搜索失败：' + (e?.message || e));
+
+    if (remember) {
+      state.lastSearch = {
+        type: descriptor.type,
+        payload: clonePayload(descriptor.payload),
+      };
+    }
+  } catch (err) {
+    console.error(err);
+    $msg('error', '搜索失败：' + (err?.message || err));
   } finally {
-    setButtonLoading('btn-search', false);
-    restoreSearchBtnLabel();
+    setButtonLoading(loadingTarget, false);
+    if (loadingTarget === 'btn-search') restoreSearchBtnLabel();
+    updateRefreshButton();
   }
 }
 
-async function refreshDownloadedList() {
-  // 如果你希望在“下载”页也展示一个“已下载列表”，
-  // 这里可以调用 /api/downloaded-logs 然后渲染到你自己的表格区域。
-  // 目前先留空，不影响功能。
+function clonePayload(payload) {
+  try {
+    return JSON.parse(JSON.stringify(payload || {}));
+  } catch (err) {
+    return { ...(payload || {}) };
+  }
 }
 
-function openDownloadDir() {
-  // 占位：若后端有打开目录的API，这里调用
-}
-
-/* ---------------- 下载功能：从搜索结果中选择并下载 ---------------- */
+/* ---------------- 下载 ---------------- */
 
 function buildSelectedFilesPayload() {
   const files = [];
   const results = state.searchResults || [];
   const selected = state.selectedLogPaths;
-
   if (!results.length || !selected.size) return files;
 
   for (const item of results) {
     const remote_path = item.remote_path || item.path || '';
     if (!remote_path || !selected.has(remote_path)) continue;
-
     files.push({
       name: item.name || '',
       remote_path,
-      path: remote_path,       // 兼容后端 old 字段
+      path: remote_path,
       size: item.size || 0,
       mtime: item.mtime || item.timestamp || '',
       type: item.type || 'unknown',
-      node: item.node || ''    // 后端会用实际节点分目录
+      node: item.node || ''
     });
   }
   return files;
 }
 
-/** 计算 download-logs 请求中的 node 参数（search_node，用于记录） */
-function resolveSearchNodeForDownload() {
+function resolveNodesForDownload() {
   if (state.mode === 'selected' && state.selectedTemplate) {
-    const nodes = state.selectedTemplate.nodes || [];
-    if (nodes.length) return nodes.join(',');
+    return Array.isArray(state.selectedTemplate.nodes) ? [...state.selectedTemplate.nodes] : [];
   }
-  const nodes = parseNodes(qs('#node-input')?.value || '');
-  if (nodes.length) return nodes[0]; // 老接口只要求非空即可
-  return 'mixed'; // 兜底给个标记值，避免后端报“缺少 node”
+  return parseNodes(qs('#node-input')?.value || '');
 }
 
 async function onDownloadLogsClick() {
   const factory = qs('#factory-select')?.value || '';
   const system  = qs('#system-select')?.value || '';
-
   if (!factory || !system) {
     $msg('error', '请先选择厂区与系统');
     return;
@@ -295,52 +314,42 @@ async function onDownloadLogsClick() {
 
   const files = buildSelectedFilesPayload();
   if (!files.length) {
-    $msg('error', '请先在下方搜索结果中勾选要下载的日志');
+    $msg('error', '请先在下方结果中勾选要下载的日志');
     return;
   }
 
-  const node = resolveSearchNodeForDownload();
+  const nodes = resolveNodesForDownload();
 
   try {
-    setButtonLoading('btn-download-logs', true);
-    const res = await fetch('/api/download-logs', {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({
-        files,
-        factory,
-        system,
-        node
-      })
+    setButtonLoading('btn-download-logs', true, { text: '下载中...' });
+    const res = await api.downloadLogs({
+      files,
+      factory,
+      system,
+      nodes,
+      node: nodes[0] || ''
     });
-    const data = await res.json();
-    if (!data?.success) {
-      throw new Error(data?.error || '下载失败');
+    if (!res?.success) {
+      throw new Error(res?.error || '下载失败');
     }
-
-    const downloaded = data.downloaded_files || [];
-    const count = downloaded.length;
-    if (count > 0) {
-      $msg('success', `下载完成，成功下载 ${count} 个日志文件`);
+    const downloaded = res.downloaded_files || [];
+    if (downloaded.length) {
+      $msg('success', `下载完成，成功下载 ${downloaded.length} 个日志文件`);
     } else {
-      $msg('warning', '后端返回成功，但未包含任何已下载文件信息，请检查服务器日志');
+      $msg('warning', '后端返回成功，但未包含已下载文件信息');
     }
-
-    // 清空选择
     state.selectedLogPaths.clear();
     syncLogCheckboxes();
-    // 如有需要，这里可以刷新“已下载列表”或通知分析页
-    refreshDownloadedList();
-  } catch (e) {
-    console.error(e);
-    $msg('error', '下载失败：' + (e?.message || e));
+  } catch (err) {
+    console.error(err);
+    $msg('error', '下载失败：' + (err?.message || err));
   } finally {
     setButtonLoading('btn-download-logs', false);
     updateDownloadButton();
   }
 }
 
-/* ---------------- 模板：UI 状态切换 ---------------- */
+/* ---------------- 模板 UI ---------------- */
 
 function enterAddTemplateMode() {
   state.mode = 'adding';
@@ -350,7 +359,6 @@ function enterAddTemplateMode() {
   if (hint) hint.style.display = '';
   if (actDefault) actDefault.style.display = 'none';
   if (actTpl) actTpl.style.display = '';
-
   const nodeInput = qs('#node-input');
   if (nodeInput) nodeInput.placeholder = '多个节点用英文逗号分隔，例如：2001,2002,2003';
 }
@@ -363,32 +371,37 @@ function exitAddTemplateMode() {
   if (hint) hint.style.display = 'none';
   if (actDefault) actDefault.style.display = '';
   if (actTpl) actTpl.style.display = 'none';
-  restoreSaveTemplateBtnLabel();
+  restoreSearchBtnLabel();
 }
 
-function enterSelectedTemplateMode(tpl) {
+async function enterSelectedTemplateMode(tpl) {
   state.mode = 'selected';
   state.selectedTemplate = tpl;
+  clearLastSearch();
 
-  // 锁定左侧
   const factorySel = qs('#factory-select');
   const systemSel  = qs('#system-select');
   const nodeInput  = qs('#node-input');
+  const tplFactory = tpl.factory || tpl.factory_name || '';
+  const tplSystem  = tpl.system || tpl.system_name || '';
 
-  fillSelectValue(factorySel, tpl.factory);
-  fillSelectValue(systemSel, tpl.system);
+  if (factorySel) {
+    fillSelectValue(factorySel, tplFactory);
+    factorySel.setAttribute('disabled', 'disabled');
+  }
+  if (systemSel) {
+    await loadSystems(tplFactory);
+    fillSelectValue(systemSel, tplSystem);
+    systemSel.setAttribute('disabled', 'disabled');
+  }
   if (nodeInput) {
     nodeInput.value = (tpl.nodes || []).join(',');
-    nodeInput.setAttribute('disabled','disabled');
+    nodeInput.setAttribute('disabled', 'disabled');
   }
-  factorySel?.setAttribute('disabled','disabled');
-  systemSel?.setAttribute('disabled','disabled');
 
-  // 改按钮文案
   const searchBtn = qs('#btn-search');
-  if (searchBtn) searchBtn.innerHTML = `<i class="fas fa-search"></i> 搜索日志（模板）`;
+  if (searchBtn) searchBtn.innerHTML = '<i class="fas fa-search"></i> 搜索日志（模板）';
 
-  // 徽标提示
   const nameEl = qs('#selected-template-name');
   const badge = qs('#selected-template-badge');
   if (nameEl) nameEl.textContent = tpl.name;
@@ -398,17 +411,14 @@ function enterSelectedTemplateMode(tpl) {
 function exitSelectedTemplateMode() {
   state.mode = 'normal';
   state.selectedTemplate = null;
+  clearLastSearch();
   const factorySel = qs('#factory-select');
   const systemSel  = qs('#system-select');
   const nodeInput  = qs('#node-input');
-
   factorySel?.removeAttribute('disabled');
   systemSel?.removeAttribute('disabled');
   nodeInput?.removeAttribute('disabled');
-
-  const searchBtn = qs('#btn-search');
-  if (searchBtn) searchBtn.innerHTML = `<i class="fas fa-search"></i> 搜索日志`;
-
+  restoreSearchBtnLabel();
   const badge = qs('#selected-template-badge');
   if (badge) badge.style.display = 'none';
 }
@@ -417,36 +427,91 @@ function unselectTemplateSilent() {
   if (state.mode === 'selected') exitSelectedTemplateMode();
 }
 
-/* ---------------- 模板：CRUD 与列表 ---------------- */
-
 function syncRightFiltersAndReload() {
-  const f = qs('#factory-select')?.value || '';
-  const s = qs('#system-select')?.value || '';
-  state.filters.factory = f;
-  state.filters.system = s;
+  state.filters.factory = qs('#factory-select')?.value || '';
+  state.filters.system = qs('#system-select')?.value || '';
   reloadTemplates(true);
+}
+
+async function handleServerConfigsEvent(evt) {
+  const factorySel = qs('#factory-select');
+  const systemSel = qs('#system-select');
+  if (!factorySel || !systemSel) return;
+
+  const beforeFactory = factorySel.value || '';
+  const beforeSystem = systemSel.value || '';
+  const detail = evt?.detail || {};
+  const { action, config, previous } = detail;
+
+  await loadFactories();
+  fillSelectValue(factorySel, beforeFactory);
+
+  if (action === 'update' && previous && config && beforeFactory === previous.factory) {
+    fillSelectValue(factorySel, config.factory);
+  } else if (
+    action === 'delete'
+    && previous
+    && beforeFactory === previous.factory
+    && !selectHasOption(factorySel, beforeFactory)
+  ) {
+    factorySel.value = '';
+  }
+
+  await loadSystems(factorySel.value);
+  fillSelectValue(systemSel, beforeSystem);
+
+  if (
+    action === 'update'
+    && previous
+    && config
+    && beforeFactory === previous.factory
+    && beforeSystem === previous.system
+    && factorySel.value === (config.factory || previous.factory)
+  ) {
+    fillSelectValue(systemSel, config.system);
+  } else if (
+    action === 'delete'
+    && previous
+    && factorySel.value === previous.factory
+    && !selectHasOption(systemSel, beforeSystem)
+  ) {
+    systemSel.value = '';
+  }
+
+  const afterFactory = factorySel.value || '';
+  const afterSystem = systemSel.value || '';
+  const selectionChanged = afterFactory !== beforeFactory || afterSystem !== beforeSystem;
+
+  syncRightFiltersAndReload();
+  if (selectionChanged) {
+    clearLastSearch();
+    if (state.mode === 'selected') {
+      unselectTemplateSilent();
+    }
+  }
 }
 
 function renderTemplateList(items, append = false) {
   const host = qs('#template-list');
   if (!host) return;
-
   if (!append) host.innerHTML = '';
 
   if (!items.length && !append) {
-    host.innerHTML = `<div class="message-empty">暂无模板</div>`;
+    host.innerHTML = '<div class="message-empty">暂无模板</div>';
     return;
   }
 
   for (const t of items) {
     const nodes = Array.isArray(t.nodes) ? t.nodes : [];
+    const factoryName = t.factory || t.factory_name || '-';
+    const systemName = t.system || t.system_name || '-';
     const nodesPreview = nodes.slice(0, 5).join(',');
     const el = document.createElement('div');
     el.className = 'config-item';
     el.innerHTML = `
       <div class="config-info" style="flex:1;">
         <h3>${escapeHtml(t.name)}</h3>
-        <p>${escapeHtml(t.factory)} - ${escapeHtml(t.system)}</p>
+        <p>${escapeHtml(factoryName)} - ${escapeHtml(systemName)}</p>
         <p style="font-size:12px; color:#6b7280;">共 ${nodes.length} 节点${nodes.length ? ` · 示例：${escapeHtml(nodesPreview)}${nodes.length>5?'…':''}`:''}</p>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
@@ -465,7 +530,6 @@ function renderTemplateList(items, append = false) {
     host.appendChild(el);
   }
 
-  // 底部“加载更多”
   const moreBtn = qs('#btn-more-templates');
   const loadedCount = state.templateCache.length;
   if (moreBtn) {
@@ -482,6 +546,7 @@ async function reloadTemplates(reset = true) {
     state.pager.page = 1;
     state.templateCache = [];
   }
+
   const params = new URLSearchParams({
     page: String(state.pager.page),
     page_size: String(state.pager.page_size),
@@ -494,15 +559,14 @@ async function reloadTemplates(reset = true) {
     state.pager.loading = true;
     const res = await fetch(`/api/templates?${params.toString()}`);
     const raw = await res.json();
-    const payload = (raw && raw.data) ? raw.data : raw; // 兼容两种返回
+    const payload = (raw && raw.data) ? raw.data : raw;
     const items = payload?.items || [];
     state.pager.total = payload?.total || items.length;
-
     state.templateCache = state.templateCache.concat(items);
     renderTemplateList(items, !reset);
-  } catch (e) {
-    console.error(e);
-    $msg('error', '加载模板失败：' + (e?.message || e));
+  } catch (err) {
+    console.error(err);
+    $msg('error', '加载模板失败：' + (err?.message || err));
   } finally {
     state.pager.loading = false;
   }
@@ -518,55 +582,63 @@ async function onSaveTemplate() {
     return;
   }
   if (!nodes.length) {
-    $msg('error', '请至少填写一个节点');
+    $msg('error', '请填写至少一个节点');
     return;
   }
 
-  const name = prompt('为该区域命名：', `${factory}-${system}-区域`);
-  if (name == null || name.trim() === '') return;
+  const name = prompt('请输入区域名称（例如：大东厂区-区域A）');
+  if (!name || !name.trim()) {
+    $msg('warning', '已取消保存');
+    return;
+  }
 
   try {
-    setButtonLoading('btn-save-template', true);
+    setButtonLoading('btn-save-template', true, { text: '保存中...' });
     const res = await fetch('/api/templates', {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      headers: { 'Content-Type':'application/json' },
       body: JSON.stringify({ name: name.trim(), factory, system, nodes })
     });
     const data = await res.json();
     if (!data?.success) throw new Error(data?.error || '保存失败');
-
+    $msg('success', '区域模板已保存');
     exitAddTemplateMode();
-    $msg('success', '模板已保存');
     reloadTemplates(true);
-  } catch (e) {
-    console.error(e);
-    $msg('error', '保存失败：' + (e?.message || e));
+  } catch (err) {
+    $msg('error', '保存失败：' + (err?.message || err));
   } finally {
     setButtonLoading('btn-save-template', false);
-    restoreSaveTemplateBtnLabel();
   }
 }
 
 async function editTemplate(t) {
-  const newName = prompt('模板名称：', t.name);
-  if (newName == null) return;
-  const newNodesStr = prompt('节点（英文逗号分隔）：', (t.nodes || []).join(','));
-  if (newNodesStr == null) return;
+  const newName = prompt('新的区域名称', t.name || '');
+  if (!newName || !newName.trim()) {
+    $msg('warning', '未输入名称，已取消编辑');
+    return;
+  }
+  const nodes = prompt('更新节点（英文逗号分隔）', (t.nodes || []).join(',')) || '';
+  const parsedNodes = parseNodes(nodes);
+  if (!parsedNodes.length) {
+    $msg('error', '请至少填写一个节点');
+    return;
+  }
+  await updateTemplateNodes(t.id, newName, parsedNodes);
+}
 
-  const nodes = parseNodes(newNodesStr);
-
+async function updateTemplateNodes(id, name, nodes) {
   try {
-    const res = await fetch(`/api/templates/${encodeURIComponent(t.id)}`, {
+    const res = await fetch(`/api/templates/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ name: newName.trim(), nodes })
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ name: name.trim(), nodes })
     });
     const data = await res.json();
     if (!data?.success) throw new Error(data?.error || '保存失败');
     $msg('success', '模板已更新');
     reloadTemplates(true);
-  } catch (e) {
-    $msg('error', '更新失败：' + (e?.message || e));
+  } catch (err) {
+    $msg('error', '更新失败：' + (err?.message || err));
   }
 }
 
@@ -579,46 +651,48 @@ async function deleteTemplate(t) {
     if (state.selectedTemplate && state.selectedTemplate.id === t.id) exitSelectedTemplateMode();
     $msg('success', '模板已删除');
     reloadTemplates(true);
-  } catch (e) {
-    $msg('error', '删除失败：' + (e?.message || e));
+  } catch (err) {
+    $msg('error', '删除失败：' + (err?.message || err));
   }
 }
 
-/* ---------------- 公共：下拉/节点/接口封装 ---------------- */
+/* ---------------- 公共工具 ---------------- */
 
 async function loadFactories() {
   const sel = qs('#factory-select');
   if (!sel) return;
   try {
-    const res = await fetch('/api/factories');
-    const list = await res.json();
-    sel.innerHTML = `<option value="">-- 请选择厂区 --</option>`;
+    const list = await api.getFactories();
+    sel.innerHTML = '<option value="">-- 请选择厂区 --</option>';
     (list || []).forEach(f => {
       const opt = document.createElement('option');
-      opt.value = f.id; opt.textContent = f.name;
+      opt.value = f.id;
+      opt.textContent = f.name;
       sel.appendChild(opt);
     });
-  } catch (_) {}
+  } catch (err) {
+    $msg('error', '加载厂区失败：' + (err?.message || err));
+  }
 }
 
 async function loadSystems(factoryId) {
   const sel = qs('#system-select');
   if (!sel) return;
   if (!factoryId) {
-    sel.innerHTML = `<option value="">-- 请选择系统 --</option>`;
+    sel.innerHTML = '<option value="">-- 请选择系统 --</option>';
     return;
   }
   try {
-    const res = await fetch(`/api/systems?factory=${encodeURIComponent(factoryId)}`);
-    const list = await res.json();
-    sel.innerHTML = `<option value="">-- 请选择系统 --</option>`;
+    const list = await api.getSystems(factoryId);
+    sel.innerHTML = '<option value="">-- 请选择系统 --</option>';
     (list || []).forEach(s => {
       const opt = document.createElement('option');
-      opt.value = s.id; opt.textContent = s.name;
+      opt.value = s.id;
+      opt.textContent = s.name;
       sel.appendChild(opt);
     });
-  } catch (e) {
-    $msg('error','加载系统失败：' + (e?.message || e));
+  } catch (err) {
+    $msg('error', '加载系统失败：' + (err?.message || err));
   }
 }
 
@@ -627,8 +701,8 @@ function parseNodes(str) {
     .split(',')
     .map(s => s.trim())
     .filter(Boolean)
-    .filter(x => /^\d{1,6}$/.test(x))       // 简单校验：1~6位数字
-    .filter((v, i, arr) => arr.indexOf(v) === i); // 去重
+    .filter(x => /^\d{1,6}$/.test(x))
+    .filter((v, i, arr) => arr.indexOf(v) === i);
 }
 
 function fillSelectValue(sel, val) {
@@ -637,33 +711,32 @@ function fillSelectValue(sel, val) {
   if (opt) sel.value = val;
 }
 
-/* ---------------- 结果渲染（下载页的表格 + 勾选） ---------------- */
+function selectHasOption(sel, val) {
+  if (!sel || val === undefined || val === null) return false;
+  return Array.from(sel.options || []).some((o) => o.value == val);
+}
 
 function renderLogs(list) {
-  const tbody = qs('#logs-search-body'); // 下载页结果表
+  const tbody = qs('#logs-search-body');
   if (!tbody) return;
-
   state.searchResults = Array.isArray(list) ? list : [];
   state.selectedLogPaths.clear();
 
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="message-empty">未找到日志</td></tr>`;
+    tbody.innerHTML = '<tr><td colspan="7" class="message-empty">未找到日志</td></tr>';
     updateDownloadButton();
     return;
   }
 
   tbody.innerHTML = '';
-
   list.forEach((item) => {
     const tr = document.createElement('tr');
-
     const size = humanSize(item.size || 0);
     const node = item.node || extractNodeFromName(item.name || '');
     const type = item.type || '-';
     const mtime = item.mtime || item.timestamp || '-';
     const path = item.path || item.remote_path || '';
 
-    // 选择列
     const tdSel = document.createElement('td');
     const chk = document.createElement('input');
     chk.type = 'checkbox';
@@ -677,7 +750,6 @@ function renderLogs(list) {
         state.selectedLogPaths.add(p);
       } else {
         state.selectedLogPaths.delete(p);
-        // 取消“全选”勾选（如果有）
         const allChk = qs('#logs-check-all');
         if (allChk && allChk.checked) allChk.checked = false;
       }
@@ -686,32 +758,26 @@ function renderLogs(list) {
     tdSel.appendChild(chk);
     tr.appendChild(tdSel);
 
-    // 文件名
     const tdName = document.createElement('td');
     tdName.textContent = item.name || '';
     tr.appendChild(tdName);
 
-    // 节点
     const tdNode = document.createElement('td');
     tdNode.textContent = String(node);
     tr.appendChild(tdNode);
 
-    // 类型
     const tdType = document.createElement('td');
     tdType.textContent = type;
     tr.appendChild(tdType);
 
-    // 大小
     const tdSize = document.createElement('td');
     tdSize.textContent = size;
     tr.appendChild(tdSize);
 
-    // 时间
     const tdTime = document.createElement('td');
     tdTime.textContent = mtime;
     tr.appendChild(tdTime);
 
-    // 路径
     const tdPath = document.createElement('td');
     tdPath.title = path;
     tdPath.textContent = path;
@@ -724,12 +790,27 @@ function renderLogs(list) {
 }
 
 function humanSize(bytes) {
-  const units = ['B','KB','MB','GB','TB']; let i = 0; let n = +bytes || 0;
-  while (n >= 1024 && i < units.length-1) { n /= 1024; i++; }
+  const units = ['B','KB','MB','GB','TB'];
+  let i = 0;
+  let n = +bytes || 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i++;
+  }
   return `${n.toFixed(1)} ${units[i]}`;
 }
 
-function extractNodeFromName(name='') {
+function extractNodeFromName(name = '') {
   const m = name.match(/tcp_trace\.(\d+)/);
   return m ? m[1] : '';
+}
+
+function syncLogCheckboxes() {
+  const tbody = qs('#logs-search-body');
+  if (!tbody) return;
+  qsa('input[type="checkbox"].log-select', tbody).forEach(chk => {
+    const path = chk.dataset.remotePath || chk.dataset.path || '';
+    chk.checked = !!(path && state.selectedLogPaths.has(path));
+  });
+  updateDownloadButton();
 }

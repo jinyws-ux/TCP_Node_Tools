@@ -2,18 +2,23 @@
 import json
 import logging
 import os
-from typing import Dict, List
+from typing import Any, Dict, List
 import webbrowser
 import subprocess
 import platform
 
-from flask import Flask, render_template, request, jsonify, send_from_directory, Response
+from flask import Blueprint, Flask, render_template, request, jsonify, send_from_directory, Response
 
-from core import template_manager
+from core.analysis_service import AnalysisService
 from core.config_manager import ConfigManager
+from core.download_service import DownloadService
 from core.log_analyzer import LogAnalyzer
 from core.log_downloader import LogDownloader
 from core.parser_config_manager import ParserConfigManager
+from core.parser_config_service import ParserConfigService
+from core.report_mapping_store import ReportMappingStore
+from core.server_config_service import ServerConfigService
+from core.template_manager import TemplateManager
 
 app = Flask(__name__)
 
@@ -51,9 +56,38 @@ os.makedirs(PARSER_CONFIGS_DIR, exist_ok=True)
 os.makedirs(REGION_TEMPLATES_DIR, exist_ok=True)
 
 # 报告映射文件路径
-REPORT_MAPPING_FILE = os.path.join(base_dir, 'report_mappings.json')
+REPORT_MAPPING_FILE = os.path.join(HTML_LOGS_DIR, 'report_mappings.json')
+
+# 服务对象
+region_template_manager = TemplateManager(REGION_TEMPLATES_DIR)
+download_service = DownloadService(log_downloader, region_template_manager)
+report_mapping_store = ReportMappingStore(REPORT_MAPPING_FILE)
+parser_config_service = ParserConfigService(parser_config_manager)
+server_config_service = ServerConfigService(
+    config_manager,
+    region_template_manager,
+    parser_config_service,
+)
+analysis_service = AnalysisService(
+    log_downloader=log_downloader,
+    log_analyzer=log_analyzer,
+    report_store=report_mapping_store,
+)
 
 app.config['HTML_LOGS_DIR'] = HTML_LOGS_DIR
+
+
+# 通用工具
+def _get_bool(payload: Dict[str, Any], *keys, default: bool = False) -> bool:
+    for key in keys:
+        if key in payload:
+            value = payload.get(key)
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                return value.lower() in {'1', 'true', 'yes', 'on'}
+            return bool(value)
+    return default
 
 
 # 初始化配置文件
@@ -80,278 +114,6 @@ def init_config_files():
 
     # 创建解析配置文件目录
     os.makedirs(PARSER_CONFIGS_DIR, exist_ok=True)
-
-
-def load_report_mappings() -> Dict[str, str]:
-    """加载报告映射关系"""
-    try:
-        if os.path.exists(REPORT_MAPPING_FILE):
-            with open(REPORT_MAPPING_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return {}
-    except Exception as e:
-        logger.error(f"加载报告映射失败: {str(e)}")
-        return {}
-
-
-# 添加报告映射管理函数
-def save_report_mappings(log_paths: List[str], report_path: str):
-    """保存日志文件到报告的映射关系"""
-    try:
-        mapping_file = os.path.join(app.config['HTML_LOGS_DIR'], 'report_mappings.json')
-        mappings = {}
-
-        # 加载现有映射
-        if os.path.exists(mapping_file):
-            with open(mapping_file, 'r', encoding='utf-8') as f:
-                mappings = json.load(f)
-
-        # 更新映射
-        for log_path in log_paths:
-            mappings[log_path] = report_path
-
-        # 保存映射
-        with open(mapping_file, 'w', encoding='utf-8') as f:
-            json.dump(mappings, f, indent=2, ensure_ascii=False)
-
-        logger.info(f"保存报告映射: {len(log_paths)}个日志文件 -> {report_path}")
-        return True
-    except Exception as e:
-        logger.error(f"保存报告映射失败: {str(e)}")
-        return False
-
-
-def get_report_path(log_path: str) -> str:
-    """获取日志文件对应的报告路径"""
-    try:
-        mapping_file = os.path.join(app.config['HTML_LOGS_DIR'], 'report_mappings.json')
-        if os.path.exists(mapping_file):
-            with open(mapping_file, 'r', encoding='utf-8') as f:
-                mappings = json.load(f)
-                return mappings.get(log_path, '')
-        return ''
-    except Exception as e:
-        logger.error(f"获取报告路径失败: {str(e)}")
-        return ''
-
-
-def build_config_tree(config, factory, system):
-    """构建配置的树形结构"""
-    tree_data = []
-
-    for message_type, message_config in config.items():
-        message_node = {
-            'type': 'message_type',
-            'name': message_type,
-            'description': message_config.get('Description', ''),
-            'path': f'{factory}/{system}/{message_type}',
-            'children': []
-        }
-
-        # 处理版本
-        versions = message_config.get('Versions', {})
-        for version, version_config in versions.items():
-            version_node = {
-                'type': 'version',
-                'name': version,
-                'path': f'{factory}/{system}/{message_type}/{version}',
-                'parent': message_type,
-                'children': []
-            }
-
-            # 处理字段
-            fields = version_config.get('Fields', {})
-            for field, field_config in fields.items():
-                field_node = {
-                    'type': 'field',
-                    'name': field,
-                    'path': f'{factory}/{system}/{message_type}/{version}/{field}',
-                    'parent': message_type,
-                    'version': version,
-                    'start': field_config.get('Start', 0),
-                    'length': field_config.get('Length', -1),
-                    'has_escapes': bool(field_config.get('Escapes')),
-                    'children': []
-                }
-
-                # 处理转义值
-                escapes = field_config.get('Escapes', {})
-                for escape_key, escape_value in escapes.items():
-                    escape_node = {
-                        'type': 'escape',
-                        'name': escape_key,
-                        'value': escape_value,
-                        'path': f'{factory}/{system}/{message_type}/{version}/{field}/{escape_key}',
-                        'parent': message_type,
-                        'version': version,
-                        'field': field
-                    }
-                    field_node['children'].append(escape_node)
-
-                version_node['children'].append(field_node)
-
-            message_node['children'].append(version_node)
-
-        tree_data.append(message_node)
-
-    return tree_data
-
-
-def calculate_config_stats(config):
-    """计算配置统计信息"""
-    stats = {
-        'message_types': 0,
-        'versions': 0,
-        'fields': 0,
-        'escapes': 0
-    }
-
-    if not config:
-        return stats
-
-    stats['message_types'] = len(config)
-
-    for message_config in config.values():
-        versions = message_config.get('Versions', {})
-        stats['versions'] += len(versions)
-
-        for version_config in versions.values():
-            fields = version_config.get('Fields', {})
-            stats['fields'] += len(fields)
-
-            for field_config in fields.values():
-                escapes = field_config.get('Escapes', {})
-                stats['escapes'] += len(escapes)
-
-    return stats
-
-
-def search_in_config(config, query, search_type, factory, system):
-    """在配置中搜索"""
-    results = []
-    query_lower = query.lower()
-
-    for message_type, message_config in config.items():
-        # 搜索报文类型
-        if search_type in ['all', 'message_type']:
-            if (query_lower in message_type.lower() or
-                    (message_config.get('Description') and query_lower in message_config['Description'].lower())):
-                results.append({
-                    'type': 'message_type',
-                    'name': message_type,
-                    'description': message_config.get('Description', ''),
-                    'path': f'{factory}/{system}/{message_type}',
-                    'match_type': 'name' if query_lower in message_type.lower() else 'description'
-                })
-
-        # 搜索版本
-        versions = message_config.get('Versions', {})
-        for version in versions.keys():
-            if search_type in ['all', 'version'] and query_lower in version.lower():
-                results.append({
-                    'type': 'version',
-                    'name': version,
-                    'path': f'{factory}/{system}/{message_type}/{version}',
-                    'parent': message_type,
-                    'match_type': 'name'
-                })
-
-        # 搜索字段
-        for version, version_config in versions.items():
-            fields = version_config.get('Fields', {})
-            for field, field_config in fields.items():
-                if search_type in ['all', 'field'] and query_lower in field.lower():
-                    results.append({
-                        'type': 'field',
-                        'name': field,
-                        'path': f'{factory}/{system}/{message_type}/{version}/{field}',
-                        'parent': message_type,
-                        'version': version,
-                        'start': field_config.get('Start', 0),
-                        'length': field_config.get('Length', -1),
-                        'match_type': 'name'
-                    })
-
-                # 搜索转义值
-                escapes = field_config.get('Escapes', {})
-                for escape_key, escape_value in escapes.items():
-                    if (search_type in ['all', 'escape'] and
-                            (query_lower in escape_key.lower() or query_lower in str(escape_value).lower())):
-                        results.append({
-                            'type': 'escape',
-                            'name': escape_key,
-                            'value': escape_value,
-                            'path': f'{factory}/{system}/{message_type}/{version}/{field}/{escape_key}',
-                            'parent': message_type,
-                            'version': version,
-                            'field': field,
-                            'match_type': 'escape'
-                        })
-
-    return results
-
-
-def validate_parser_config(config):
-    """验证解析配置的结构"""
-    if not isinstance(config, dict):
-        return {'valid': False, 'message': '配置必须是字典类型'}
-
-    for message_type, message_config in config.items():
-        if not isinstance(message_config, dict):
-            return {'valid': False, 'message': f'报文类型 {message_type} 的配置必须是字典类型'}
-
-        # 检查版本配置
-        versions = message_config.get('Versions', {})
-        if not isinstance(versions, dict):
-            return {'valid': False, 'message': f'报文类型 {message_type} 的版本配置必须是字典类型'}
-
-        for version, version_config in versions.items():
-            if not isinstance(version_config, dict):
-                return {'valid': False, 'message': f'版本 {version} 的配置必须是字典类型'}
-
-            # 检查字段配置
-            fields = version_config.get('Fields', {})
-            if not isinstance(fields, dict):
-                return {'valid': False, 'message': f'版本 {version} 的字段配置必须是字典类型'}
-
-            for field, field_config in fields.items():
-                if not isinstance(field_config, dict):
-                    return {'valid': False, 'message': f'字段 {field} 的配置必须是字典类型'}
-
-                # 检查必要的字段属性
-                if 'Start' not in field_config:
-                    return {'valid': False, 'message': f'字段 {field} 缺少 Start 属性'}
-
-                if not isinstance(field_config.get('Start'), int) or field_config['Start'] < 0:
-                    return {'valid': False, 'message': f'字段 {field} 的 Start 必须是大于等于0的整数'}
-
-                if 'Length' in field_config and field_config['Length'] is not None:
-                    if not isinstance(field_config['Length'], int) or field_config['Length'] < -1:
-                        return {'valid': False, 'message': f'字段 {field} 的 Length 必须是大于等于-1的整数'}
-
-    return {'valid': True, 'message': '配置验证通过'}
-
-
-def apply_config_updates(existing_config, updates):
-    """应用配置更新"""
-    # 深度拷贝现有配置
-    import copy
-    updated_config = copy.deepcopy(existing_config)
-
-    # 应用更新（这里可以根据需要实现更复杂的更新逻辑）
-    for key, value in updates.items():
-        # 简单的深度更新逻辑
-        keys = key.split('.')
-        current = updated_config
-
-        for k in keys[:-1]:
-            if k not in current:
-                current[k] = {}
-            current = current[k]
-
-        current[keys[-1]] = value
-
-    return updated_config
 
 
 # 路由定义
@@ -390,28 +152,21 @@ def get_systems():
 def get_server_configs():
     """获取服务器配置列表"""
     try:
-        configs = config_manager.get_server_configs()
+        configs = server_config_service.list_configs()
         logger.info(f"成功获取服务器配置列表，共{len(configs)}个配置")
-        return jsonify(configs)
+        return jsonify({'success': True, 'configs': configs, 'total': len(configs)})
     except Exception as e:
         logger.error(f"获取服务器配置列表失败: {str(e)}")
-        return jsonify({'error': '获取服务器配置列表失败'}), 500
+        return jsonify({'success': False, 'error': '获取服务器配置列表失败'}), 500
 
 
 @app.route('/api/save-config', methods=['POST'])
 def save_server_config():
     """保存服务器配置"""
     try:
-        data = request.json
-        factory = data.get('factory')
-        system = data.get('system')
-        server = data.get('server')
-
-        if not factory or not system or not server:
-            return jsonify({'success': False, 'error': '缺少必要参数'}), 400
-
-        new_config = config_manager.add_server_config(factory, system, server)
-        return jsonify({'success': True, 'config': new_config})
+        data = request.get_json(force=True) or {}
+        config = server_config_service.create(data)
+        return jsonify({'success': True, 'config': config})
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
@@ -423,41 +178,17 @@ def save_server_config():
 def update_server_config():
     """更新服务器配置 - 修复更新逻辑"""
     try:
-        data = request.json
-        config_id = data.get('id')
-        factory = data.get('factory')
-        system = data.get('system')
-        server = data.get('server')
-
-        logger.info(f"更新服务器配置请求: ID={config_id}, 厂区={factory}, 系统={system}")
-
-        if not config_id:
-            return jsonify({'success': False, 'error': '缺少配置ID'}), 400
-
-        if not factory or not system or not server:
-            return jsonify({'success': False, 'error': '缺少必要参数'}), 400
-
-        # 验证服务器配置字段
-        required_server_fields = ['alias', 'hostname', 'username', 'password']
-        for field in required_server_fields:
-            if field not in server or not server[field]:
-                return jsonify({'success': False, 'error': f'服务器配置缺少字段: {field}'}), 400
-
-        # 调用配置管理器更新配置
-        success = config_manager.update_server_config(config_id, factory, system, server)
-
-        if success:
-            updated_count = tm.update_by_server(
-                server_config_id=config_id,
-                factory_name=factory,
-                system_name=system
-            )
-            logger.info(f"联动更新模板：server={config_id}, count={updated_count}")
-            return jsonify({'success': True, 'updated_templates': updated_count})
-        else:
-            logger.error(f"更新服务器配置失败: {config_id}")
-            return jsonify({'success': False, 'error': '更新配置失败，配置可能不存在'}), 404
-
+        data = request.get_json(force=True) or {}
+        updated = server_config_service.update(data)
+        logger.info(
+            "更新服务器配置成功: ID=%s, 厂区=%s, 系统=%s",
+            updated.get('id'),
+            updated.get('factory'),
+            updated.get('system'),
+        )
+        return jsonify({'success': True, 'config': updated})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         logger.error(f"更新服务器配置失败: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -467,18 +198,14 @@ def update_server_config():
 def delete_config():
     """删除服务器配置"""
     try:
-        data = request.json
-        config_id = data.get('id')
-
-        if not config_id:
-            return jsonify({'success': False, 'error': '缺少配置ID'}), 400
-
-        if config_manager.delete_server_config(config_id):
-            deleted_tpls = tm.delete_by_server(config_id)
-            logger.info(f"删除服务器配置后级联删除模板：server={config_id}, deleted={deleted_tpls}")
-            return jsonify({'success': True, 'deleted_templates': deleted_tpls})
-        else:
-            return jsonify({'success': False, 'error': '删除配置失败'}), 500
+        data = request.get_json(force=True) or {}
+        result = server_config_service.delete(data.get('id'))
+        logger.info(
+            "删除服务器配置后级联删除模板：server=%s, deleted=%s",
+            result.get('id'),
+            result.get('deleted_templates'),
+        )
+        return jsonify({'success': True, **result})
     except Exception as e:
         logger.error(f"删除配置失败: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -517,24 +244,15 @@ def get_parser_config():
 
         logger.info(f"获取解析配置: {factory}/{system}, 格式: {format_type}")
 
-        # 加载配置
-        config = parser_config_manager.load_config(factory, system)
-        if not config:
-            logger.warning(f"未找到解析配置: {factory}/{system}")
-            return jsonify({'success': True, 'config': {}})
-
-        # 根据请求格式返回不同结构的数据
         if format_type == 'tree':
-            # 返回树形结构数据
-            tree_data = build_config_tree(config, factory, system)
+            tree_data = parser_config_service.build_tree(factory, system)
             return jsonify({'success': True, 'tree': tree_data})
-        elif format_type == 'stats':
-            # 返回统计信息
-            stats = calculate_config_stats(config)
+        if format_type == 'stats':
+            stats = parser_config_service.collect_stats(factory, system)
             return jsonify({'success': True, 'stats': stats})
-        else:
-            # 返回完整配置
-            return jsonify({'success': True, 'config': config})
+
+        config = parser_config_service.load_config(factory, system)
+        return jsonify({'success': True, 'config': config})
 
     except Exception as e:
         logger.error(f"获取解析配置失败: {str(e)}")
@@ -553,11 +271,7 @@ def get_parser_config_tree():
 
         logger.info(f"获取解析配置树形结构: {factory}/{system}")
 
-        config = parser_config_manager.load_config(factory, system)
-        if not config:
-            return jsonify({'success': True, 'tree': []})
-
-        tree_data = build_config_tree(config, factory, system)
+        tree_data = parser_config_service.build_tree(factory, system)
         return jsonify({'success': True, 'tree': tree_data})
 
     except Exception as e:
@@ -722,24 +436,7 @@ def get_parser_config_stats():
         if not factory or not system:
             return jsonify({'success': False, 'error': '缺少厂区或系统参数'}), 400
 
-        config = parser_config_manager.load_config(factory, system)
-        if not config:
-            return jsonify({'success': True, 'stats': {
-                'message_types': 0,
-                'versions': 0,
-                'fields': 0,
-                'escapes': 0,
-                'last_modified': None
-            }})
-
-        stats = calculate_config_stats(config)
-
-        # 添加文件信息
-        config_path = parser_config_manager.get_config_path(factory, system)
-        if os.path.exists(config_path):
-            stats['last_modified'] = os.path.getmtime(config_path)
-            stats['file_size'] = os.path.getsize(config_path)
-
+        stats = parser_config_service.collect_stats(factory, system)
         return jsonify({'success': True, 'stats': stats})
 
     except Exception as e:
@@ -765,11 +462,7 @@ def search_parser_config():
 
         logger.info(f"搜索解析配置: {factory}/{system}, 关键词: {query}, 类型: {search_type}")
 
-        config = parser_config_manager.load_config(factory, system)
-        if not config:
-            return jsonify({'success': True, 'results': []})
-
-        results = search_in_config(config, query, search_type, factory, system)
+        results = parser_config_service.search(factory, system, query, search_type)
         return jsonify({'success': True, 'results': results, 'query': query})
 
     except Exception as e:
@@ -795,31 +488,14 @@ def save_parser_config():
 
         logger.info(f"保存解析配置: {factory}/{system}")
 
-        # 验证配置结构
-        validation_result = validate_parser_config(config)
-        if not validation_result['valid']:
-            return jsonify({
-                'success': False,
-                'error': '配置验证失败: ' + validation_result['message']
-            }), 400
-
-        # 保存配置
-        success = parser_config_manager.save_config(factory, system, config)
-        if success:
-            logger.info(f"成功保存解析配置: {factory}/{system}")
-
-            # 返回更新后的配置信息
-            updated_config = parser_config_manager.load_config(factory, system)
-            stats = calculate_config_stats(updated_config) if updated_config else {}
-
-            return jsonify({
-                'success': True,
-                'message': '配置保存成功',
-                'stats': stats
-            })
-        else:
-            logger.error(f"保存解析配置失败: {factory}/{system}")
-            return jsonify({'success': False, 'error': '保存配置失败'}), 500
+        parser_config_service.save(factory, system, config)
+        stats = parser_config_service.collect_stats(factory, system)
+        logger.info(f"成功保存解析配置: {factory}/{system}")
+        return jsonify({
+            'success': True,
+            'message': '配置保存成功',
+            'stats': stats
+        })
 
     except Exception as e:
         logger.error(f"保存解析配置失败: {str(e)}")
@@ -840,30 +516,9 @@ def update_parser_config():
 
         logger.info(f"更新解析配置: {factory}/{system}")
 
-        # 加载现有配置
-        existing_config = parser_config_manager.load_config(factory, system)
-        if not existing_config:
-            return jsonify({'success': False, 'error': '未找到现有配置'}), 404
-
-        # 应用更新
-        updated_config = apply_config_updates(existing_config, updates)
-
-        # 验证更新后的配置
-        validation_result = validate_parser_config(updated_config)
-        if not validation_result['valid']:
-            return jsonify({
-                'success': False,
-                'error': '配置验证失败: ' + validation_result['message']
-            }), 400
-
-        # 保存更新后的配置
-        success = parser_config_manager.save_config(factory, system, updated_config)
-        if success:
-            logger.info(f"成功更新解析配置: {factory}/{system}")
-            return jsonify({'success': True, 'message': '配置更新成功'})
-        else:
-            logger.error(f"更新解析配置失败: {factory}/{system}")
-            return jsonify({'success': False, 'error': '更新配置失败'}), 500
+        parser_config_service.update(factory, system, updates)
+        logger.info(f"成功更新解析配置: {factory}/{system}")
+        return jsonify({'success': True, 'message': '配置更新成功'})
 
     except Exception as e:
         logger.error(f"更新解析配置失败: {str(e)}")
@@ -951,59 +606,11 @@ def clear_parser_config():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/search-logs', methods=['POST'])
-def search_logs():
-    """搜索服务器上的日志文件"""
-    try:
-        data = request.json
-        factory = data.get('factory')
-        system = data.get('system')
-        node = data.get('node')
-        include_realtime = data.get('includeRealtime', True)
-        include_archive = data.get('includeArchive', False)
-        date_start = data.get('dateStart')
-        date_end = data.get('dateEnd')
-
-        if not factory or not system or not node:
-            return jsonify({'success': False, 'error': '缺少必要参数'}), 400
-
-        log_files = log_downloader.search_logs(
-            factory, system, node, include_realtime, include_archive, date_start, date_end
-        )
-        return jsonify({'success': True, 'log_files': log_files})
-    except Exception as e:
-        logger.error(f"搜索日志失败: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/download-logs', methods=['POST'])
-def download_logs():
-    """下载选中的日志文件"""
-    try:
-        data = request.json
-        log_files = data.get('files')
-        factory = data.get('factory')
-        system = data.get('system')
-        node = data.get('node')
-
-        if not log_files or not factory or not system or not node:
-            return jsonify({'success': False, 'error': '缺少必要参数'}), 400
-
-        downloaded_files = log_downloader.download_logs(log_files, factory, system, node)
-        return jsonify({
-            'success': True,
-            'downloaded_files': downloaded_files
-        })
-    except Exception as e:
-        logger.error(f"下载日志失败: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
 @app.route('/api/downloaded-logs', methods=['GET'])
 def get_downloaded_logs():
     """获取已下载的日志列表"""
     try:
-        logs = log_downloader.get_downloaded_logs()
+        logs = analysis_service.list_downloaded_logs()
         return jsonify({'success': True, 'logs': logs})
     except Exception as e:
         logger.error(f"获取已下载日志失败: {str(e)}")
@@ -1017,52 +624,26 @@ def analyze_logs():
         data = request.json
         log_paths = data.get('logs')
         config_id = data.get('config')
+        if not config_id:
+            return jsonify({'success': False, 'error': '请选择解析配置'}), 400
 
-        if not log_paths or not config_id:
-            return jsonify({'success': False, 'error': '缺少必要参数'}), 400
-
-        # 从配置ID中提取厂区和系统信息
-        config_filename = config_id
-        if config_filename.endswith('.json'):
-            config_filename = config_filename[:-5]
-
-        parts = config_filename.split('_')
-        if len(parts) >= 2:
-            factory = parts[0]
-            system = parts[1]
-        else:
-            return jsonify({'success': False, 'error': '无效的配置ID'}), 400
-
-        # 调用日志分析器
-        result = log_analyzer.analyze_logs(log_paths, factory, system)
-
-        # 保存报告映射关系
-        if result.get('success'):
-            report_path = result.get('html_report')
-            if report_path:
-                save_report_mappings(log_paths, report_path)
+        try:
+            result = analysis_service.analyze_logs(
+                log_paths,
+                config_id,
+                options={
+                    'generate_html': _get_bool(data or {}, 'generate_html', default=True),
+                    'generate_original_log': _get_bool(data or {}, 'generate_original_log', default=True),
+                    'generate_sorted_log': _get_bool(data or {}, 'generate_sorted_log', default=True),
+                }
+            )
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
 
         return jsonify(result)
 
     except Exception as e:
         logger.error(f"分析日志失败: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/view-log', methods=['POST'])
-def view_log():
-    """查看日志文件内容"""
-    try:
-        data = request.json
-        log_path = data.get('path')
-
-        if not log_path:
-            return jsonify({'success': False, 'error': '缺少日志路径'}), 400
-
-        result = log_analyzer.view_log_content(log_path)
-        return jsonify(result)
-    except Exception as e:
-        logger.error(f"查看日志内容失败: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -1076,7 +657,10 @@ def delete_log():
         if not log_path:
             return jsonify({'success': False, 'error': '缺少日志路径'}), 400
 
-        result = log_analyzer.delete_log(log_path)
+        try:
+            result = analysis_service.delete_log(log_path)
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
         return jsonify(result)
     except Exception as e:
         logger.error(f"删除日志失败: {str(e)}")
@@ -1292,21 +876,9 @@ def import_parser_config():
         else:
             return jsonify({'success': False, 'error': '不支持的文件格式'}), 400
 
-        # 验证配置
-        validation_result = validate_parser_config(config)
-        if not validation_result['valid']:
-            return jsonify({
-                'success': False,
-                'error': '配置验证失败: ' + validation_result['message']
-            }), 400
-
-        # 保存配置
-        success = parser_config_manager.save_config(factory, system, config)
-        if success:
-            logger.info(f"成功导入解析配置: {factory}/{system}")
-            return jsonify({'success': True, 'message': '配置导入成功'})
-        else:
-            return jsonify({'success': False, 'error': '导入配置失败'}), 500
+        parser_config_service.save(factory, system, config)
+        logger.info(f"成功导入解析配置: {factory}/{system}")
+        return jsonify({'success': True, 'message': '配置导入成功'})
 
     except Exception as e:
         logger.error(f"导入解析配置失败: {str(e)}")
@@ -1321,17 +893,12 @@ def check_report():
         data = request.json
         log_path = data.get('log_path')
 
-        if not log_path:
-            return jsonify({'success': False, 'error': '缺少日志路径'})
+        try:
+            result = analysis_service.check_report(log_path)
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
 
-        report_path = get_report_path(log_path)
-        has_report = os.path.exists(report_path) if report_path else False
-
-        return jsonify({
-            'success': True,
-            'has_report': has_report,
-            'report_path': report_path
-        })
+        return jsonify(result)
 
     except Exception as e:
         logger.error(f"检查报告状态失败: {str(e)}")
@@ -1441,7 +1008,7 @@ def open_reports_directory():
     """打开报告目录"""
     try:
         # 获取报告目录
-        reports_dir = app.config['HTML_LOGS_DIR']
+        reports_dir = analysis_service.get_reports_directory() or app.config['HTML_LOGS_DIR']
 
         if not os.path.exists(reports_dir):
             logger.error(f"报告目录不存在: {reports_dir}")
@@ -1516,11 +1083,8 @@ def delete_config_item():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # --- server.py 里：Templates API（使用 core/template_manager.TemplateManager） ---
-from flask import Blueprint, request, jsonify
-from core.template_manager import TemplateManager as TM
-
 templates_bp = Blueprint("templates_api", __name__)
-tm = TM(base_dir=REGION_TEMPLATES_DIR)
+tm = region_template_manager
 
 def _parse_nodes(nodes_or_text):
     """允许数组或逗号分隔字符串"""
@@ -1612,117 +1176,70 @@ app.register_blueprint(templates_bp)
 
 @app.route('/api/logs/search', methods=['POST'])
 def api_logs_search():
-    """
-    前端普通模式用：
-    - 接受 nodes (数组) 或 node (字符串)
-    - include_realtime/includeRealtime、include_archive/includeArchive 兼容
-    - 若 include_archive=True，则必须提供 date_start/date_end（或 camelCase）
-    - 返回 {success, logs:[...]}，并统一补齐 path 字段
-    """
     try:
         data = request.get_json(force=True) or {}
 
-        factory = data.get('factory')
-        system  = data.get('system')
-
-        nodes = data.get('nodes') or []
-        single_node = data.get('node') or ''
-        if not nodes and single_node:
-            nodes = [single_node]
-
-        include_realtime = data.get('include_realtime')
-        if include_realtime is None:
-            include_realtime = data.get('includeRealtime', True)
-
-        include_archive = data.get('include_archive')
-        if include_archive is None:
-            include_archive = data.get('includeArchive', False)
-
-        date_start = data.get('date_start') or data.get('dateStart')
-        date_end   = data.get('date_end')   or data.get('dateEnd')
-
-        if not factory or not system:
-            return jsonify({"success": False, "error": "缺少厂区或系统参数"}), 400
-
-        if include_archive and (not date_start or not date_end):
-            return jsonify({"success": False, "error": "归档搜索需要提供开始/结束日期"}), 400
-
-        if nodes and len(nodes) > 1:
-            logs = log_downloader.search_logs_many_nodes(
-                factory=factory, system=system, nodes=nodes,
-                include_realtime=include_realtime, include_archive=include_archive,
-                date_start=date_start, date_end=date_end
-            )
-        else:
-            node = nodes[0] if nodes else ''
-            logs = log_downloader.search_logs(
-                factory=factory, system=system, node=node,
-                include_realtime=include_realtime, include_archive=include_archive,
-                date_start=date_start, date_end=date_end
-            )
-
-        for it in logs:
-            it['path'] = it.get('remote_path') or it.get('path') or it.get('name', '')
+        logs = download_service.search(
+            factory=data.get('factory') or '',
+            system=data.get('system') or '',
+            nodes=data.get('nodes'),
+            node=data.get('node'),
+            include_realtime=_get_bool(data, 'include_realtime', 'includeRealtime', default=True),
+            include_archive=_get_bool(data, 'include_archive', 'includeArchive', default=False),
+            date_start=data.get('date_start') or data.get('dateStart'),
+            date_end=data.get('date_end') or data.get('dateEnd'),
+        )
 
         return jsonify({"success": True, "logs": logs})
-    except Exception as e:
-        logger.error(f"/api/logs/search 失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e)}), 500
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception as exc:
+        logger.error(f"/api/logs/search 失败: {exc}", exc_info=True)
+        return jsonify({"success": False, "error": '搜索日志失败'}), 500
 
 
 @app.route('/api/logs/search_strict', methods=['POST'])
 def api_logs_search_strict():
-    """
-    模板锁定模式用：
-    - 接受 template_id，从模板取 factory/system/nodes
-    - 归档同样强制校验日期
-    - 返回 {success, logs:[...]}，并统一补齐 path
-    """
     try:
         data = request.get_json(force=True) or {}
         template_id = data.get('template_id')
-
-        include_realtime = data.get('include_realtime')
-        if include_realtime is None:
-            include_realtime = data.get('includeRealtime', True)
-
-        include_archive = data.get('include_archive')
-        if include_archive is None:
-            include_archive = data.get('includeArchive', False)
-
-        date_start = data.get('date_start') or data.get('dateStart')
-        date_end   = data.get('date_end')   or data.get('dateEnd')
-
         if not template_id:
             return jsonify({"success": False, "error": "缺少模板ID"}), 400
 
-        tpl = tm.get(template_id)
-        if not tpl:
-            return jsonify({"success": False, "error": "模板不存在"}), 404
-
-        factory = tpl.get('factory_name') or tpl.get('factory')
-        system = tpl.get('system_name') or tpl.get('system')
-        nodes   = tpl.get('nodes') or []
-
-        if not factory or not system or not nodes:
-            return jsonify({"success": False, "error": "模板数据不完整"}), 400
-
-        if include_archive and (not date_start or not date_end):
-            return jsonify({"success": False, "error": "归档搜索需要提供开始/结束日期"}), 400
-
-        logs = log_downloader.search_logs_strict(
-            factory=factory, system=system, nodes=nodes,
-            include_realtime=include_realtime, include_archive=include_archive,
-            date_start=date_start, date_end=date_end
+        logs = download_service.search_with_template(
+            template_id=template_id,
+            include_realtime=_get_bool(data, 'include_realtime', 'includeRealtime', default=True),
+            include_archive=_get_bool(data, 'include_archive', 'includeArchive', default=False),
+            date_start=data.get('date_start') or data.get('dateStart'),
+            date_end=data.get('date_end') or data.get('dateEnd'),
         )
 
-        for it in logs:
-            it['path'] = it.get('remote_path') or it.get('path') or it.get('name', '')
-
         return jsonify({"success": True, "logs": logs})
-    except Exception as e:
-        logger.error(f"/api/logs/search_strict 失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e)}), 500
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception as exc:
+        logger.error(f"/api/logs/search_strict 失败: {exc}", exc_info=True)
+        return jsonify({"success": False, "error": '搜索日志失败'}), 500
+
+
+@app.route('/api/logs/download', methods=['POST'])
+def api_logs_download():
+    try:
+        data = request.get_json(force=True) or {}
+        files = data.get('files') or []
+        downloaded = download_service.download(
+            files=files,
+            factory=data.get('factory') or '',
+            system=data.get('system') or '',
+            nodes=data.get('nodes'),
+            node=data.get('node'),
+        )
+        return jsonify({'success': True, 'downloaded_files': downloaded})
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    except Exception as exc:
+        logger.error(f"/api/logs/download 失败: {exc}", exc_info=True)
+        return jsonify({'success': False, 'error': '下载日志失败'}), 500
 
 
 @app.after_request

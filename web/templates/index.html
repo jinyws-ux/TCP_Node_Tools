@@ -176,6 +176,7 @@
                         <th>厂区</th>
                         <th>系统</th>
                         <th>节点</th>
+                        <th>日志时间</th>
                         <th>下载时间</th>
                         <th>大小</th>
                         <th>操作</th>
@@ -187,6 +188,16 @@
                 <i class="fas fa-folder-open"></i>
                 <p>暂无已下载日志</p>
                 <p>请先使用"日志下载"功能下载日志文件</p>
+            </div>
+        </div>
+
+        <div class="analysis-stats-card">
+            <div class="analysis-stats-card__header">
+                <h3><i class="fas fa-stopwatch"></i> 分析阶段耗时</h3>
+                <p>最近一次分析会记录各阶段用时，方便判断卡顿环节。</p>
+            </div>
+            <div id="analysis-stats-body" class="analysis-stats-body">
+                <div class="message-empty">尚未运行分析</div>
             </div>
         </div>
     </div>
@@ -237,7 +248,15 @@
             </div>
             <div class="config-list-section">
                 <div class="config-list">
-                    <h3>现有配置</h3>
+                    <div class="server-config-header">
+                        <h3>现有配置</h3>
+                        <p class="server-config-hint">默认折叠厂区，可点击展开或使用搜索定位系统</p>
+                    </div>
+                    <div class="server-config-search">
+                        <i class="fas fa-search"></i>
+                        <input id="server-config-search" placeholder="搜索厂区 / 系统 / 主机..." type="text">
+                        <button class="btn-clear-search" id="server-config-search-clear" title="清空">&times;</button>
+                    </div>
                     <div id="server-configs-container"></div>
                     <div class="empty-state" id="no-server-configs-message">
                         <i class="fas fa-cogs"></i>
@@ -292,9 +311,9 @@
                     配置 > <span id="current-factory-breadcrumb">未知厂区</span> > <span id="current-system-breadcrumb">未知系统</span>
                 </div>
                 <div class="parser-global-tools">
-                    <button class="btn btn-primary" onclick="importConfig()"><i class="fas fa-upload"></i> 导入</button>
-                    <button class="btn btn-primary" onclick="exportConfig()"><i class="fas fa-download"></i> 导出</button>
-                    <button class="btn btn-secondary" onclick="exitConfigWorkspace()"><i class="fas fa-arrow-left"></i> 退出控制台</button>
+                    <button class="btn btn-primary" data-action="import-config"><i class="fas fa-upload"></i> 导入</button>
+                    <button class="btn btn-primary" data-action="export-config"><i class="fas fa-download"></i> 导出</button>
+                    <button class="btn btn-secondary" id="exit-workspace-btn"><i class="fas fa-arrow-left"></i> 退出控制台</button>
                 </div>
             </div>
 
@@ -304,10 +323,10 @@
                 <div class="parser-left-nav">
                     <div class="parser-nav-top">
                         <div class="parser-search-box">
-                            <input type="text" id="msg-type-search" placeholder="搜索报文类型..." oninput="searchMessageType()">
+                            <input type="text" id="msg-type-search" placeholder="搜索报文类型...">
                             <i class="fas fa-search"></i>
                         </div>
-                        <button class="btn btn-success btn-sm" onclick="showAddMessageTypeModal()"><i class="fas fa-plus"></i> 添加报文类型</button>
+                        <button class="btn btn-success btn-sm" data-action="open-add-message-type"><i class="fas fa-plus"></i> 添加报文类型</button>
                     </div>
                     <div id="left-nav-tree" class="parser-nav-tree">
                         <div class="parser-tree-placeholder">
@@ -320,8 +339,8 @@
                 <!-- 中列：编辑面板 -->
                 <div class="parser-middle-edit">
                     <div class="parser-edit-top">
-                        <button class="btn btn-sm btn-outline-primary" onclick="expandAllLayers()"><i class="fas fa-angle-double-down"></i> 展开全部</button>
-                        <button class="btn btn-sm btn-outline-primary" onclick="collapseAllLayers()"><i class="fas fa-angle-double-up"></i> 折叠全部</button>
+                        <button class="btn btn-sm btn-outline-primary" data-action="expand-all"><i class="fas fa-angle-double-down"></i> 展开全部</button>
+                        <button class="btn btn-sm btn-outline-primary" data-action="collapse-all"><i class="fas fa-angle-double-up"></i> 折叠全部</button>
                     </div>
                     <div id="full-layers-container" class="parser-full-layers">
                         <div class="parser-layers-placeholder">
@@ -344,7 +363,7 @@
                         </div>
                     </div>
                     <div class="parser-json-tools">
-                        <button class="btn btn-sm btn-primary" onclick="copyJsonPreview()"><i class="fas fa-copy"></i> 复制JSON</button>
+                        <button class="btn btn-sm btn-primary" data-action="copy-json"><i class="fas fa-copy"></i> 复制JSON</button>
                     </div>
                 </div>
             </div>
@@ -470,6 +489,12 @@
                             </select>
                         </div>
                         <div class="form-group">
+                            <label for="escape-field">所属字段</label>
+                            <select id="escape-field" class="form-control" required>
+                                <option value="">-- 请选择字段 --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
                             <label for="escape-original">原始值</label>
                             <input type="text" id="escape-original" class="form-control" placeholder="请输入原始值" required>
                         </div>
@@ -481,7 +506,7 @@
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-secondary" onclick="hideAddEscapeModal()">取消</button>
-                    <button class="btn btn-primary" onclick="submitEscapeForm()">确认添加</button>
+                    <button class="btn btn-primary" id="escape-submit-btn" type="button">确认添加</button>
                 </div>
             </div>
         </div>
