@@ -471,6 +471,15 @@ function renderTree(tree) {
   });
 }
 
+function setTreeToggleState(btn, expanded) {
+  if (!btn) return;
+  btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  const icon = btn.querySelector('i');
+  if (icon) {
+    icon.className = expanded ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
+  }
+}
+
 function buildTreeNode(node) {
   const wrapper = document.createElement('div');
   wrapper.className = 'parser-tree-node';
@@ -524,14 +533,37 @@ function buildTreeNode(node) {
     ${meta}
   `;
 
-  wrapper.appendChild(el);
-
-  if (Array.isArray(node.children) && node.children.length) {
-    const childrenWrap = document.createElement('div');
+  const hasChildren = Array.isArray(node.children) && node.children.length;
+  let childrenWrap = null;
+  if (hasChildren) {
+    childrenWrap = document.createElement('div');
     childrenWrap.className = 'parser-children';
     node.children.forEach((child) => {
       childrenWrap.appendChild(buildTreeNode(child));
     });
+  }
+
+  if (hasChildren) {
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'tree-toggle';
+    toggleBtn.type = 'button';
+    toggleBtn.setAttribute('aria-expanded', 'true');
+    toggleBtn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+    toggleBtn.addEventListener('click', (evt) => {
+      evt.stopPropagation();
+      if (!childrenWrap) return;
+      const collapsed = childrenWrap.classList.toggle('is-collapsed');
+      setTreeToggleState(toggleBtn, !collapsed);
+    });
+    el.prepend(toggleBtn);
+  } else {
+    const dot = document.createElement('span');
+    dot.className = 'tree-dot';
+    el.prepend(dot);
+  }
+
+  wrapper.appendChild(el);
+  if (childrenWrap) {
     wrapper.appendChild(childrenWrap);
   }
 
@@ -702,10 +734,12 @@ async function pasteEscape(targetMt, targetVer, targetField) {
 }
 
 function expandAllLayers() {
-  qsa('#left-nav-tree .parser-children').forEach(d => d.style.display = 'block');
+  qsa('#left-nav-tree .parser-children').forEach((d) => d.classList.remove('is-collapsed'));
+  qsa('#left-nav-tree .tree-toggle').forEach((btn) => setTreeToggleState(btn, true));
 }
 function collapseAllLayers() {
-  qsa('#left-nav-tree .parser-children').forEach(d => d.style.display = 'none');
+  qsa('#left-nav-tree .parser-children').forEach((d) => d.classList.add('is-collapsed'));
+  qsa('#left-nav-tree .tree-toggle').forEach((btn) => setTreeToggleState(btn, false));
 }
 
 // =============== 右侧编辑区域 ===============
@@ -723,19 +757,24 @@ function renderEditorFor(node) {
       ? '<button class="btn btn-outline" id="btn-paste-version-into-mt"><i class="fas fa-paste"></i> 粘贴版本</button>'
       : '';
     box.innerHTML = `
-      <h4><i class="fas fa-envelope"></i> 报文类型：${escapeHtml(mt)}</h4>
+      <p class="parser-edit-label">报文类型</p>
+      <h4>${escapeHtml(mt)}</h4>
       <div class="form-group">
         <label>描述</label>
         <input id="mt-desc" type="text" value="${escapeAttr(desc)}">
       </div>
-      <div class="form-actions">
-        <button class="btn btn-primary" id="btn-save-mt"><i class="fas fa-save"></i> 保存描述</button>
-        <button class="btn btn-secondary" id="btn-rename-mt"><i class="fas fa-i-cursor"></i> 重命名</button>
-        <button class="btn btn-outline" id="btn-copy-mt"><i class="fas fa-copy"></i> 复制</button>
-        <button class="btn btn-danger" id="btn-del-mt"><i class="fas fa-trash"></i> 删除</button>
-        <button class="btn" id="btn-add-ver"><i class="fas fa-plus"></i> 添加版本</button>
-        ${pasteTypeBtn}
-        ${pasteVersionBtn}
+      <div class="parser-action-grid">
+        <div class="action-cluster">
+          <button class="btn btn-primary" id="btn-save-mt"><i class="fas fa-save"></i> 保存描述</button>
+          <button class="btn btn-secondary" id="btn-rename-mt"><i class="fas fa-i-cursor"></i> 重命名</button>
+          <button class="btn btn-danger" id="btn-del-mt"><i class="fas fa-trash"></i> 删除</button>
+        </div>
+        <div class="action-cluster">
+          <button class="btn btn-outline" id="btn-copy-mt"><i class="fas fa-copy"></i> 复制</button>
+          <button class="btn" id="btn-add-ver"><i class="fas fa-plus"></i> 添加版本</button>
+          ${pasteTypeBtn}
+          ${pasteVersionBtn}
+        </div>
       </div>`;
     qs('#btn-save-mt')?.addEventListener('click', () => saveMessageTypeDesc(mt));
     qs('#btn-rename-mt')?.addEventListener('click', () => renameMessageType(mt));
@@ -755,13 +794,18 @@ function renderEditorFor(node) {
       ? '<button class="btn btn-outline" id="btn-paste-field"><i class="fas fa-paste"></i> 粘贴字段</button>'
       : '';
     box.innerHTML = `
-      <h4><i class="fas fa-code-branch"></i> 版本：${escapeHtml(mt)} / ${escapeHtml(ver)}</h4>
-      <div class="form-actions">
-        <button class="btn btn-secondary" id="btn-rename-ver"><i class="fas fa-i-cursor"></i> 重命名</button>
-        <button class="btn btn-outline" id="btn-copy-ver"><i class="fas fa-copy"></i> 复制</button>
-        <button class="btn btn-danger" id="btn-del-ver"><i class="fas fa-trash"></i> 删除版本</button>
-        <button class="btn" id="btn-add-field"><i class="fas fa-plus"></i> 添加字段</button>
-        ${pasteFieldBtn}
+      <p class="parser-edit-label">版本</p>
+      <h4>${escapeHtml(mt)} / ${escapeHtml(ver)}</h4>
+      <div class="parser-action-grid">
+        <div class="action-cluster">
+          <button class="btn btn-secondary" id="btn-rename-ver"><i class="fas fa-i-cursor"></i> 重命名</button>
+          <button class="btn btn-danger" id="btn-del-ver"><i class="fas fa-trash"></i> 删除版本</button>
+        </div>
+        <div class="action-cluster">
+          <button class="btn btn-outline" id="btn-copy-ver"><i class="fas fa-copy"></i> 复制</button>
+          <button class="btn" id="btn-add-field"><i class="fas fa-plus"></i> 添加字段</button>
+          ${pasteFieldBtn}
+        </div>
       </div>`;
     qs('#btn-rename-ver')?.addEventListener('click', () => renameVersion(mt, ver));
     qs('#btn-copy-ver')?.addEventListener('click', () => copyVersion(mt, ver));
@@ -778,7 +822,8 @@ function renderEditorFor(node) {
       ? '<button class="btn btn-outline" id="btn-paste-escape"><i class="fas fa-paste"></i> 粘贴转义</button>'
       : '';
     box.innerHTML = `
-      <h4><i class="fas fa-tag"></i> 字段：${escapeHtml(mt)} / ${escapeHtml(ver)} / ${escapeHtml(fd)}</h4>
+      <p class="parser-edit-label">字段</p>
+      <h4>${escapeHtml(mt)} / ${escapeHtml(ver)} / ${escapeHtml(fd)}</h4>
       <div class="form-row">
         <div class="form-group">
           <label>Start</label>
@@ -789,13 +834,17 @@ function renderEditorFor(node) {
           <input id="fd-length" type="number" min="-1" value="${fcfg.Length==null?'':escapeAttr(fcfg.Length)}" placeholder="空 = 到结尾">
         </div>
       </div>
-      <div class="form-actions">
-        <button class="btn btn-primary" id="btn-save-fd"><i class="fas fa-save"></i> 保存</button>
-        <button class="btn btn-secondary" id="btn-rename-fd"><i class="fas fa-i-cursor"></i> 重命名</button>
-        <button class="btn btn-outline" id="btn-copy-fd"><i class="fas fa-copy"></i> 复制</button>
-        <button class="btn btn-danger" id="btn-del-fd"><i class="fas fa-trash"></i> 删除字段</button>
-        <button class="btn" id="btn-add-esc"><i class="fas fa-plus"></i> 添加转义</button>
-        ${pasteEscapeBtn}
+      <div class="parser-action-grid">
+        <div class="action-cluster">
+          <button class="btn btn-primary" id="btn-save-fd"><i class="fas fa-save"></i> 保存</button>
+          <button class="btn btn-secondary" id="btn-rename-fd"><i class="fas fa-i-cursor"></i> 重命名</button>
+          <button class="btn btn-danger" id="btn-del-fd"><i class="fas fa-trash"></i> 删除字段</button>
+        </div>
+        <div class="action-cluster">
+          <button class="btn btn-outline" id="btn-copy-fd"><i class="fas fa-copy"></i> 复制</button>
+          <button class="btn" id="btn-add-esc"><i class="fas fa-plus"></i> 添加转义</button>
+          ${pasteEscapeBtn}
+        </div>
       </div>
       <h5 style="margin-top:12px;">Escapes</h5>
       <div id="esc-list"></div>`;
