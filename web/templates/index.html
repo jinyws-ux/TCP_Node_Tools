@@ -19,12 +19,12 @@
             </div>
             <div class="logo-text">
                 <h1>日志分析系统</h1>
-                <p>Neon Operations Console</p>
+                <p>智慧运维工作台</p>
             </div>
         </div>
         <div class="header-actions">
-            <span class="status-pill"><i class="fas fa-signal"></i> ONLINE</span>
-            <span class="header-hint">CYBER OPS / V2</span>
+            <span class="status-pill"><i class="fas fa-signal"></i> 在线</span>
+            <span class="header-hint">智慧运维 / V2</span>
         </div>
     </header>
 
@@ -34,28 +34,28 @@
             <div class="tab-icon"><i class="fas fa-download"></i></div>
             <div class="tab-label">
                 <span>日志下载</span>
-                <small>Download</small>
+                <small>下载</small>
             </div>
         </div>
         <div class="tab" data-tab="analyze">
             <div class="tab-icon"><i class="fas fa-chart-line"></i></div>
             <div class="tab-label">
                 <span>日志分析</span>
-                <small>Analyze</small>
+                <small>分析</small>
             </div>
         </div>
         <div class="tab" data-tab="server-config">
             <div class="tab-icon"><i class="fas fa-server"></i></div>
             <div class="tab-label">
                 <span>服务器配置</span>
-                <small>Servers</small>
+                <small>配置</small>
             </div>
         </div>
         <div class="tab" data-tab="parser-config">
             <div class="tab-icon"><i class="fas fa-code-branch"></i></div>
             <div class="tab-label">
                 <span>解析逻辑配置</span>
-                <small>Parser</small>
+                <small>解析</small>
             </div>
         </div>
     </div>
@@ -65,13 +65,13 @@
     <div id="download-tab" class="tab-content">
       <div class="panel-hero neon-hero">
         <div class="hero-text">
-          <p class="hero-label">Download Pipeline</p>
+          <p class="hero-label">下载流程</p>
           <h3>日志下载工作台</h3>
           <p>实时 / 归档日志一体化调度，模板与节点联动呈现。</p>
         </div>
         <div class="hero-accent">
-          <span class="glow-tag"><i class="fas fa-bolt"></i> MULTI-NODE</span>
-          <span class="glow-tag"><i class="fas fa-layer-group"></i> TEMPLATE MODE</span>
+          <span class="glow-tag"><i class="fas fa-bolt"></i> 多节点</span>
+          <span class="glow-tag"><i class="fas fa-layer-group"></i> 模板联动</span>
         </div>
       </div>
 
@@ -154,7 +154,7 @@
             <div class="config-list">
               <div class="panel-heading">
                 <div>
-                  <p class="panel-label">Templates</p>
+                  <p class="panel-label">区域模板</p>
                   <h4>区域模板</h4>
                 </div>
                 <button class="btn btn-primary" id="btn-add-template"><i class="fas fa-plus"></i> 添加区域</button>
@@ -382,7 +382,7 @@
                 </div>
 
                 <!-- 三列布局 -->
-                <div class="parser-three-column">
+                <div class="parser-three-column preview-collapsed">
                     <!-- 左列：导航树 -->
                     <aside class="parser-left-nav">
                         <div class="parser-nav-card">
@@ -437,9 +437,10 @@
                     </section>
 
                     <!-- 右列：JSON预览 -->
-                    <aside class="parser-right-json" id="parser-preview-panel" data-state="expanded">
-                        <button class="parser-preview-toggle" id="parser-preview-toggle" aria-expanded="true" title="收起实时预览">
-                            <i class="fas fa-chevron-right"></i>
+                    <aside class="parser-right-json is-collapsed" id="parser-preview-panel" data-state="collapsed">
+                        <button type="button" class="parser-preview-toggle" id="parser-preview-toggle" aria-expanded="false" title="点击展开实时预览">
+                            <span class="toggle-text">点击展开实时预览</span>
+                            <i class="fas fa-chevron-left"></i>
                         </button>
                         <div class="parser-preview-body">
                             <div class="parser-json-header">

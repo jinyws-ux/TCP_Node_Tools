@@ -206,6 +206,21 @@ function bindIfExists(sel, evt, fn) {
   if (el) el.addEventListener(evt, fn);
 }
 
+function updatePreviewToggleUI(collapsed) {
+  const btn = qs('#parser-preview-toggle');
+  if (!btn) return;
+  btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  btn.setAttribute('title', collapsed ? '点击展开实时预览' : '收起实时预览');
+  const textEl = btn.querySelector('.toggle-text');
+  if (textEl) {
+    textEl.textContent = collapsed ? '点击展开实时预览' : '收起实时预览';
+  }
+  const icon = btn.querySelector('i');
+  if (icon) {
+    icon.className = collapsed ? 'fas fa-chevron-left' : 'fas fa-chevron-right';
+  }
+}
+
 function togglePreviewPanel() {
   const panel = qs('#parser-preview-panel');
   const layout = qs('.parser-three-column');
@@ -213,15 +228,7 @@ function togglePreviewPanel() {
   const collapsed = panel.classList.toggle('is-collapsed');
   panel.dataset.state = collapsed ? 'collapsed' : 'expanded';
   layout.classList.toggle('preview-collapsed', collapsed);
-  const btn = qs('#parser-preview-toggle');
-  if (btn) {
-    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    btn.setAttribute('title', collapsed ? '展开实时预览' : '收起实时预览');
-    const icon = btn.querySelector('i');
-    if (icon) {
-      icon.className = collapsed ? 'fas fa-chevron-left' : 'fas fa-chevron-right';
-    }
-  }
+  updatePreviewToggleUI(collapsed);
 }
 
 // =============== 进入/退出工作台 ===============
@@ -255,9 +262,15 @@ function exitWorkspace() {
   const jsonBox  = qs('#json-preview-content');
   const rightBox = qs('#full-layers-container');
   const layout   = qs('.parser-three-column');
+  const panel    = qs('#parser-preview-panel');
   if (layout) {
-    layout.classList.remove('preview-collapsed');
+    layout.classList.add('preview-collapsed');
   }
+  if (panel) {
+    panel.classList.add('is-collapsed');
+    panel.dataset.state = 'collapsed';
+  }
+  updatePreviewToggleUI(true);
 
   if (treeHost) {
     treeHost.innerHTML = `
@@ -484,13 +497,6 @@ function buildTreeNode(node) {
   const wrapper = document.createElement('div');
   wrapper.className = 'parser-tree-node';
 
-  const iconMap = {
-    message_type: 'fa-envelope',
-    version: 'fa-code-branch',
-    field: 'fa-tag',
-    escape: 'fa-exchange-alt',
-  };
-
   const el = document.createElement('div');
   el.className = `parser-item parser-item-${node.type}`;
   el.dataset.type = node.type;
@@ -512,7 +518,6 @@ function buildTreeNode(node) {
     el.dataset.escape = node.name;
   }
 
-  const icon = iconMap[node.type] || 'fa-circle';
   let meta = '';
   if (node.type === 'field') {
     const lenText = node.length == null ? -1 : node.length;
@@ -526,8 +531,9 @@ function buildTreeNode(node) {
   }
 
   const desc = node.description ? `<span class="desc">— ${escapeHtml(node.description)}</span>` : '';
+  const typeBadge = TYPE_LABELS[node.type] ? `<span class="node-pill">${TYPE_LABELS[node.type]}</span>` : '';
   el.innerHTML = `
-    <i class="fas ${icon}"></i>
+    ${typeBadge}
     <span class="label">${escapeHtml(node.name || '')}</span>
     ${desc}
     ${meta}
@@ -751,30 +757,28 @@ function renderEditorFor(node) {
     const mt = node.messageType;
     const desc = (workingConfig?.[mt]?.Description) || '';
     const pasteTypeBtn = hasClipboard('message_type')
-      ? '<button class="btn btn-outline" id="btn-paste-mt"><i class="fas fa-paste"></i> 粘贴报文类型</button>'
+      ? '<button class="btn btn-outline btn-compact" id="btn-paste-mt"><i class="fas fa-paste"></i> 粘贴报文类型</button>'
       : '';
     const pasteVersionBtn = hasClipboard('version')
-      ? '<button class="btn btn-outline" id="btn-paste-version-into-mt"><i class="fas fa-paste"></i> 粘贴版本</button>'
+      ? '<button class="btn btn-outline btn-compact" id="btn-paste-version-into-mt"><i class="fas fa-paste"></i> 粘贴版本</button>'
       : '';
     box.innerHTML = `
+      <div class="parser-card-actions parser-card-actions--top">
+        <button class="btn btn-outline btn-compact" id="btn-copy-mt"><i class="fas fa-copy"></i> 复制</button>
+        <button class="btn btn-compact" id="btn-add-ver"><i class="fas fa-plus"></i> 添加版本</button>
+        ${pasteTypeBtn}
+        ${pasteVersionBtn}
+      </div>
       <p class="parser-edit-label">报文类型</p>
       <h4>${escapeHtml(mt)}</h4>
       <div class="form-group">
         <label>描述</label>
         <input id="mt-desc" type="text" value="${escapeAttr(desc)}">
       </div>
-      <div class="parser-action-grid">
-        <div class="action-cluster">
-          <button class="btn btn-primary" id="btn-save-mt"><i class="fas fa-save"></i> 保存描述</button>
-          <button class="btn btn-secondary" id="btn-rename-mt"><i class="fas fa-i-cursor"></i> 重命名</button>
-          <button class="btn btn-danger" id="btn-del-mt"><i class="fas fa-trash"></i> 删除</button>
-        </div>
-        <div class="action-cluster">
-          <button class="btn btn-outline" id="btn-copy-mt"><i class="fas fa-copy"></i> 复制</button>
-          <button class="btn" id="btn-add-ver"><i class="fas fa-plus"></i> 添加版本</button>
-          ${pasteTypeBtn}
-          ${pasteVersionBtn}
-        </div>
+      <div class="parser-card-actions parser-card-actions--bottom">
+        <button class="btn btn-primary" id="btn-save-mt"><i class="fas fa-save"></i> 保存描述</button>
+        <button class="btn btn-secondary" id="btn-rename-mt"><i class="fas fa-i-cursor"></i> 重命名</button>
+        <button class="btn btn-danger" id="btn-del-mt"><i class="fas fa-trash"></i> 删除</button>
       </div>`;
     qs('#btn-save-mt')?.addEventListener('click', () => saveMessageTypeDesc(mt));
     qs('#btn-rename-mt')?.addEventListener('click', () => renameMessageType(mt));
@@ -791,21 +795,19 @@ function renderEditorFor(node) {
   if (node.type === 'version') {
     const { messageType: mt, version: ver } = node;
     const pasteFieldBtn = hasClipboard('field')
-      ? '<button class="btn btn-outline" id="btn-paste-field"><i class="fas fa-paste"></i> 粘贴字段</button>'
+      ? '<button class="btn btn-outline btn-compact" id="btn-paste-field"><i class="fas fa-paste"></i> 粘贴字段</button>'
       : '';
     box.innerHTML = `
+      <div class="parser-card-actions parser-card-actions--top">
+        <button class="btn btn-outline btn-compact" id="btn-copy-ver"><i class="fas fa-copy"></i> 复制</button>
+        <button class="btn btn-compact" id="btn-add-field"><i class="fas fa-plus"></i> 添加字段</button>
+        ${pasteFieldBtn}
+      </div>
       <p class="parser-edit-label">版本</p>
       <h4>${escapeHtml(mt)} / ${escapeHtml(ver)}</h4>
-      <div class="parser-action-grid">
-        <div class="action-cluster">
-          <button class="btn btn-secondary" id="btn-rename-ver"><i class="fas fa-i-cursor"></i> 重命名</button>
-          <button class="btn btn-danger" id="btn-del-ver"><i class="fas fa-trash"></i> 删除版本</button>
-        </div>
-        <div class="action-cluster">
-          <button class="btn btn-outline" id="btn-copy-ver"><i class="fas fa-copy"></i> 复制</button>
-          <button class="btn" id="btn-add-field"><i class="fas fa-plus"></i> 添加字段</button>
-          ${pasteFieldBtn}
-        </div>
+      <div class="parser-card-actions parser-card-actions--bottom">
+        <button class="btn btn-secondary" id="btn-rename-ver"><i class="fas fa-i-cursor"></i> 重命名</button>
+        <button class="btn btn-danger" id="btn-del-ver"><i class="fas fa-trash"></i> 删除版本</button>
       </div>`;
     qs('#btn-rename-ver')?.addEventListener('click', () => renameVersion(mt, ver));
     qs('#btn-copy-ver')?.addEventListener('click', () => copyVersion(mt, ver));
@@ -819,9 +821,14 @@ function renderEditorFor(node) {
     const { messageType: mt, version: ver, field: fd } = node;
     const fcfg = workingConfig?.[mt]?.Versions?.[ver]?.Fields?.[fd] || { Start: 0, Length: null, Escapes: {} };
     const pasteEscapeBtn = hasClipboard('escape')
-      ? '<button class="btn btn-outline" id="btn-paste-escape"><i class="fas fa-paste"></i> 粘贴转义</button>'
+      ? '<button class="btn btn-outline btn-compact" id="btn-paste-escape"><i class="fas fa-paste"></i> 粘贴转义</button>'
       : '';
     box.innerHTML = `
+      <div class="parser-card-actions parser-card-actions--top">
+        <button class="btn btn-outline btn-compact" id="btn-copy-fd"><i class="fas fa-copy"></i> 复制</button>
+        <button class="btn btn-compact" id="btn-add-esc"><i class="fas fa-plus"></i> 添加转义</button>
+        ${pasteEscapeBtn}
+      </div>
       <p class="parser-edit-label">字段</p>
       <h4>${escapeHtml(mt)} / ${escapeHtml(ver)} / ${escapeHtml(fd)}</h4>
       <div class="form-row">
@@ -834,17 +841,10 @@ function renderEditorFor(node) {
           <input id="fd-length" type="number" min="-1" value="${fcfg.Length==null?'':escapeAttr(fcfg.Length)}" placeholder="空 = 到结尾">
         </div>
       </div>
-      <div class="parser-action-grid">
-        <div class="action-cluster">
-          <button class="btn btn-primary" id="btn-save-fd"><i class="fas fa-save"></i> 保存</button>
-          <button class="btn btn-secondary" id="btn-rename-fd"><i class="fas fa-i-cursor"></i> 重命名</button>
-          <button class="btn btn-danger" id="btn-del-fd"><i class="fas fa-trash"></i> 删除字段</button>
-        </div>
-        <div class="action-cluster">
-          <button class="btn btn-outline" id="btn-copy-fd"><i class="fas fa-copy"></i> 复制</button>
-          <button class="btn" id="btn-add-esc"><i class="fas fa-plus"></i> 添加转义</button>
-          ${pasteEscapeBtn}
-        </div>
+      <div class="parser-card-actions parser-card-actions--bottom">
+        <button class="btn btn-primary" id="btn-save-fd"><i class="fas fa-save"></i> 保存</button>
+        <button class="btn btn-secondary" id="btn-rename-fd"><i class="fas fa-i-cursor"></i> 重命名</button>
+        <button class="btn btn-danger" id="btn-del-fd"><i class="fas fa-trash"></i> 删除字段</button>
       </div>
       <h5 style="margin-top:12px;">Escapes</h5>
       <div id="esc-list"></div>`;
