@@ -512,10 +512,7 @@ function renderTemplateList(items, append = false) {
       : '暂无示例';
     el.className = 'config-item config-item--compact template-card';
     el.innerHTML = `
-      <div class="config-compact-head">
-        <span>${escapeHtml(factoryName)}</span>
-        <span>${escapeHtml(systemName)}</span>
-      </div>
+      <p class="config-compact-subline">${escapeHtml(factoryName)} - ${escapeHtml(systemName)}</p>
       <div class="config-compact-title">
         <h3>${escapeHtml(t.name)}</h3>
         <span class="config-chip">${nodes.length} 节点</span>
