@@ -14,17 +14,50 @@
     <!-- 头部 -->
     <header>
         <div class="logo">
-            <i class="fas fa-file-alt"></i>
-            <h1>日志分析系统</h1>
+            <div class="logo-icon">
+                <i class="fas fa-wave-square"></i>
+            </div>
+            <div class="logo-text">
+                <h1>日志分析系统</h1>
+                <p>Neon Operations Console</p>
+            </div>
+        </div>
+        <div class="header-actions">
+            <span class="status-pill"><i class="fas fa-signal"></i> ONLINE</span>
+            <span class="header-hint">CYBER OPS / V2</span>
         </div>
     </header>
 
     <!-- 标签页导航 -->
     <div class="tabs">
-        <div class="tab active" data-tab="download">日志下载</div>
-        <div class="tab" data-tab="analyze">日志分析</div>
-        <div class="tab" data-tab="server-config">服务器配置</div>
-        <div class="tab" data-tab="parser-config">解析逻辑配置</div>
+        <div class="tab active" data-tab="download">
+            <div class="tab-icon"><i class="fas fa-download"></i></div>
+            <div class="tab-label">
+                <span>日志下载</span>
+                <small>Download</small>
+            </div>
+        </div>
+        <div class="tab" data-tab="analyze">
+            <div class="tab-icon"><i class="fas fa-chart-line"></i></div>
+            <div class="tab-label">
+                <span>日志分析</span>
+                <small>Analyze</small>
+            </div>
+        </div>
+        <div class="tab" data-tab="server-config">
+            <div class="tab-icon"><i class="fas fa-server"></i></div>
+            <div class="tab-label">
+                <span>服务器配置</span>
+                <small>Servers</small>
+            </div>
+        </div>
+        <div class="tab" data-tab="parser-config">
+            <div class="tab-icon"><i class="fas fa-code-branch"></i></div>
+            <div class="tab-label">
+                <span>解析逻辑配置</span>
+                <small>Parser</small>
+            </div>
+        </div>
     </div>
 
     <!-- 日志下载标签页 -->
@@ -355,8 +388,11 @@
                 <!-- 中列：编辑面板 -->
                 <div class="parser-middle-edit">
                     <div class="parser-edit-top">
-                        <button class="btn btn-sm btn-outline-primary" data-action="expand-all"><i class="fas fa-angle-double-down"></i> 展开全部</button>
-                        <button class="btn btn-sm btn-outline-primary" data-action="collapse-all"><i class="fas fa-angle-double-up"></i> 折叠全部</button>
+                        <div class="parser-toolbar-group">
+                            <button class="btn btn-sm btn-secondary" data-action="expand-all"><i class="fas fa-angle-double-down"></i> 展开全部</button>
+                            <button class="btn btn-sm btn-secondary" data-action="collapse-all"><i class="fas fa-angle-double-up"></i> 折叠全部</button>
+                        </div>
+                        <p class="parser-toolbar-hint">选中左侧任意层级后，可在下方操作区添加、复制或粘贴对应内容</p>
                     </div>
                     <div id="full-layers-container" class="parser-full-layers">
                         <div class="parser-layers-placeholder">
