@@ -693,8 +693,11 @@ def add_escape():
         escape_key = data.get('escape_key')
         escape_value = data.get('escape_value')
 
-        if not all([factory, system, message_type, version, field, escape_key, escape_value]):
+        if not all([factory, system, message_type, version, field, escape_key]):
             return jsonify({'success': False, 'error': '缺少必要参数'}), 400
+
+        if escape_value is None:
+            escape_value = ''
 
         logger.info(f"添加转义值: {factory}/{system}/{message_type}/{version}/{field}/{escape_key}")
 

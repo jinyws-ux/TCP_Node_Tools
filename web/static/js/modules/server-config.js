@@ -2,6 +2,7 @@
 import { api } from '../core/api.js';
 import { showMessage } from '../core/messages.js';
 import { setButtonLoading } from '../core/ui.js';
+import { escapeHtml } from '../core/utils.js';
 
 const state = {
   configs: [],
@@ -14,15 +15,6 @@ const state = {
 
 const $ = (sel, scope = document) => scope.querySelector(sel);
 
-function formatTimestamp(tsSec) {
-  if (!tsSec) return '';
-  try {
-    return new Date(tsSec * 1000).toLocaleString();
-  } catch (_) {
-    return '';
-  }
-}
-
 function renderList() {
   const container = document.getElementById('server-configs-container');
   const empty = document.getElementById('no-server-configs-message');
@@ -30,9 +22,11 @@ function renderList() {
 
   container.innerHTML = '';
   if (!state.configs.length) {
+    container.style.display = 'none';
     if (empty) empty.style.display = 'block';
     return;
   }
+  container.style.display = '';
   if (empty) empty.style.display = 'none';
 
   const filtered = getFilteredConfigs();
@@ -120,25 +114,23 @@ function buildFactoryGroup(factoryKey, configs) {
 
 function buildConfigCard(cfg) {
   const item = document.createElement('div');
-  item.className = 'config-item' + (state.editingId === cfg.id ? ' editing' : '');
+  item.className = 'config-item config-item--compact server-config-card' + (state.editingId === cfg.id ? ' editing' : '');
+
+  const factoryLabel = escapeHtml(cfg.factory || '未指定');
+  const systemLabel = escapeHtml(cfg.system || '未指定');
+  const aliasLabel = escapeHtml(cfg.server?.alias || '未命名');
+
   const info = document.createElement('div');
-  info.className = 'config-info';
-  const title = document.createElement('h3');
-  title.textContent = `${cfg.factory || ''} - ${cfg.system || ''}`;
-  info.appendChild(title);
-  const serverLine = document.createElement('p');
-  serverLine.textContent = `服务器: ${cfg.server?.alias || ''} (${cfg.server?.hostname || ''})`;
-  info.appendChild(serverLine);
-  const meta = document.createElement('p');
-  meta.className = 'config-meta';
-  const created = formatTimestamp(cfg.created_time);
-  const updated = cfg.updated_time ? ` | 更新: ${formatTimestamp(cfg.updated_time)}` : '';
-  meta.textContent = `创建: ${created}${updated}`;
-  info.appendChild(meta);
+  info.className = 'config-compact-head';
+  info.innerHTML = `
+  <div class="config-compact-row">
+    <p class="config-compact-subline">${factoryLabel} - ${systemLabel}</p>
+    <div class="config-compact-alias-chip">${aliasLabel}</div>
+  </div>`;
   item.appendChild(info);
 
   const actions = document.createElement('div');
-  actions.className = 'config-actions';
+  actions.className = 'config-compact-actions config-compact-actions--inline';
   const btnEdit = document.createElement('button');
   btnEdit.className = 'btn btn-sm btn-edit';
   btnEdit.dataset.act = 'edit';
@@ -234,7 +226,7 @@ function fillForm(cfg) {
 }
 
 function setEditMode(isEditing) {
-  const form = document.querySelector('.config-form');
+  const form = document.querySelector('#server-config-tab .config-form');
   const saveBtn = $('#save-config-btn');
   const cancelBtn = $('#cancel-edit-btn');
 
@@ -255,10 +247,23 @@ function setEditMode(isEditing) {
   }
 }
 
+function updatePasswordToggle(isVisible) {
+  const btn = document.getElementById('toggle-password-visibility');
+  if (!btn) return;
+  btn.setAttribute('aria-pressed', isVisible ? 'true' : 'false');
+  btn.setAttribute('title', isVisible ? '点击隐藏密码' : '点击显示密码');
+  btn.dataset.visible = isVisible ? 'true' : 'false';
+}
+
 function resetForm() {
   fillForm({ factory: '', system: '', server: {} });
   state.editingId = null;
   setEditMode(false);
+  const pwdInput = $('#server-password');
+  if (pwdInput) {
+    pwdInput.setAttribute('type', 'password');
+  }
+  updatePasswordToggle(false);
 }
 
 async function handleSave() {
@@ -366,6 +371,18 @@ function bindListEvents() {
   });
 }
 
+function bindPasswordToggle() {
+  const input = $('#server-password');
+  const btn = document.getElementById('toggle-password-visibility');
+  if (!input || !btn) return;
+  updatePasswordToggle(false);
+  btn.addEventListener('click', () => {
+    const isHidden = input.getAttribute('type') === 'password';
+    input.setAttribute('type', isHidden ? 'text' : 'password');
+    updatePasswordToggle(isHidden);
+  });
+}
+
 function bindFormEvents() {
   const saveBtn = document.getElementById('save-config-btn');
   const cancelBtn = document.getElementById('cancel-edit-btn');
@@ -400,6 +417,7 @@ export function init() {
   if (state.initialized) return;
   state.initialized = true;
   bindFormEvents();
+  bindPasswordToggle();
   bindSearchBox();
   bindListEvents();
   loadServerConfigs();

@@ -27,6 +27,13 @@ const clipboardState = {
   data: null,
   meta: {},
 };
+let pendingPreviewPath = '';
+const expandedTreeNodes = new Set();
+
+const cssEscape = (value) => {
+  if (typeof value !== 'string') value = String(value ?? '');
+  return window.CSS?.escape ? window.CSS.escape(value) : value.replace(/[^a-zA-Z0-9_-]/g, (ch) => `\\${ch}`);
+};
 
 // 工具
 const qs  = (sel, scope = document) => scope.querySelector(sel);
@@ -119,6 +126,34 @@ function setClipboard(type, label, data, meta = {}) {
   showMessage('success', `${typeLabel}已复制到剪贴板`, 'parser-config-messages');
 }
 
+function buildNodePath(meta = {}) {
+  const type = meta.type;
+  const mt = meta.messageType || meta.parent || meta.msg || meta.name;
+  if (!type) return '';
+  if (type === 'message_type') {
+    return mt ? `mt:${mt}` : '';
+  }
+  if (type === 'version') {
+    const ver = meta.version || meta.name;
+    if (!mt || !ver) return '';
+    return `mt:${mt}/ver:${ver}`;
+  }
+  if (type === 'field') {
+    const ver = meta.version || meta.ver;
+    const field = meta.field || meta.name;
+    if (!mt || !ver || !field) return '';
+    return `mt:${mt}/ver:${ver}/field:${field}`;
+  }
+  if (type === 'escape') {
+    const ver = meta.version || meta.ver;
+    const field = meta.field || meta.fieldName;
+    const key = meta.escapeKey || meta.name;
+    if (!mt || !ver || !field || !key) return '';
+    return `mt:${mt}/ver:${ver}/field:${field}/escape:${key}`;
+  }
+  return '';
+}
+
 function suggestName(base, existingList = []) {
   const normalized = (base || '复制项').trim() || '复制项';
   const baseName = normalized.replace(/\s+/g, '_');
@@ -206,6 +241,21 @@ function bindIfExists(sel, evt, fn) {
   if (el) el.addEventListener(evt, fn);
 }
 
+function updatePreviewToggleUI(collapsed) {
+  const btn = qs('#parser-preview-toggle');
+  if (!btn) return;
+  btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  btn.setAttribute('title', collapsed ? '点击展开实时预览' : '收起实时预览');
+  const textEl = btn.querySelector('.toggle-text');
+  if (textEl) {
+    textEl.textContent = collapsed ? '点击展开实时预览' : '收起实时预览';
+  }
+  const icon = btn.querySelector('i');
+  if (icon) {
+    icon.className = collapsed ? 'fas fa-chevron-left' : 'fas fa-chevron-right';
+  }
+}
+
 function togglePreviewPanel() {
   const panel = qs('#parser-preview-panel');
   const layout = qs('.parser-three-column');
@@ -213,15 +263,38 @@ function togglePreviewPanel() {
   const collapsed = panel.classList.toggle('is-collapsed');
   panel.dataset.state = collapsed ? 'collapsed' : 'expanded';
   layout.classList.toggle('preview-collapsed', collapsed);
-  const btn = qs('#parser-preview-toggle');
-  if (btn) {
-    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    btn.setAttribute('title', collapsed ? '展开实时预览' : '收起实时预览');
-    const icon = btn.querySelector('i');
-    if (icon) {
-      icon.className = collapsed ? 'fas fa-chevron-left' : 'fas fa-chevron-right';
-    }
+  updatePreviewToggleUI(collapsed);
+  if (collapsed) {
+    const focused = qs('#json-preview-content .json-line.is-focused');
+    pendingPreviewPath = focused?.dataset?.path || pendingPreviewPath || '';
+    return;
   }
+  const nextPath = pendingPreviewPath;
+  if (!collapsed && nextPath) {
+    requestAnimationFrame(() => focusPreviewPath(nextPath));
+  }
+}
+
+function focusPreviewPath(path) {
+  if (!path) return;
+  const box = qs('#json-preview-content');
+  if (!box) return;
+  const selector = `[data-path="${cssEscape(path)}"]`;
+  const target = box.querySelector(selector);
+  if (!target) return;
+  box.querySelectorAll('.json-line.is-focused').forEach((el) => el.classList.remove('is-focused'));
+  target.classList.add('is-focused');
+  const panel = qs('#parser-preview-panel');
+  const isCollapsed = panel?.classList.contains('is-collapsed');
+  if (isCollapsed) {
+    pendingPreviewPath = path;
+    return;
+  }
+  pendingPreviewPath = '';
+  if (box.scrollHeight <= box.clientHeight) return;
+  const desiredTop = target.offsetTop - (box.clientHeight / 2) + (target.offsetHeight / 2);
+  const top = Math.max(0, desiredTop);
+  box.scrollTo({ top, behavior: 'smooth' });
 }
 
 // =============== 进入/退出工作台 ===============
@@ -255,9 +328,17 @@ function exitWorkspace() {
   const jsonBox  = qs('#json-preview-content');
   const rightBox = qs('#full-layers-container');
   const layout   = qs('.parser-three-column');
+  const panel    = qs('#parser-preview-panel');
+  pendingPreviewPath = '';
+  expandedTreeNodes.clear();
   if (layout) {
-    layout.classList.remove('preview-collapsed');
+    layout.classList.add('preview-collapsed');
   }
+  if (panel) {
+    panel.classList.add('is-collapsed');
+    panel.dataset.state = 'collapsed';
+  }
+  updatePreviewToggleUI(true);
 
   if (treeHost) {
     treeHost.innerHTML = `
@@ -421,6 +502,7 @@ async function refreshTree() {
   const tree = await api.fetchParserConfigTree(workingFactory, workingSystem);
   workingTree = tree;
   renderTree(workingTree);
+  renderJsonPreview();
 }
 
 async function refreshFullConfig() {
@@ -458,6 +540,7 @@ function renderTree(tree) {
       host.querySelectorAll('.parser-item.active').forEach((a) => a.classList.remove('active'));
       el.classList.add('active');
       const t = el.dataset.type;
+      const nodePath = el.dataset.path || '';
       if (t === 'message_type') {
         renderEditorFor({ type: 'message_type', messageType: el.dataset.msg, path: el.dataset.path });
       } else if (t === 'version') {
@@ -465,73 +548,134 @@ function renderTree(tree) {
       } else if (t === 'field') {
         renderEditorFor({ type: 'field', messageType: el.dataset.msg, version: el.dataset.ver, field: el.dataset.field, path: el.dataset.path });
       } else if (t === 'escape') {
-        renderEditorFor({ type: 'escape', messageType: el.dataset.msg, version: el.dataset.ver, field: el.dataset.field, escapeKey: el.dataset.escape });
+        renderEditorFor({ type: 'escape', messageType: el.dataset.msg, version: el.dataset.ver, field: el.dataset.field, escapeKey: el.dataset.escape, path: el.dataset.path });
+      }
+      if (nodePath) {
+        focusPreviewPath(nodePath);
       }
     });
   });
+
+  const validPaths = new Set(Array.from(host.querySelectorAll('.parser-item[data-path]')).map((item) => item.dataset.path));
+  Array.from(expandedTreeNodes).forEach((path) => {
+    if (!validPaths.has(path)) {
+      expandedTreeNodes.delete(path);
+    }
+  });
+}
+
+function setTreeToggleState(btn, expanded) {
+  if (!btn) return;
+  btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  const icon = btn.querySelector('i');
+  if (icon) {
+    icon.className = expanded ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
+  }
 }
 
 function buildTreeNode(node) {
   const wrapper = document.createElement('div');
   wrapper.className = 'parser-tree-node';
 
-  const iconMap = {
-    message_type: 'fa-envelope',
-    version: 'fa-code-branch',
-    field: 'fa-tag',
-    escape: 'fa-exchange-alt',
-  };
-
   const el = document.createElement('div');
   el.className = `parser-item parser-item-${node.type}`;
   el.dataset.type = node.type;
-  if (node.path) el.dataset.path = node.path;
-
+  const pathMeta = { type: node.type };
   if (node.type === 'message_type') {
     el.dataset.msg = node.name;
+    pathMeta.messageType = node.name;
   } else if (node.type === 'version') {
     el.dataset.msg = node.parent;
     el.dataset.ver = node.name;
+    pathMeta.messageType = node.parent;
+    pathMeta.version = node.name;
   } else if (node.type === 'field') {
     el.dataset.msg = node.parent;
     el.dataset.ver = node.version;
     el.dataset.field = node.name;
+    pathMeta.messageType = node.parent;
+    pathMeta.version = node.version;
+    pathMeta.field = node.name;
   } else if (node.type === 'escape') {
     el.dataset.msg = node.parent;
     el.dataset.ver = node.version;
     el.dataset.field = node.field;
     el.dataset.escape = node.name;
+    pathMeta.messageType = node.parent;
+    pathMeta.version = node.version;
+    pathMeta.field = node.field;
+    pathMeta.escapeKey = node.name;
   }
 
-  const icon = iconMap[node.type] || 'fa-circle';
+  const nodePath = node.path || buildNodePath(pathMeta);
+  if (nodePath) {
+    el.dataset.path = nodePath;
+  }
+
+  const hasChildren = Array.isArray(node.children) && node.children.length;
+  if (hasChildren) {
+    el.dataset.hasChildren = 'true';
+  } else if (el.dataset.hasChildren) {
+    delete el.dataset.hasChildren;
+  }
+
   let meta = '';
   if (node.type === 'field') {
-    const lenText = node.length == null ? -1 : node.length;
-    meta = `<span class="meta">[Start=${node.start}, Length=${lenText}]</span>`;
-    if (node.children && node.children.length) {
-      meta += ' <span class="status-badge status-warning">转义</span>';
-    }
-  }
-  if (node.type === 'escape') {
+    const lenText = node.length == null ? '到结尾' : node.length;
+    const startText = node.start == null ? 0 : node.start;
+    const hasEscape = node.children && node.children.length ? ' · 转义' : '';
+    meta = `<span class="meta">起点 ${startText} / 长度 ${lenText}${hasEscape}</span>`;
+  } else if (node.type === 'escape') {
     meta = `<span class="meta">→ ${escapeHtml(String(node.value ?? ''))}</span>`;
+  } else if (node.description && node.type !== 'message_type' && node.type !== 'version') {
+    meta = `<span class="meta">${escapeHtml(node.description)}</span>`;
   }
 
-  const desc = node.description ? `<span class="desc">— ${escapeHtml(node.description)}</span>` : '';
+  const desc = (node.description && (node.type === 'message_type' || node.type === 'version'))
+    ? `<span class="desc">— ${escapeHtml(node.description)}</span>`
+    : '';
   el.innerHTML = `
-    <i class="fas ${icon}"></i>
     <span class="label">${escapeHtml(node.name || '')}</span>
     ${desc}
     ${meta}
   `;
 
-  wrapper.appendChild(el);
-
-  if (Array.isArray(node.children) && node.children.length) {
-    const childrenWrap = document.createElement('div');
-    childrenWrap.className = 'parser-children';
+  let childrenWrap = null;
+  if (hasChildren) {
+    const shouldExpand = !!(nodePath && expandedTreeNodes.has(nodePath));
+    childrenWrap = document.createElement('div');
+    childrenWrap.className = 'parser-children' + (shouldExpand ? '' : ' is-collapsed');
     node.children.forEach((child) => {
       childrenWrap.appendChild(buildTreeNode(child));
     });
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'tree-toggle';
+    toggleBtn.type = 'button';
+    toggleBtn.setAttribute('aria-expanded', shouldExpand ? 'true' : 'false');
+    toggleBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
+    toggleBtn.addEventListener('click', (evt) => {
+      evt.stopPropagation();
+      if (!childrenWrap) return;
+      const collapsed = childrenWrap.classList.toggle('is-collapsed');
+      setTreeToggleState(toggleBtn, !collapsed);
+      if (nodePath) {
+        if (collapsed) {
+          expandedTreeNodes.delete(nodePath);
+        } else {
+          expandedTreeNodes.add(nodePath);
+        }
+      }
+    });
+    setTreeToggleState(toggleBtn, shouldExpand);
+    el.prepend(toggleBtn);
+  } else {
+    const dot = document.createElement('span');
+    dot.className = 'tree-dot';
+    el.prepend(dot);
+  }
+
+  wrapper.appendChild(el);
+  if (childrenWrap) {
     wrapper.appendChild(childrenWrap);
   }
 
@@ -702,72 +846,94 @@ async function pasteEscape(targetMt, targetVer, targetField) {
 }
 
 function expandAllLayers() {
-  qsa('#left-nav-tree .parser-children').forEach(d => d.style.display = 'block');
+  qsa('#left-nav-tree .parser-children').forEach((d) => d.classList.remove('is-collapsed'));
+  qsa('#left-nav-tree .tree-toggle').forEach((btn) => setTreeToggleState(btn, true));
+  const host = qs('#left-nav-tree');
+  expandedTreeNodes.clear();
+  host?.querySelectorAll('.parser-item[data-has-children="true"]').forEach((el) => {
+    const path = el.dataset.path;
+    if (path) expandedTreeNodes.add(path);
+  });
 }
 function collapseAllLayers() {
-  qsa('#left-nav-tree .parser-children').forEach(d => d.style.display = 'none');
+  qsa('#left-nav-tree .parser-children').forEach((d) => d.classList.add('is-collapsed'));
+  qsa('#left-nav-tree .tree-toggle').forEach((btn) => setTreeToggleState(btn, false));
+  expandedTreeNodes.clear();
 }
 
 // =============== 右侧编辑区域 ===============
 function renderEditorFor(node) {
   const box = qs('#full-layers-container');
   if (!box) return;
+  const nodePath = node.path || buildNodePath(node);
 
   if (node.type === 'message_type') {
     const mt = node.messageType;
     const desc = (workingConfig?.[mt]?.Description) || '';
     const pasteTypeBtn = hasClipboard('message_type')
-      ? '<button class="btn btn-outline" id="btn-paste-mt"><i class="fas fa-paste"></i> 粘贴报文类型</button>'
+      ? '<button class="btn btn-outline btn-compact" id="btn-paste-mt"><i class="fas fa-paste"></i> 粘贴报文类型</button>'
       : '';
     const pasteVersionBtn = hasClipboard('version')
-      ? '<button class="btn btn-outline" id="btn-paste-version-into-mt"><i class="fas fa-paste"></i> 粘贴版本</button>'
+      ? '<button class="btn btn-outline btn-compact" id="btn-paste-version-into-mt"><i class="fas fa-paste"></i> 粘贴版本</button>'
       : '';
     box.innerHTML = `
-      <h4><i class="fas fa-envelope"></i> 报文类型：${escapeHtml(mt)}</h4>
+      <div class="parser-card-actions parser-card-actions--top">
+        <button class="btn btn-outline btn-compact" id="btn-copy-mt"><i class="fas fa-copy"></i> 复制</button>
+        <button class="btn btn-compact" id="btn-add-ver"><i class="fas fa-plus"></i> 添加版本</button>
+        ${pasteTypeBtn}
+        ${pasteVersionBtn}
+      </div>
+      <p class="parser-edit-label">报文类型</p>
+      <div class="form-group">
+        <label>报文类型名称</label>
+        <input id="mt-name" type="text" value="${escapeAttr(mt)}">
+      </div>
       <div class="form-group">
         <label>描述</label>
         <input id="mt-desc" type="text" value="${escapeAttr(desc)}">
       </div>
-      <div class="form-actions">
-        <button class="btn btn-primary" id="btn-save-mt"><i class="fas fa-save"></i> 保存描述</button>
-        <button class="btn btn-secondary" id="btn-rename-mt"><i class="fas fa-i-cursor"></i> 重命名</button>
-        <button class="btn btn-outline" id="btn-copy-mt"><i class="fas fa-copy"></i> 复制</button>
+      <div class="parser-card-actions parser-card-actions--bottom">
+        <button class="btn btn-primary" id="btn-save-mt"><i class="fas fa-save"></i> 保存信息</button>
         <button class="btn btn-danger" id="btn-del-mt"><i class="fas fa-trash"></i> 删除</button>
-        <button class="btn" id="btn-add-ver"><i class="fas fa-plus"></i> 添加版本</button>
-        ${pasteTypeBtn}
-        ${pasteVersionBtn}
       </div>`;
-    qs('#btn-save-mt')?.addEventListener('click', () => saveMessageTypeDesc(mt));
-    qs('#btn-rename-mt')?.addEventListener('click', () => renameMessageType(mt));
+    qs('#btn-save-mt')?.addEventListener('click', () => saveMessageType(mt));
     qs('#btn-copy-mt')?.addEventListener('click', () => copyMessageType(mt));
     qs('#btn-del-mt')?.addEventListener('click', () => deleteConfigItem('message_type', mt));
     qs('#btn-add-ver')?.addEventListener('click', () => {
-      showAddVersionModal(mt);
+      addVersionInline(mt);
     });
     qs('#btn-paste-mt')?.addEventListener('click', () => pasteMessageType());
     qs('#btn-paste-version-into-mt')?.addEventListener('click', () => pasteVersion(mt));
+    focusPreviewPath(nodePath);
     return;
   }
 
   if (node.type === 'version') {
     const { messageType: mt, version: ver } = node;
     const pasteFieldBtn = hasClipboard('field')
-      ? '<button class="btn btn-outline" id="btn-paste-field"><i class="fas fa-paste"></i> 粘贴字段</button>'
+      ? '<button class="btn btn-outline btn-compact" id="btn-paste-field"><i class="fas fa-paste"></i> 粘贴字段</button>'
       : '';
     box.innerHTML = `
-      <h4><i class="fas fa-code-branch"></i> 版本：${escapeHtml(mt)} / ${escapeHtml(ver)}</h4>
-      <div class="form-actions">
-        <button class="btn btn-secondary" id="btn-rename-ver"><i class="fas fa-i-cursor"></i> 重命名</button>
-        <button class="btn btn-outline" id="btn-copy-ver"><i class="fas fa-copy"></i> 复制</button>
-        <button class="btn btn-danger" id="btn-del-ver"><i class="fas fa-trash"></i> 删除版本</button>
-        <button class="btn" id="btn-add-field"><i class="fas fa-plus"></i> 添加字段</button>
+      <div class="parser-card-actions parser-card-actions--top">
+        <button class="btn btn-outline btn-compact" id="btn-copy-ver"><i class="fas fa-copy"></i> 复制</button>
+        <button class="btn btn-compact" id="btn-add-field"><i class="fas fa-plus"></i> 添加字段</button>
         ${pasteFieldBtn}
+      </div>
+      <p class="parser-edit-label">版本</p>
+      <div class="form-group">
+        <label>版本号</label>
+        <input id="ver-name" type="text" value="${escapeAttr(ver)}">
+      </div>
+      <div class="parser-card-actions parser-card-actions--bottom">
+        <button class="btn btn-primary" id="btn-save-ver"><i class="fas fa-save"></i> 保存版本</button>
+        <button class="btn btn-danger" id="btn-del-ver"><i class="fas fa-trash"></i> 删除版本</button>
       </div>`;
-    qs('#btn-rename-ver')?.addEventListener('click', () => renameVersion(mt, ver));
+    qs('#btn-save-ver')?.addEventListener('click', () => saveVersion(mt, ver));
     qs('#btn-copy-ver')?.addEventListener('click', () => copyVersion(mt, ver));
     qs('#btn-del-ver')?.addEventListener('click', () => deleteConfigItem('version', mt, ver));
-    qs('#btn-add-field')?.addEventListener('click', () => showAddFieldModal(mt, ver));
+    qs('#btn-add-field')?.addEventListener('click', () => addFieldInline(mt, ver));
     qs('#btn-paste-field')?.addEventListener('click', () => pasteField(mt, ver));
+    focusPreviewPath(nodePath);
     return;
   }
 
@@ -775,10 +941,19 @@ function renderEditorFor(node) {
     const { messageType: mt, version: ver, field: fd } = node;
     const fcfg = workingConfig?.[mt]?.Versions?.[ver]?.Fields?.[fd] || { Start: 0, Length: null, Escapes: {} };
     const pasteEscapeBtn = hasClipboard('escape')
-      ? '<button class="btn btn-outline" id="btn-paste-escape"><i class="fas fa-paste"></i> 粘贴转义</button>'
+      ? '<button class="btn btn-outline btn-compact" id="btn-paste-escape"><i class="fas fa-paste"></i> 粘贴转义</button>'
       : '';
     box.innerHTML = `
-      <h4><i class="fas fa-tag"></i> 字段：${escapeHtml(mt)} / ${escapeHtml(ver)} / ${escapeHtml(fd)}</h4>
+      <div class="parser-card-actions parser-card-actions--top">
+        <button class="btn btn-outline btn-compact" id="btn-copy-fd"><i class="fas fa-copy"></i> 复制</button>
+        <button class="btn btn-compact" id="btn-add-esc"><i class="fas fa-plus"></i> 添加转义</button>
+        ${pasteEscapeBtn}
+      </div>
+      <p class="parser-edit-label">字段</p>
+      <div class="form-group">
+        <label>字段名称</label>
+        <input id="fd-name" type="text" value="${escapeAttr(fd)}">
+      </div>
       <div class="form-row">
         <div class="form-group">
           <label>Start</label>
@@ -789,30 +964,24 @@ function renderEditorFor(node) {
           <input id="fd-length" type="number" min="-1" value="${fcfg.Length==null?'':escapeAttr(fcfg.Length)}" placeholder="空 = 到结尾">
         </div>
       </div>
-      <div class="form-actions">
+      <div class="parser-card-actions parser-card-actions--bottom">
         <button class="btn btn-primary" id="btn-save-fd"><i class="fas fa-save"></i> 保存</button>
-        <button class="btn btn-secondary" id="btn-rename-fd"><i class="fas fa-i-cursor"></i> 重命名</button>
-        <button class="btn btn-outline" id="btn-copy-fd"><i class="fas fa-copy"></i> 复制</button>
         <button class="btn btn-danger" id="btn-del-fd"><i class="fas fa-trash"></i> 删除字段</button>
-        <button class="btn" id="btn-add-esc"><i class="fas fa-plus"></i> 添加转义</button>
-        ${pasteEscapeBtn}
-      </div>
-      <h5 style="margin-top:12px;">Escapes</h5>
-      <div id="esc-list"></div>`;
+      </div>`;
 
     qs('#btn-save-fd')?.addEventListener('click', () => saveField(mt, ver, fd));
-    qs('#btn-rename-fd')?.addEventListener('click', () => renameField(mt, ver, fd));
     qs('#btn-copy-fd')?.addEventListener('click', () => copyField(mt, ver, fd));
     qs('#btn-del-fd')?.addEventListener('click', () => deleteConfigItem('field', mt, ver, fd));
-    qs('#btn-add-esc')?.addEventListener('click', () => showAddEscapeModal(mt, ver, fd));
+    qs('#btn-add-esc')?.addEventListener('click', () => addEscapeInline(mt, ver, fd));
     qs('#btn-paste-escape')?.addEventListener('click', () => pasteEscape(mt, ver, fd));
 
-    renderEscapesList(mt, ver, fd, fcfg.Escapes || {});
+    focusPreviewPath(nodePath);
     return;
   }
 
   if (node.type === 'escape') {
     renderEscapeEditor(node);
+    focusPreviewPath(nodePath);
     return;
   }
 
@@ -832,8 +1001,8 @@ function renderEscapeEditor(node) {
   box.innerHTML = `
     <h4><i class="fas fa-exchange-alt"></i> 转义：${escapeHtml(mt)} / ${escapeHtml(ver)} / ${escapeHtml(fd)} / ${escapeHtml(key)}</h4>
     <div class="form-group">
-      <label>原始值</label>
-      <input type="text" value="${escapeAttr(key)}" disabled>
+      <label>转义键</label>
+      <input id="escape-key-input" type="text" value="${escapeAttr(key)}">
     </div>
     <div class="form-group">
       <label>转义后值</label>
@@ -854,21 +1023,47 @@ function renderEscapeEditor(node) {
 }
 
 // =============== 右侧：保存/删除/重命名等 ===============
-async function saveMessageTypeDesc(mt) {
-  const desc = qs('#mt-desc')?.value ?? '';
+async function saveMessageType(mt) {
+  const name = (qs('#mt-name')?.value || '').trim() || mt;
+  const desc = (qs('#mt-desc')?.value || '').trim();
   try {
     await postJSON('/api/update-message-type', {
       factory: workingFactory,
       system: workingSystem,
       old_name: mt,
-      new_name: mt,
+      new_name: name,
       description: desc
     });
-    showMessage('success', '描述已保存', 'parser-config-messages');
+    showMessage('success', '报文类型已保存', 'parser-config-messages');
     await refreshFullConfig();
     await refreshTree();
+    renderEditorFor({ type: 'message_type', messageType: name });
 
-    notifyParserConfigChanged('update-desc', { mt });
+    notifyParserConfigChanged(mt === name ? 'update-mt' : 'rename-mt', { oldName: mt, newName: name, mt: name });
+  } catch (e) {
+    showMessage('error', '保存失败：' + e.message, 'parser-config-messages');
+  }
+}
+
+async function saveVersion(mt, ver) {
+  const newVer = (qs('#ver-name')?.value || '').trim() || ver;
+  if (newVer === ver) {
+    showMessage('info', '版本名称未变化', 'parser-config-messages');
+    return;
+  }
+  try {
+    const clone = cloneConfig(workingConfig);
+    if (!clone?.[mt]?.Versions?.[ver]) throw new Error('版本不存在');
+    if (clone[mt].Versions[newVer]) throw new Error('版本已存在');
+    clone[mt].Versions[newVer] = clone[mt].Versions[ver];
+    delete clone[mt].Versions[ver];
+    await saveFullConfig(clone);
+    showMessage('success', '版本已保存', 'parser-config-messages');
+    await refreshFullConfig();
+    await refreshTree();
+    renderEditorFor({ type: 'version', messageType: mt, version: newVer });
+
+    notifyParserConfigChanged('rename-ver', { mt, oldVer: ver, newVer, ver: newVer });
   } catch (e) {
     showMessage('error', '保存失败：' + e.message, 'parser-config-messages');
   }
@@ -879,23 +1074,40 @@ async function saveField(mt, ver, fd) {
   const lenRaw = (qs('#fd-length')?.value ?? '').trim();
   const length = (lenRaw === '') ? null : parseInt(lenRaw, 10);
 
-  const base = `${mt}.Versions.${ver}.Fields.${fd}`;
-  const updates = {};
-  if (!Number.isNaN(start)) updates[`${base}.Start`] = start;
-  updates[`${base}.Length`] = (length === null ? null : (Number.isNaN(length) ? null : length));
+  const newFieldName = (qs('#fd-name')?.value || '').trim() || fd;
+  const startValue = Number.isNaN(start) ? 0 : start;
+  const lengthValue = (length === null || Number.isNaN(length)) ? null : length;
+  const needsRename = newFieldName !== fd;
 
   try {
-    await postJSON('/api/update-parser-config', {
-      factory: workingFactory,
-      system: workingSystem,
-      updates
-    });
+    if (needsRename) {
+      const clone = cloneConfig(workingConfig);
+      const verObj = clone?.[mt]?.Versions?.[ver];
+      if (!verObj?.Fields?.[fd]) throw new Error('字段不存在');
+      if (verObj.Fields[newFieldName]) throw new Error('字段已存在');
+      const fieldData = deepCopy(verObj.Fields[fd]);
+      fieldData.Start = startValue;
+      fieldData.Length = lengthValue;
+      verObj.Fields[newFieldName] = fieldData;
+      delete verObj.Fields[fd];
+      await saveFullConfig(clone);
+    } else {
+      const base = `${mt}.Versions.${ver}.Fields.${fd}`;
+      const updates = {};
+      updates[`${base}.Start`] = startValue;
+      updates[`${base}.Length`] = lengthValue;
+      await postJSON('/api/update-parser-config', {
+        factory: workingFactory,
+        system: workingSystem,
+        updates
+      });
+    }
     showMessage('success', '字段已保存', 'parser-config-messages');
     await refreshFullConfig();
     await refreshTree();
-    renderEditorFor({ type: 'field', messageType: mt, version: ver, field: fd });
+    renderEditorFor({ type: 'field', messageType: mt, version: ver, field: newFieldName });
 
-    notifyParserConfigChanged('update-field', { mt, ver, fd });
+    notifyParserConfigChanged(needsRename ? 'rename-field' : 'update-field', { mt, ver, oldField: fd, field: newFieldName, fd: newFieldName });
   } catch (e) {
     showMessage('error', '保存失败：' + e.message, 'parser-config-messages');
   }
@@ -929,130 +1141,36 @@ async function deleteConfigItem(type, name1, name2 = '', name3 = '') {
   }
 }
 
-async function renameMessageType(oldName) {
-  const newName = prompt('新报文类型名称：', oldName);
-  if (!newName || newName === oldName) return;
-  try {
-    await postJSON('/api/update-message-type', {
-      factory: workingFactory,
-      system: workingSystem,
-      old_name: oldName,
-      new_name: newName,
-      description: workingConfig?.[oldName]?.Description || ''
-    });
-    showMessage('success', '已重命名', 'parser-config-messages');
-    await refreshFullConfig();
-    await refreshTree();
-
-    notifyParserConfigChanged('rename-mt', { oldName, newName });
-  } catch (e) {
-    showMessage('error', '重命名失败：' + e.message, 'parser-config-messages');
-  }
-}
-
-async function renameVersion(mt, oldVer) {
-  const newVer = prompt('新版本号：', oldVer);
-  if (!newVer || newVer === oldVer) return;
-  // 整包保存：复制版本对象 -> 新 key；删除旧 key
-  try {
-    const clone = cloneConfig(workingConfig);
-    if (!clone?.[mt]?.Versions?.[oldVer]) throw new Error('版本不存在');
-    clone[mt].Versions[newVer] = clone[mt].Versions[oldVer];
-    delete clone[mt].Versions[oldVer];
-
-    await saveFullConfig(clone);
-    showMessage('success', '已重命名', 'parser-config-messages');
-    await refreshFullConfig();
-    await refreshTree();
-    renderEditorFor({ type: 'version', messageType: mt, version: newVer });
-
-    notifyParserConfigChanged('rename-ver', { mt, oldVer, newVer });
-  } catch (e) {
-    showMessage('error', '重命名失败：' + e.message, 'parser-config-messages');
-  }
-}
-
-async function renameField(mt, ver, oldField) {
-  const newField = prompt('新字段名：', oldField);
-  if (!newField || newField === oldField) return;
-  try {
-    const clone = cloneConfig(workingConfig);
-    const verObj = clone?.[mt]?.Versions?.[ver];
-    if (!verObj?.Fields?.[oldField]) throw new Error('字段不存在');
-    verObj.Fields[newField] = verObj.Fields[oldField];
-    delete verObj.Fields[oldField];
-
-    await saveFullConfig(clone);
-    showMessage('success', '已重命名', 'parser-config-messages');
-    await refreshFullConfig();
-    await refreshTree();
-    renderEditorFor({ type: 'field', messageType: mt, version: ver, field: newField });
-
-    notifyParserConfigChanged('rename-field', { mt, ver, oldField, newField });
-  } catch (e) {
-    showMessage('error', '重命名失败：' + e.message, 'parser-config-messages');
-  }
-}
-
-// =============== Escapes 列表 & 增删 ===============
-function renderEscapesList(mt, ver, fd, esc = {}) {
-  const host = qs('#esc-list');
-  if (!host) return;
-  const keys = Object.keys(esc);
-  if (!keys.length) {
-    host.innerHTML = '<div style="color:#6c757d;">暂无转义</div>';
-    return;
-  }
-  const tbl = document.createElement('table');
-  tbl.innerHTML = `
-    <thead><tr><th>Key</th><th>Value</th><th style="width:180px;">操作</th></tr></thead>
-    <tbody>${keys.map(k=>`<tr data-k="${escapeAttr(k)}">
-      <td>${escapeHtml(k)}</td><td>${escapeHtml(String(esc[k]))}</td>
-      <td style="text-align:right;">
-        <button class="btn btn-sm btn-outline esc-copy">复制</button>
-        <button class="btn btn-sm btn-secondary esc-edit">编辑</button>
-        <button class="btn btn-sm btn-danger esc-del">删除</button>
-      </td>
-    </tr>`).join('')}</tbody>`;
-  host.innerHTML = ''; host.appendChild(tbl);
-
-  host.querySelectorAll('.esc-edit').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const key = e.currentTarget.closest('tr')?.dataset.k;
-      if (!key) return;
-      renderEditorFor({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: key });
-    });
-  });
-
-  host.querySelectorAll('.esc-del').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      const tr = e.currentTarget.closest('tr');
-      const key = tr?.dataset.k;
-      if (!key) return;
-      if (!confirm(`删除转义 "${key}" ?`)) return;
-      try {
-        await deleteEscape(mt, ver, fd, key, { renderNode: { type: 'field', messageType: mt, version: ver, field: fd } });
-      } catch (err) {
-        showMessage('error', '删除失败：' + err.message, 'parser-config-messages');
-      }
-    });
-  });
-}
-
 async function saveEscapeValue(mt, ver, fd, key) {
   const value = qs('#escape-value-input')?.value ?? '';
-  const base = `${mt}.Versions.${ver}.Fields.${fd}.Escapes.${key}`;
+  const newKey = (qs('#escape-key-input')?.value || '').trim() || key;
+  const needsRename = newKey !== key;
   try {
-    await postJSON('/api/update-parser-config', {
-      factory: workingFactory,
-      system: workingSystem,
-      updates: { [base]: value }
-    });
+    if (needsRename) {
+      const clone = cloneConfig(workingConfig);
+      const escMap = clone?.[mt]?.Versions?.[ver]?.Fields?.[fd]?.Escapes;
+      if (!escMap || !Object.prototype.hasOwnProperty.call(escMap, key)) {
+        throw new Error('转义不存在');
+      }
+      if (Object.prototype.hasOwnProperty.call(escMap, newKey)) {
+        throw new Error('转义键已存在');
+      }
+      delete escMap[key];
+      escMap[newKey] = value;
+      await saveFullConfig(clone);
+    } else {
+      const base = `${mt}.Versions.${ver}.Fields.${fd}.Escapes.${key}`;
+      await postJSON('/api/update-parser-config', {
+        factory: workingFactory,
+        system: workingSystem,
+        updates: { [base]: value }
+      });
+    }
     showMessage('success', '转义已保存', 'parser-config-messages');
     await refreshFullConfig();
     await refreshTree();
-    renderEditorFor({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: key });
-    notifyParserConfigChanged('update-escape', { mt, ver, fd, key });
+    renderEditorFor({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: newKey });
+    notifyParserConfigChanged(needsRename ? 'rename-escape' : 'update-escape', { mt, ver, fd, field: fd, oldKey: key, key: newKey, escapeKey: newKey });
   } catch (err) {
     showMessage('error', '保存转义失败：' + err.message, 'parser-config-messages');
   }
@@ -1175,7 +1293,7 @@ function handleEscapeFieldChange(e) {
   if (submitBtn) submitBtn.disabled = !escapeModalDefaults.field;
 }
 
-async function submitEscapeRaw(mt, ver, fd, key, val) {
+async function submitEscapeRaw(mt, ver, fd, key, val, opts = {}) {
   if (!fd) {
     showMessage('error', '请选择要添加转义的字段', 'parser-config-messages');
     return;
@@ -1189,9 +1307,13 @@ async function submitEscapeRaw(mt, ver, fd, key, val) {
     showMessage('success', '转义已添加', 'parser-config-messages');
     await refreshFullConfig();
     await refreshTree();
-    renderEditorFor({ type: 'field', messageType: mt, version: ver, field: fd });
+    if (opts.focusEscape) {
+      renderEditorFor({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: key });
+    } else {
+      renderEditorFor({ type: 'field', messageType: mt, version: ver, field: fd });
+    }
 
-    notifyParserConfigChanged('add-escape', { mt, ver, fd: fd, key, val });
+    notifyParserConfigChanged('add-escape', { mt, ver, fd: fd, field: fd, key, val });
   } catch (e) {
     showMessage('error', '添加失败：' + e.message, 'parser-config-messages');
   }
@@ -1208,11 +1330,45 @@ function submitEscapeForm() {
     return;
   }
   hideAddEscapeModal();
-  submitEscapeRaw(mt, ver, fd, key, val);
+  submitEscapeRaw(mt, ver, fd, key, val, { focusEscape: true });
 }
 
 function hideAddEscapeModal() {
   const m = qs('#add-escape-modal'); if (m) m.style.display = 'none';
+}
+
+function addVersionInline(mt) {
+  const versions = Object.keys(workingConfig?.[mt]?.Versions || {});
+  const newName = suggestName('新版本', versions);
+  submitVersionRaw(mt, newName);
+}
+
+function addFieldInline(mt, ver) {
+  const fields = Object.keys(workingConfig?.[mt]?.Versions?.[ver]?.Fields || {});
+  const name = suggestName('新字段', fields);
+  submitFieldRaw(mt, ver, name, 0, -1);
+}
+
+async function addEscapeInline(mt, ver, fd) {
+  const clone = cloneConfig(workingConfig);
+  const fieldRef = clone?.[mt]?.Versions?.[ver]?.Fields?.[fd];
+  if (!fieldRef) {
+    showMessage('error', '未找到字段，无法添加转义', 'parser-config-messages');
+    return;
+  }
+  if (!fieldRef.Escapes) fieldRef.Escapes = {};
+  const key = suggestName('新转义', Object.keys(fieldRef.Escapes));
+  fieldRef.Escapes[key] = '';
+  try {
+    await saveFullConfig(clone, { silent: true });
+    await refreshFullConfig();
+    await refreshTree();
+    renderEditorFor({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: key });
+    notifyParserConfigChanged('add-escape', { mt, ver, fd, field: fd, key, escapeKey: key });
+    showMessage('success', '已添加新的转义占位，请完善内容', 'parser-config-messages');
+  } catch (err) {
+    showMessage('error', '添加转义失败：' + err.message, 'parser-config-messages');
+  }
 }
 
 // =============== “添加”模态框：报文类型/版本/字段 ===============
@@ -1340,21 +1496,117 @@ function submitFieldForm() {
 function renderJsonPreview() {
   const box = qs('#json-preview-content');
   if (!box) return;
-  const pre = document.createElement('pre');
-  try {
-    pre.textContent = JSON.stringify(workingConfig, null, 2);
-  } catch (e) {
-    pre.textContent = '配置序列化失败：' + (e?.message || e);
+  box.innerHTML = '';
+  const config = workingConfig && Object.keys(workingConfig).length ? workingConfig : null;
+  if (!config) {
+    box.innerHTML = `
+      <div class="parser-json-placeholder">
+        <i class="fas fa-code"></i>
+        <p>选择左侧配置查看结构</p>
+      </div>`;
+    return;
   }
-  box.innerHTML = ''; box.appendChild(pre);
+  const lines = buildJsonLinesFromConfig(config);
+  const pre = document.createElement('pre');
+  pre.className = 'json-code';
+  lines.forEach((line, idx) => {
+    const span = document.createElement('span');
+    span.className = 'json-line';
+    span.textContent = line.text;
+    if (line.path) {
+      span.dataset.path = line.path;
+    }
+    pre.appendChild(span);
+    if (idx !== lines.length - 1) {
+      pre.appendChild(document.createTextNode('\n'));
+    }
+  });
+  box.appendChild(pre);
 }
 
 function copyJsonPreview() {
-  const pre = qs('#json-preview-content pre');
+  const pre = qs('#json-preview-content .json-code');
   if (!pre) return;
   navigator?.clipboard?.writeText(pre.textContent)
     .then(()=> showMessage('success', 'JSON 已复制', 'parser-config-messages'))
     .catch(err => showMessage('error', '复制失败：' + err.message, 'parser-config-messages'));
+}
+
+function formatJsonValue(value) {
+  if (value === null || value === undefined) return 'null';
+  if (typeof value === 'number' && !Number.isNaN(value)) return String(value);
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  return JSON.stringify(value);
+}
+
+function buildJsonLinesFromConfig(config) {
+  const indentUnit = '  ';
+  const lines = [];
+  const pushLine = (text, level, path) => {
+    lines.push({ text: `${indentUnit.repeat(level)}${text}`, path });
+  };
+  const mtKeys = Object.keys(config || {});
+  if (!mtKeys.length) {
+    pushLine('{}', 0);
+    return lines;
+  }
+  pushLine('{', 0);
+  mtKeys.forEach((mtKey, mtIndex) => {
+    const mtObj = config[mtKey] || {};
+    const versions = mtObj.Versions || {};
+    const versionKeys = Object.keys(versions);
+    const mtPath = buildNodePath({ type: 'message_type', messageType: mtKey });
+    pushLine(`"${mtKey}": {`, 1, mtPath);
+    if (mtObj.Description !== undefined && mtObj.Description !== '') {
+      pushLine(`"Description": ${JSON.stringify(mtObj.Description)}${versionKeys.length ? ',' : ''}`, 2);
+    }
+    if (versionKeys.length) {
+      pushLine('"Versions": {', 2);
+      versionKeys.forEach((verKey, verIndex) => {
+        const verPath = buildNodePath({ type: 'version', messageType: mtKey, version: verKey });
+        const fields = versions[verKey]?.Fields || {};
+        const fieldKeys = Object.keys(fields);
+        pushLine(`"${verKey}": {`, 3, verPath);
+        if (fieldKeys.length) {
+          pushLine('"Fields": {', 4);
+          fieldKeys.forEach((fdKey, fdIndex) => {
+            const field = fields[fdKey] || {};
+            const escapes = field.Escapes || {};
+            const escapeKeys = Object.keys(escapes);
+            const fieldPath = buildNodePath({ type: 'field', messageType: mtKey, version: verKey, field: fdKey });
+            pushLine(`"${fdKey}": {`, 5, fieldPath);
+            pushLine(`"Start": ${formatJsonValue(field.Start ?? 0)},`, 6);
+            pushLine(`"Length": ${formatJsonValue(field.Length ?? null)},`, 6);
+            if (escapeKeys.length) {
+              pushLine('"Escapes": {', 6);
+              escapeKeys.forEach((escKey, escIndex) => {
+                const escPath = buildNodePath({ type: 'escape', messageType: mtKey, version: verKey, field: fdKey, escapeKey: escKey });
+                const suffix = escIndex === escapeKeys.length - 1 ? '' : ',';
+                pushLine(`"${escKey}": ${formatJsonValue(escapes[escKey])}${suffix}`, 7, escPath);
+              });
+              pushLine('}', 6);
+            } else {
+              pushLine('"Escapes": {}', 6);
+            }
+            const fieldSuffix = fdIndex === fieldKeys.length - 1 ? '' : ',';
+            pushLine(`}${fieldSuffix}`, 5);
+          });
+          pushLine('}', 4);
+        } else {
+          pushLine('"Fields": {}', 4);
+        }
+        const verSuffix = verIndex === versionKeys.length - 1 ? '' : ',';
+        pushLine(`}${verSuffix}`, 3);
+      });
+      pushLine('}', 2);
+    } else {
+      pushLine('"Versions": {}', 2);
+    }
+    const mtSuffix = mtIndex === mtKeys.length - 1 ? '' : ',';
+    pushLine(`}${mtSuffix}`, 1);
+  });
+  pushLine('}', 0);
+  return lines;
 }
 
 function pushHistory() {

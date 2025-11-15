@@ -505,21 +505,23 @@ function renderTemplateList(items, append = false) {
     const nodes = Array.isArray(t.nodes) ? t.nodes : [];
     const factoryName = t.factory || t.factory_name || '-';
     const systemName = t.system || t.system_name || '-';
-    const nodesPreview = nodes.slice(0, 5).join(',');
+    const nodesPreview = nodes.slice(0, 4).join(', ');
     const el = document.createElement('div');
-    el.className = 'config-item';
+    const previewText = nodesPreview
+      ? `${nodesPreview}${nodes.length > 4 ? ' …' : ''}`
+      : '暂无示例';
+    el.className = 'config-item config-item--compact template-card';
     el.innerHTML = `
-      <div class="config-info" style="flex:1;">
+      <p class="config-compact-subline">${escapeHtml(factoryName)} - ${escapeHtml(systemName)}</p>
+      <div class="config-compact-title">
         <h3>${escapeHtml(t.name)}</h3>
-        <p>${escapeHtml(factoryName)} - ${escapeHtml(systemName)}</p>
-        <p style="font-size:12px; color:#6b7280;">共 ${nodes.length} 节点${nodes.length ? ` · 示例：${escapeHtml(nodesPreview)}${nodes.length>5?'…':''}`:''}</p>
+        <span class="config-chip">${nodes.length} 节点</span>
       </div>
-      <div style="display:flex; align-items:center; gap:8px;">
+      <div class="config-compact-meta"><i class="fas fa-stream"></i> ${escapeHtml(previewText)}</div>
+      <div class="config-compact-actions tpl-actions">
         <button class="btn btn-primary btn-sm tpl-select">选择区域</button>
-        <div class="config-actions">
-          <button class="btn btn-secondary btn-sm tpl-edit">编辑</button>
-          <button class="btn btn-danger btn-sm tpl-del">删除</button>
-        </div>
+        <button class="btn btn-secondary btn-sm tpl-edit">编辑</button>
+        <button class="btn btn-danger btn-sm tpl-del">删除</button>
       </div>
     `;
 

@@ -19,12 +19,12 @@
             </div>
             <div class="logo-text">
                 <h1>日志分析系统</h1>
-                <p>Neon Operations Console</p>
+                <p>智慧运维工作台</p>
             </div>
         </div>
         <div class="header-actions">
-            <span class="status-pill"><i class="fas fa-signal"></i> ONLINE</span>
-            <span class="header-hint">CYBER OPS / V2</span>
+            <span class="status-pill"><i class="fas fa-signal"></i> 在线</span>
+            <span class="header-hint">智慧运维 / V2</span>
         </div>
     </header>
 
@@ -34,28 +34,28 @@
             <div class="tab-icon"><i class="fas fa-download"></i></div>
             <div class="tab-label">
                 <span>日志下载</span>
-                <small>Download</small>
+                <small>下载</small>
             </div>
         </div>
         <div class="tab" data-tab="analyze">
             <div class="tab-icon"><i class="fas fa-chart-line"></i></div>
             <div class="tab-label">
                 <span>日志分析</span>
-                <small>Analyze</small>
+                <small>分析</small>
             </div>
         </div>
         <div class="tab" data-tab="server-config">
             <div class="tab-icon"><i class="fas fa-server"></i></div>
             <div class="tab-label">
                 <span>服务器配置</span>
-                <small>Servers</small>
+                <small>配置</small>
             </div>
         </div>
         <div class="tab" data-tab="parser-config">
             <div class="tab-icon"><i class="fas fa-code-branch"></i></div>
             <div class="tab-label">
                 <span>解析逻辑配置</span>
-                <small>Parser</small>
+                <small>解析</small>
             </div>
         </div>
     </div>
@@ -63,16 +63,11 @@
     <!-- 日志下载标签页 -->
     <!-- 下载日志 -->
     <div id="download-tab" class="tab-content">
-      <div class="selection-panel">
-        <div class="selection-header">
-          <h3><i class="fas fa-download"></i> 日志下载</h3>
-        </div>
+      <div class="message-container" id="download-messages" data-label="日志下载"></div>
 
-        <div class="message-container" id="download-messages"></div>
-
-        <div class="config-layout">
+      <div class="config-layout neon-grid">
           <!-- 左：搜索与结果 -->
-          <section class="config-form-section">
+          <section class="config-form-section neon-card">
             <!-- 添加模板模式提示条（默认隐藏） -->
             <div id="template-hint" class="message message-info" style="display:none; margin-bottom:12px;">
               正在添加区域：请选择厂区与系统，并在“节点”填入多个节点（英文逗号分隔，例如：2001,2002,2003）。
@@ -143,29 +138,33 @@
           </section>
 
           <!-- 右：区域模板 -->
-          <aside class="config-list-section">
+          <aside class="config-list-section neon-card template-panel">
             <div class="config-list">
-              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-                <h4 style="margin:0;">区域模板</h4>
+              <div class="panel-heading">
+                <div>
+                  <p class="panel-label">区域模板</p>
+                  <h4>区域模板</h4>
+                </div>
                 <button class="btn btn-primary" id="btn-add-template"><i class="fas fa-plus"></i> 添加区域</button>
               </div>
 
-              <div class="search-box" style="margin-bottom:12px;">
+              <div class="search-box search-box--pill">
                 <i class="fas fa-search"></i>
                 <input id="template-search-input" class="search-input" placeholder="搜索名称 / 节点">
-                <button class="btn-clear-search" id="template-clear-search" title="清空">&times;</button>
+                <button class="btn-clear-search" id="template-clear-search" title="清空">
+                  <i class="fas fa-times"></i>
+                </button>
               </div>
 
               <div id="template-list">
                 <div class="message-empty">暂无模板</div>
               </div>
 
-              <div style="display:flex; justify-content:center; margin-top:10px;">
+              <div class="list-footer">
                 <button class="btn" id="btn-more-templates" style="display:none;">加载更多</button>
               </div>
             </div>
           </aside>
-        </div>
       </div>
     </div>
 
@@ -173,7 +172,7 @@
     <!-- 日志分析标签页 -->
     <div class="tab-content" id="analyze-tab">
         <h2><i class="fas fa-chart-bar"></i> 日志分析</h2>
-        <div id="analyze-messages" class="message-container">
+        <div id="analyze-messages" class="message-container" data-label="日志分析">
             <div class="message-empty"></div>
         </div>
         <div class="analyze-controls">
@@ -238,11 +237,11 @@
     <!-- 服务器配置标签页 -->
     <div class="tab-content" id="server-config-tab">
         <h2><i class="fas fa-server"></i> 服务器配置管理</h2>
-        <div id="server-config-messages" class="message-container">
+        <div id="server-config-messages" class="message-container" data-label="服务器配置">
             <div class="message-empty"></div>
         </div>
         <div class="config-layout">
-            <div class="config-form-section">
+            <div class="config-form-section neon-card">
                 <div class="config-form">
                     <h3>添加/编辑配置</h3>
                     <div class="form-group">
@@ -267,7 +266,13 @@
                     </div>
                     <div class="form-group">
                         <label>密码</label>
-                        <input id="server-password" placeholder="SSH密码" type="password">
+                        <div class="input-with-toggle">
+                            <input id="server-password" placeholder="SSH密码" type="password">
+                            <button type="button" class="password-toggle" id="toggle-password-visibility" aria-pressed="false" data-visible="false" title="显示/隐藏密码">
+                                <i class="fas fa-eye icon-eye" aria-hidden="true"></i>
+                                <i class="fas fa-eye-slash icon-eye-slash" aria-hidden="true"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="form-actions">
                         <button class="btn btn-search" id="save-config-btn">
@@ -279,7 +284,7 @@
                     </div>
                 </div>
             </div>
-            <div class="config-list-section">
+            <div class="config-list-section neon-card">
                 <div class="config-list">
                     <div class="server-config-header">
                         <h3>现有配置</h3>
@@ -304,7 +309,7 @@
     <!-- 解析逻辑配置标签页（工具校验100%闭合） -->
     <div id="parser-config-tab" class="tab-content">
         <h2><i class="fas fa-cogs"></i> 解析逻辑配置</h2>
-        <div id="parser-config-messages" class="message-container">
+        <div id="parser-config-messages" class="message-container" data-label="解析配置">
             <div class="message-empty"></div>
         </div>
 
@@ -371,7 +376,7 @@
                 </div>
 
                 <!-- 三列布局 -->
-                <div class="parser-three-column">
+                <div class="parser-three-column preview-collapsed">
                     <!-- 左列：导航树 -->
                     <aside class="parser-left-nav">
                         <div class="parser-nav-card">
@@ -426,9 +431,10 @@
                     </section>
 
                     <!-- 右列：JSON预览 -->
-                    <aside class="parser-right-json" id="parser-preview-panel" data-state="expanded">
-                        <button class="parser-preview-toggle" id="parser-preview-toggle" aria-expanded="true" title="收起实时预览">
-                            <i class="fas fa-chevron-right"></i>
+                    <aside class="parser-right-json is-collapsed" id="parser-preview-panel" data-state="collapsed">
+                        <button type="button" class="parser-preview-toggle" id="parser-preview-toggle" aria-expanded="false" title="点击展开实时预览">
+                            <span class="toggle-text">点击展开实时预览</span>
+                            <i class="fas fa-chevron-left"></i>
                         </button>
                         <div class="parser-preview-body">
                             <div class="parser-json-header">
