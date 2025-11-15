@@ -672,6 +672,18 @@ th, td {
   text-align: left;
 }
 
+th.col-select,
+td.col-select {
+  width: 48px;
+  text-align: center;
+}
+
+th.col-select input,
+td.col-select input {
+  margin: 0 auto;
+  display: block;
+}
+
 th {
   background: rgba(59, 130, 246, 0.05);
   text-transform: uppercase;

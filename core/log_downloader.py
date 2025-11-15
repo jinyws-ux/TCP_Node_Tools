@@ -1,5 +1,4 @@
 # core/log_downloader.py
-import json
 import logging
 import os
 import re
@@ -8,6 +7,7 @@ from typing import List, Dict, Any, Optional, Iterable
 
 import paramiko
 
+from .log_metadata_store import LogMetadataStore
 
 class LogDownloader:
     """
@@ -18,11 +18,19 @@ class LogDownloader:
     - download_logs 会按“实际节点号”分目录
     """
 
-    def __init__(self, download_dir: str, config_manager: Any):
+    def __init__(
+        self,
+        download_dir: str,
+        config_manager: Any,
+        *,
+        metadata_dir: Optional[str] = None,
+        metadata_store: Optional[LogMetadataStore] = None,
+    ):
         self.download_dir = download_dir
         self.config_manager = config_manager
         self.logger = logging.getLogger(__name__)
         os.makedirs(download_dir, exist_ok=True)
+        self.metadata_store = metadata_store or LogMetadataStore(download_dir, metadata_dir)
 
     # ---------------------- 对外：单节点（向后兼容） ----------------------
     def search_logs(
@@ -205,7 +213,7 @@ class LogDownloader:
                         "remote_path": remote_path,
                         "path": remote_path,  # 兼容旧字段
                         "size": int(size) if str(size).isdigit() else 0,
-                        "mtime": mtime,
+                        "mtime": self._format_timestamp(mtime),
                         "type": "realtime",
                         "node": self._extract_node_from_filename(basename),
                     }
@@ -267,7 +275,7 @@ class LogDownloader:
                         "remote_path": remote_path,
                         "path": remote_path,  # 兼容旧字段
                         "size": int(size_match.group(1)) if size_match else 0,
-                        "mtime": mtime_match.group(1) if mtime_match else "",
+                        "mtime": self._format_timestamp(mtime_match.group(1) if mtime_match else ""),
                         "type": "archive",
                         "node": self._extract_node_from_filename(basename),
                     }
@@ -420,27 +428,49 @@ class LogDownloader:
             self.logger.error(f"提取节点号失败 {filename}: {str(e)}")
             return "未知"
 
-    def _metadata_path(self, file_path: str) -> str:
-        return f"{file_path}.meta.json"
-
     def _write_metadata(self, file_path: str, payload: Dict[str, Any]) -> None:
         try:
-            with open(self._metadata_path(file_path), "w", encoding="utf-8") as handle:
-                json.dump(payload, handle, ensure_ascii=False, indent=2)
+            self.metadata_store.write(file_path, payload)
         except Exception as exc:
             self.logger.warning("写入日志元数据失败: %s (%s)", file_path, exc)
 
     def _read_metadata(self, file_path: str) -> Dict[str, Any]:
-        meta_path = self._metadata_path(file_path)
-        if not os.path.exists(meta_path):
-            return {}
         try:
-            with open(meta_path, "r", encoding="utf-8") as handle:
-                data = json.load(handle)
-                return data if isinstance(data, dict) else {}
+            return self.metadata_store.read(file_path)
         except Exception as exc:
-            self.logger.warning("读取日志元数据失败: %s (%s)", meta_path, exc)
+            self.logger.warning("读取日志元数据失败: %s (%s)", file_path, exc)
             return {}
+
+    def _format_timestamp(self, raw: str) -> str:
+        text = (raw or "").strip()
+        if not text:
+            return ""
+        normalized = re.sub(r"\s+", " ", text)
+        iso_match = re.match(r"(?P<date>\d{4}-\d{2}-\d{2})[ T](?P<time>\d{2}:\d{2}:\d{2})", normalized)
+        if iso_match:
+            return f"{iso_match.group('date')} {iso_match.group('time')}"
+        iso_short = re.match(r"(?P<date>\d{4}-\d{2}-\d{2})[ T](?P<time>\d{2}:\d{2})", normalized)
+        if iso_short:
+            return f"{iso_short.group('date')} {iso_short.group('time')}:00"
+
+        try:
+            dt = datetime.strptime(normalized, "%b %d %H:%M")
+            dt = dt.replace(year=datetime.now().year)
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            pass
+
+        try:
+            dt = datetime.strptime(normalized, "%b %d %Y")
+            return dt.strftime("%Y-%m-%d 00:00:00")
+        except Exception:
+            pass
+
+        frac_iso = re.match(r"(?P<date>\d{4}-\d{2}-\d{2})[ T](?P<time>\d{2}:\d{2}:\d{2})\.\d+", normalized)
+        if frac_iso:
+            return f"{frac_iso.group('date')} {frac_iso.group('time')}"
+
+        return normalized
 
     def get_downloaded_logs(self) -> List[Dict[str, Any]]:
         """获取已下载的日志列表 - 正确显示实际节点"""

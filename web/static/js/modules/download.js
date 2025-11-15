@@ -41,6 +41,30 @@ function updateRefreshButton() {
   if (btn) btn.disabled = !state.lastSearch;
 }
 
+function updateSelectAllIndicator() {
+  const checkbox = qs('#logs-check-all');
+  if (!checkbox) return;
+  const total = (state.searchResults || []).filter((item) => {
+    return Boolean(item && (item.remote_path || item.path));
+  }).length;
+  const selected = state.selectedLogPaths.size;
+  checkbox.indeterminate = false;
+  if (!total) {
+    checkbox.checked = false;
+    return;
+  }
+  if (selected === 0) {
+    checkbox.checked = false;
+    return;
+  }
+  if (selected >= total) {
+    checkbox.checked = true;
+    return;
+  }
+  checkbox.checked = false;
+  checkbox.indeterminate = true;
+}
+
 function clearLastSearch() {
   state.lastSearch = null;
   updateRefreshButton();
@@ -111,6 +135,7 @@ function bindLeftForm() {
 
   qs('#logs-check-all')?.addEventListener('change', (e) => {
     const checked = e.target.checked;
+    e.target.indeterminate = false;
     const tbody = qs('#logs-search-body');
     if (!tbody) return;
     state.selectedLogPaths.clear();
@@ -120,10 +145,12 @@ function bindLeftForm() {
       if (checked && path) state.selectedLogPaths.add(path);
     });
     updateDownloadButton();
+    updateSelectAllIndicator();
   });
 
   loadSystems('');
   updateDownloadButton();
+  updateSelectAllIndicator();
 }
 
 function bindRightPanel() {
@@ -335,6 +362,9 @@ async function onDownloadLogsClick() {
     const downloaded = res.downloaded_files || [];
     if (downloaded.length) {
       $msg('success', `下载完成，成功下载 ${downloaded.length} 个日志文件`);
+      window.dispatchEvent(new CustomEvent('logs:downloaded', {
+        detail: { count: downloaded.length }
+      }));
     } else {
       $msg('warning', '后端返回成功，但未包含已下载文件信息');
     }
@@ -723,6 +753,7 @@ function renderLogs(list) {
   if (!tbody) return;
   state.searchResults = Array.isArray(list) ? list : [];
   state.selectedLogPaths.clear();
+  updateSelectAllIndicator();
 
   if (!list.length) {
     tbody.innerHTML = '<tr><td colspan="7" class="message-empty">未找到日志</td></tr>';
@@ -740,6 +771,7 @@ function renderLogs(list) {
     const path = item.path || item.remote_path || '';
 
     const tdSel = document.createElement('td');
+    tdSel.classList.add('col-select');
     const chk = document.createElement('input');
     chk.type = 'checkbox';
     chk.className = 'log-select';
@@ -756,6 +788,7 @@ function renderLogs(list) {
         if (allChk && allChk.checked) allChk.checked = false;
       }
       updateDownloadButton();
+      updateSelectAllIndicator();
     });
     tdSel.appendChild(chk);
     tr.appendChild(tdSel);
@@ -815,4 +848,5 @@ function syncLogCheckboxes() {
     chk.checked = !!(path && state.selectedLogPaths.has(path));
   });
   updateDownloadButton();
+  updateSelectAllIndicator();
 }

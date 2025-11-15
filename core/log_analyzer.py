@@ -4,19 +4,28 @@ import logging
 import os
 import re
 from time import perf_counter
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .log_parser import LogParser
 from .report_generator import ReportGenerator
+from .log_metadata_store import LogMetadataStore
 
 
 class LogAnalyzer:
-    def __init__(self, output_dir: str, config_manager: Any, parser_config_manager: Any):
+    def __init__(
+        self,
+        output_dir: str,
+        config_manager: Any,
+        parser_config_manager: Any,
+        *,
+        metadata_store: Optional[LogMetadataStore] = None,
+    ):
         self.output_dir = output_dir
         self.config_manager = config_manager
         self.parser_config_manager = parser_config_manager
         self.logger = logging.getLogger(__name__)
         os.makedirs(output_dir, exist_ok=True)
+        self.metadata_store = metadata_store
 
     def analyze_logs(
         self,
@@ -121,12 +130,15 @@ class LogAnalyzer:
                 return {'success': False, 'error': '日志文件不存在'}
 
             os.remove(log_path)
-            meta_path = f"{log_path}.meta.json"
-            if os.path.exists(meta_path):
-                try:
-                    os.remove(meta_path)
-                except Exception:
-                    self.logger.warning("删除日志元数据失败: %s", meta_path)
+            if self.metadata_store:
+                self.metadata_store.delete(log_path)
+            else:
+                meta_path = f"{log_path}.meta.json"
+                if os.path.exists(meta_path):
+                    try:
+                        os.remove(meta_path)
+                    except Exception:
+                        self.logger.warning("删除日志元数据失败: %s", meta_path)
             self.logger.info(f"成功删除日志文件: {log_path}")
             return {'success': True}
         except Exception as e:
