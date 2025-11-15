@@ -252,10 +252,7 @@ function updatePasswordToggle(isVisible) {
   if (!btn) return;
   btn.setAttribute('aria-pressed', isVisible ? 'true' : 'false');
   btn.setAttribute('title', isVisible ? '点击隐藏密码' : '点击显示密码');
-  const icon = btn.querySelector('i');
-  if (icon) {
-    icon.className = isVisible ? 'fas fa-eye' : 'fas fa-eye-slash';
-  }
+  btn.innerHTML = isVisible ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
 }
 
 function resetForm() {
