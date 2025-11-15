@@ -360,6 +360,19 @@ textarea:focus {
   color: var(--primary-strong);
 }
 
+.password-toggle .icon-eye,
+.password-toggle .icon-eye-slash {
+  display: none;
+}
+
+.password-toggle[data-visible="true"] .icon-eye {
+  display: inline-flex;
+}
+
+.password-toggle[data-visible="false"] .icon-eye-slash {
+  display: inline-flex;
+}
+
 .form-group {
   margin-bottom: 12px;
 }
@@ -957,6 +970,13 @@ tbody tr:hover {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
+#server-config-tab .config-list-section {
+  display: flex;
+  flex-direction: column;
+  height: clamp(560px, 72vh, 680px);
+  overflow: hidden;
+}
+
 .config-list-section .config-list,
 .template-panel .config-list {
   min-height: 540px;
@@ -964,6 +984,12 @@ tbody tr:hover {
   max-height: 72vh;
   display: flex;
   flex-direction: column;
+}
+
+#server-config-tab .config-list-section .config-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
 }
 
 #server-configs-container,
@@ -979,7 +1005,14 @@ tbody tr:hover {
 }
 
 #server-configs-container {
-  max-height: 100%;
+  max-height: none;
+}
+
+#server-config-tab #server-configs-container {
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .template-panel .list-footer,
