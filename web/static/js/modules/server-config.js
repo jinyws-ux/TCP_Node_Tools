@@ -247,20 +247,26 @@ function setEditMode(isEditing) {
   }
 }
 
+function updatePasswordToggle(isVisible) {
+  const btn = document.getElementById('toggle-password-visibility');
+  if (!btn) return;
+  btn.setAttribute('aria-pressed', isVisible ? 'true' : 'false');
+  btn.setAttribute('title', isVisible ? '点击隐藏密码' : '点击显示密码');
+  const icon = btn.querySelector('i');
+  if (icon) {
+    icon.className = isVisible ? 'fas fa-eye' : 'fas fa-eye-slash';
+  }
+}
+
 function resetForm() {
   fillForm({ factory: '', system: '', server: {} });
   state.editingId = null;
   setEditMode(false);
   const pwdInput = $('#server-password');
-  const toggleBtn = document.getElementById('toggle-password-visibility');
   if (pwdInput) {
     pwdInput.setAttribute('type', 'password');
   }
-  if (toggleBtn) {
-    toggleBtn.setAttribute('aria-pressed', 'false');
-    const icon = toggleBtn.querySelector('i');
-    if (icon) icon.className = 'fas fa-eye-slash';
-  }
+  updatePasswordToggle(false);
 }
 
 async function handleSave() {
@@ -372,14 +378,11 @@ function bindPasswordToggle() {
   const input = $('#server-password');
   const btn = document.getElementById('toggle-password-visibility');
   if (!input || !btn) return;
+  updatePasswordToggle(false);
   btn.addEventListener('click', () => {
     const isHidden = input.getAttribute('type') === 'password';
     input.setAttribute('type', isHidden ? 'text' : 'password');
-    btn.setAttribute('aria-pressed', isHidden ? 'true' : 'false');
-    const icon = btn.querySelector('i');
-    if (icon) {
-      icon.className = isHidden ? 'fas fa-eye' : 'fas fa-eye-slash';
-    }
+    updatePasswordToggle(isHidden);
   });
 }
 

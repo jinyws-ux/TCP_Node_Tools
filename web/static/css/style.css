@@ -979,7 +979,9 @@ tbody tr:hover {
 }
 
 #server-configs-container {
-  max-height: 420px;
+  flex: 0 0 auto;
+  max-height: 460px;
+  overflow-y: auto;
 }
 
 .template-panel .list-footer,
