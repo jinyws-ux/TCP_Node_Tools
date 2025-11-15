@@ -27,6 +27,8 @@ const clipboardState = {
   data: null,
   meta: {},
 };
+let pendingPreviewPath = '';
+const expandedTreeNodes = new Set();
 
 const cssEscape = (value) => {
   if (typeof value !== 'string') value = String(value ?? '');
@@ -262,23 +264,19 @@ function togglePreviewPanel() {
   panel.dataset.state = collapsed ? 'collapsed' : 'expanded';
   layout.classList.toggle('preview-collapsed', collapsed);
   updatePreviewToggleUI(collapsed);
-}
-
-function ensurePreviewExpanded() {
-  const panel = qs('#parser-preview-panel');
-  const layout = qs('.parser-three-column');
-  if (!panel || !layout) return;
-  if (panel.classList.contains('is-collapsed')) {
-    panel.classList.remove('is-collapsed');
-    panel.dataset.state = 'expanded';
-    layout.classList.remove('preview-collapsed');
-    updatePreviewToggleUI(false);
+  if (collapsed) {
+    const focused = qs('#json-preview-content .json-line.is-focused');
+    pendingPreviewPath = focused?.dataset?.path || pendingPreviewPath || '';
+    return;
+  }
+  const nextPath = pendingPreviewPath;
+  if (!collapsed && nextPath) {
+    requestAnimationFrame(() => focusPreviewPath(nextPath));
   }
 }
 
 function focusPreviewPath(path) {
   if (!path) return;
-  ensurePreviewExpanded();
   const box = qs('#json-preview-content');
   if (!box) return;
   const selector = `[data-path="${cssEscape(path)}"]`;
@@ -286,7 +284,17 @@ function focusPreviewPath(path) {
   if (!target) return;
   box.querySelectorAll('.json-line.is-focused').forEach((el) => el.classList.remove('is-focused'));
   target.classList.add('is-focused');
-  box.scrollTo({ top: Math.max(0, target.offsetTop - 16), behavior: 'smooth' });
+  const panel = qs('#parser-preview-panel');
+  const isCollapsed = panel?.classList.contains('is-collapsed');
+  if (isCollapsed) {
+    pendingPreviewPath = path;
+    return;
+  }
+  pendingPreviewPath = '';
+  if (box.scrollHeight <= box.clientHeight) return;
+  const desiredTop = target.offsetTop - (box.clientHeight / 2) + (target.offsetHeight / 2);
+  const top = Math.max(0, desiredTop);
+  box.scrollTo({ top, behavior: 'smooth' });
 }
 
 // =============== 进入/退出工作台 ===============
@@ -321,6 +329,8 @@ function exitWorkspace() {
   const rightBox = qs('#full-layers-container');
   const layout   = qs('.parser-three-column');
   const panel    = qs('#parser-preview-panel');
+  pendingPreviewPath = '';
+  expandedTreeNodes.clear();
   if (layout) {
     layout.classList.add('preview-collapsed');
   }
@@ -545,6 +555,13 @@ function renderTree(tree) {
       }
     });
   });
+
+  const validPaths = new Set(Array.from(host.querySelectorAll('.parser-item[data-path]')).map((item) => item.dataset.path));
+  Array.from(expandedTreeNodes).forEach((path) => {
+    if (!validPaths.has(path)) {
+      expandedTreeNodes.delete(path);
+    }
+  });
 }
 
 function setTreeToggleState(btn, expanded) {
@@ -594,6 +611,11 @@ function buildTreeNode(node) {
   if (nodePath) {
     el.dataset.path = nodePath;
   }
+  if (hasChildren) {
+    el.dataset.hasChildren = 'true';
+  } else if (el.dataset.hasChildren) {
+    delete el.dataset.hasChildren;
+  }
 
   let meta = '';
   if (node.type === 'field') {
@@ -619,25 +641,31 @@ function buildTreeNode(node) {
   const hasChildren = Array.isArray(node.children) && node.children.length;
   let childrenWrap = null;
   if (hasChildren) {
+    const shouldExpand = !!(nodePath && expandedTreeNodes.has(nodePath));
     childrenWrap = document.createElement('div');
-    childrenWrap.className = 'parser-children';
+    childrenWrap.className = 'parser-children' + (shouldExpand ? '' : ' is-collapsed');
     node.children.forEach((child) => {
       childrenWrap.appendChild(buildTreeNode(child));
     });
-  }
-
-  if (hasChildren) {
     const toggleBtn = document.createElement('button');
     toggleBtn.className = 'tree-toggle';
     toggleBtn.type = 'button';
-    toggleBtn.setAttribute('aria-expanded', 'true');
-    toggleBtn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+    toggleBtn.setAttribute('aria-expanded', shouldExpand ? 'true' : 'false');
+    toggleBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
     toggleBtn.addEventListener('click', (evt) => {
       evt.stopPropagation();
       if (!childrenWrap) return;
       const collapsed = childrenWrap.classList.toggle('is-collapsed');
       setTreeToggleState(toggleBtn, !collapsed);
+      if (nodePath) {
+        if (collapsed) {
+          expandedTreeNodes.delete(nodePath);
+        } else {
+          expandedTreeNodes.add(nodePath);
+        }
+      }
     });
+    setTreeToggleState(toggleBtn, shouldExpand);
     el.prepend(toggleBtn);
   } else {
     const dot = document.createElement('span');
@@ -819,10 +847,17 @@ async function pasteEscape(targetMt, targetVer, targetField) {
 function expandAllLayers() {
   qsa('#left-nav-tree .parser-children').forEach((d) => d.classList.remove('is-collapsed'));
   qsa('#left-nav-tree .tree-toggle').forEach((btn) => setTreeToggleState(btn, true));
+  const host = qs('#left-nav-tree');
+  expandedTreeNodes.clear();
+  host?.querySelectorAll('.parser-item[data-has-children="true"]').forEach((el) => {
+    const path = el.dataset.path;
+    if (path) expandedTreeNodes.add(path);
+  });
 }
 function collapseAllLayers() {
   qsa('#left-nav-tree .parser-children').forEach((d) => d.classList.add('is-collapsed'));
   qsa('#left-nav-tree .tree-toggle').forEach((btn) => setTreeToggleState(btn, false));
+  expandedTreeNodes.clear();
 }
 
 // =============== 右侧编辑区域 ===============
@@ -1313,10 +1348,26 @@ function addFieldInline(mt, ver) {
   submitFieldRaw(mt, ver, name, 0, -1);
 }
 
-function addEscapeInline(mt, ver, fd) {
-  const escMap = workingConfig?.[mt]?.Versions?.[ver]?.Fields?.[fd]?.Escapes || {};
-  const key = suggestName('新转义', Object.keys(escMap));
-  submitEscapeRaw(mt, ver, fd, key, '', { focusEscape: true });
+async function addEscapeInline(mt, ver, fd) {
+  const clone = cloneConfig(workingConfig);
+  const fieldRef = clone?.[mt]?.Versions?.[ver]?.Fields?.[fd];
+  if (!fieldRef) {
+    showMessage('error', '未找到字段，无法添加转义', 'parser-config-messages');
+    return;
+  }
+  if (!fieldRef.Escapes) fieldRef.Escapes = {};
+  const key = suggestName('新转义', Object.keys(fieldRef.Escapes));
+  fieldRef.Escapes[key] = '';
+  try {
+    await saveFullConfig(clone, { silent: true });
+    await refreshFullConfig();
+    await refreshTree();
+    renderEditorFor({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: key });
+    notifyParserConfigChanged('add-escape', { mt, ver, fd, field: fd, key, escapeKey: key });
+    showMessage('success', '已添加新的转义占位，请完善内容', 'parser-config-messages');
+  } catch (err) {
+    showMessage('error', '添加转义失败：' + err.message, 'parser-config-messages');
+  }
 }
 
 // =============== “添加”模态框：报文类型/版本/字段 ===============
