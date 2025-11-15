@@ -611,6 +611,8 @@ function buildTreeNode(node) {
   if (nodePath) {
     el.dataset.path = nodePath;
   }
+
+  const hasChildren = Array.isArray(node.children) && node.children.length;
   if (hasChildren) {
     el.dataset.hasChildren = 'true';
   } else if (el.dataset.hasChildren) {
@@ -638,7 +640,6 @@ function buildTreeNode(node) {
     ${meta}
   `;
 
-  const hasChildren = Array.isArray(node.children) && node.children.length;
   let childrenWrap = null;
   if (hasChildren) {
     const shouldExpand = !!(nodePath && expandedTreeNodes.has(nodePath));

@@ -978,6 +978,10 @@ tbody tr:hover {
   gap: 10px;
 }
 
+#server-configs-container {
+  max-height: 420px;
+}
+
 .template-panel .list-footer,
 .config-list .list-footer {
   margin-top: 12px;
