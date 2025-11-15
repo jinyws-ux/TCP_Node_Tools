@@ -67,6 +67,10 @@ function activateTab(tabName) {
 }
 
 async function switchTab(tabName) {
+  const activeEl = document.activeElement;
+  if (activeEl && typeof activeEl.blur === 'function') {
+    activeEl.blur();
+  }
   activateTab(tabName);
   const mod = await loadModule(tabName);
   if (mod && typeof mod.init === 'function') {

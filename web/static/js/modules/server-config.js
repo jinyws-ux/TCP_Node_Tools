@@ -121,6 +121,7 @@ function buildConfigCard(cfg) {
   const aliasLabel = escapeHtml(cfg.server?.alias || '未命名');
 
   const info = document.createElement('div');
+  info.className = 'config-compact-head';
   info.innerHTML = `
     <p class="config-compact-subline">${factoryLabel} - ${systemLabel}</p>
     <div class="config-compact-title">
@@ -129,7 +130,7 @@ function buildConfigCard(cfg) {
   item.appendChild(info);
 
   const actions = document.createElement('div');
-  actions.className = 'config-compact-actions config-compact-actions--stack';
+  actions.className = 'config-compact-actions config-compact-actions--inline';
   const btnEdit = document.createElement('button');
   btnEdit.className = 'btn btn-sm btn-edit';
   btnEdit.dataset.act = 'edit';
@@ -258,7 +259,7 @@ function resetForm() {
   if (toggleBtn) {
     toggleBtn.setAttribute('aria-pressed', 'false');
     const icon = toggleBtn.querySelector('i');
-    if (icon) icon.className = 'fas fa-eye';
+    if (icon) icon.className = 'fas fa-eye-slash';
   }
 }
 
@@ -377,7 +378,7 @@ function bindPasswordToggle() {
     btn.setAttribute('aria-pressed', isHidden ? 'true' : 'false');
     const icon = btn.querySelector('i');
     if (icon) {
-      icon.className = isHidden ? 'fas fa-eye-slash' : 'fas fa-eye';
+      icon.className = isHidden ? 'fas fa-eye' : 'fas fa-eye-slash';
     }
   });
 }
