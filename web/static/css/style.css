@@ -919,7 +919,7 @@ tbody tr:hover {
 .server-config-group {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-sm);
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.02);
 }
@@ -928,19 +928,20 @@ tbody tr:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 6px 10px;
   cursor: pointer;
 }
 
 .factory-title h4 {
   margin: 0;
   color: var(--muted-strong);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 
 .factory-title span {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.85rem;
+  opacity: 0.85;
 }
 
 .factory-toggle {
@@ -957,8 +958,8 @@ tbody tr:hover {
 
 .factory-systems {
   display: none;
-  padding: 8px 12px 12px;
-  gap: 12px;
+  padding: 4px 10px 8px;
+  gap: 8px;
   min-height: 0;
   max-height: 360px;
   overflow-y: auto;
@@ -968,13 +969,6 @@ tbody tr:hover {
 .server-config-group.expanded .factory-systems {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-}
-
-#server-config-tab .config-list-section {
-  display: flex;
-  flex-direction: column;
-  height: clamp(560px, 72vh, 680px);
-  overflow: hidden;
 }
 
 .config-list-section .config-list,
@@ -1937,4 +1931,87 @@ footer {
   .tab {
     flex: 1 1 100%;
   }
+}
+
+/* =========================================================
+   服务器配置：现有配置列表 — 固定高度 + 内部滚动（硬版本）
+   ========================================================= */
+
+/* 右侧这张卡片：只管当个容器，别再自己玩高度了 */
+#server-config-tab .config-list-section.neon-card {
+  flex: 0 0 380px;        /* 跟现在差不多宽 */
+  display: block;         /* 不再当 flex 容器用 */
+  max-height: none;       /* 高度交给里面控制 */
+  overflow: visible;      /* 自己不裁剪 */
+}
+
+/* 中间这层 .config-list：普通块级容器就行 */
+#server-config-tab .config-list-section .config-list {
+  display: block !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+}
+
+/* 标题和搜索条，正常块级就行，无需 flex 参与分配高度 */
+#server-config-tab .server-config-header,
+#server-config-tab .server-config-search {
+  margin-bottom: 8px;
+}
+
+/* 真正滚动的区域：给一个明确的固定高度 & overflow */
+#server-config-tab #server-configs-container {
+  display: block !important;
+  height: 450px !important;   /* 这个高度你可以之后再调 */
+  overflow-y: auto !important;
+  padding-right: 6px;
+  border-radius: 8px;         /* 方便你肉眼看到区域 */
+}
+
+/* “暂无服务器配置”这块提示放在列表下面，不跟着滚动 */
+#server-config-tab #no-server-configs-message {
+  margin-top: 10px;
+}
+
+
+/* 服务器配置卡片整体更紧凑一点 */
+.server-config-card.config-item {
+  padding: 10px 12px;         /* 原来 16px 18px，压一压 */
+  gap: 10px;
+}
+
+/* 头部布局：一行左文字右别名 */
+.config-compact-head {
+  display: block;             /* 不再是多行 column，下面我们自己排 */
+}
+
+/* 新的一行：厂区-系统 + 别名 */
+.config-compact-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* 文本行更紧凑一点 */
+.config-compact-row .config-compact-subline {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+/* 别名 chip 贴右边、不要被挤换行 */
+.config-compact-row .config-compact-alias-chip {
+  flex-shrink: 0;
+  padding: 2px 10px;          /* 再压一点高度 */
+  font-size: 0.8rem;
+}
+
+/* 如果别名特别长，工厂-系统那侧优先换行 */
+.server-config-card .config-compact-row {
+  align-items: flex-start;
+}
+
+.server-config-card .config-compact-row .config-compact-subline {
+  flex: 1 1 auto;
+  min-width: 0;
 }

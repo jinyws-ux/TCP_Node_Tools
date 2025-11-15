@@ -123,10 +123,10 @@ function buildConfigCard(cfg) {
   const info = document.createElement('div');
   info.className = 'config-compact-head';
   info.innerHTML = `
+  <div class="config-compact-row">
     <p class="config-compact-subline">${factoryLabel} - ${systemLabel}</p>
-    <div class="config-compact-title">
-      <div class="config-compact-alias-chip">${aliasLabel}</div>
-    </div>`;
+    <div class="config-compact-alias-chip">${aliasLabel}</div>
+  </div>`;
   item.appendChild(info);
 
   const actions = document.createElement('div');
