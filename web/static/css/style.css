@@ -959,16 +959,16 @@ tbody tr:hover {
 
 .config-list-section .config-list,
 .template-panel .config-list {
-  min-height: 520px;
-  height: 580px;
-  max-height: 580px;
+  min-height: 540px;
+  height: 640px;
+  max-height: 72vh;
   display: flex;
   flex-direction: column;
 }
 
 #server-configs-container,
 #template-list {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   padding-right: 6px;
@@ -979,9 +979,7 @@ tbody tr:hover {
 }
 
 #server-configs-container {
-  flex: 0 0 auto;
-  max-height: 460px;
-  overflow-y: auto;
+  max-height: 100%;
 }
 
 .template-panel .list-footer,
