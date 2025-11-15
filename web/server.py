@@ -1,4 +1,5 @@
 # web/server.py
+import ast
 import json
 import logging
 import os
@@ -14,6 +15,7 @@ from core.config_manager import ConfigManager
 from core.download_service import DownloadService
 from core.log_analyzer import LogAnalyzer
 from core.log_downloader import LogDownloader
+from core.log_metadata_store import LogMetadataStore
 from core.parser_config_manager import ParserConfigManager
 from core.parser_config_service import ParserConfigService
 from core.report_mapping_store import ReportMappingStore
@@ -31,6 +33,7 @@ CONFIG_DIR = os.path.join(project_root, 'configs')
 SERVER_CONFIGS_FILE = os.path.join(CONFIG_DIR, 'server_configs.json')
 PARSER_CONFIGS_DIR = os.path.join(CONFIG_DIR, 'parser_configs')
 REGION_TEMPLATES_DIR = os.path.join(CONFIG_DIR, 'region_templates')
+MAPPING_CONFIG_DIR = os.path.join(CONFIG_DIR, 'mappingconfig')
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -42,11 +45,21 @@ parser_config_manager = ParserConfigManager(PARSER_CONFIGS_DIR)
 
 # 初始化日志下载器
 DOWNLOAD_DIR = os.path.join(project_root, 'downloads')
-log_downloader = LogDownloader(DOWNLOAD_DIR, config_manager)
+metadata_store = LogMetadataStore(DOWNLOAD_DIR, MAPPING_CONFIG_DIR)
+log_downloader = LogDownloader(
+    DOWNLOAD_DIR,
+    config_manager,
+    metadata_store=metadata_store,
+)
 
 # 初始化日志分析器
 HTML_LOGS_DIR = os.path.join(project_root, 'html_logs')
-log_analyzer = LogAnalyzer(HTML_LOGS_DIR, config_manager, parser_config_manager)
+log_analyzer = LogAnalyzer(
+    HTML_LOGS_DIR,
+    config_manager,
+    parser_config_manager,
+    metadata_store=metadata_store,
+)
 
 # 确保配置目录存在
 os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -54,6 +67,7 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 os.makedirs(HTML_LOGS_DIR, exist_ok=True)
 os.makedirs(PARSER_CONFIGS_DIR, exist_ok=True)
 os.makedirs(REGION_TEMPLATES_DIR, exist_ok=True)
+os.makedirs(MAPPING_CONFIG_DIR, exist_ok=True)
 
 # 报告映射文件路径
 REPORT_MAPPING_FILE = os.path.join(HTML_LOGS_DIR, 'report_mappings.json')
@@ -868,23 +882,44 @@ def import_parser_config():
 
         # 检查文件类型
         filename = file.filename.lower()
+        raw_bytes = file.stream.read()
+        if not raw_bytes:
+            return jsonify({'success': False, 'error': '上传文件为空'}), 400
+
+        text = raw_bytes.decode('utf-8-sig', errors='ignore')
+
         if filename.endswith('.json'):
-            config = json.load(file.stream)
+            try:
+                config = json.loads(text)
+            except json.JSONDecodeError as exc:
+                try:
+                    config = ast.literal_eval(text)
+                except Exception:
+                    return jsonify({'success': False, 'error': f'JSON解析失败: {exc}'}), 400
         elif filename.endswith('.yaml') or filename.endswith('.yml'):
             try:
                 import yaml
-                config = yaml.safe_load(file.stream)
+                config = yaml.safe_load(text)
             except ImportError:
                 return jsonify({'success': False, 'error': 'YAML导入需要安装PyYAML库'}), 500
+            except yaml.YAMLError as exc:
+                return jsonify({'success': False, 'error': f'YAML解析失败: {exc}'}), 400
         else:
             return jsonify({'success': False, 'error': '不支持的文件格式'}), 400
 
-        parser_config_service.save(factory, system, config)
+        if not isinstance(config, dict):
+            return jsonify({'success': False, 'error': '解析配置必须是 JSON/YAML 对象'}), 400
+
+        try:
+            parser_config_service.save(factory, system, config)
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
+
         logger.info(f"成功导入解析配置: {factory}/{system}")
         return jsonify({'success': True, 'message': '配置导入成功'})
 
     except Exception as e:
-        logger.error(f"导入解析配置失败: {str(e)}")
+        logger.error(f"导入解析配置失败: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -1268,6 +1303,7 @@ if __name__ == '__main__':
     # 创建必要的目录
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     os.makedirs(HTML_LOGS_DIR, exist_ok=True)
+    os.makedirs(MAPPING_CONFIG_DIR, exist_ok=True)
 
     # 启动应用
     print("启动日志分析系统...")

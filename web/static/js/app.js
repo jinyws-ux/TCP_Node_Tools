@@ -89,6 +89,19 @@ window.addEventListener('server-configs:changed', (evt) => {
     .catch((err) => console.warn('[app] 无法通知分析模块服务器配置变化', err));
 });
 
+window.addEventListener('logs:downloaded', async (evt) => {
+  const count = evt?.detail?.count;
+  try {
+    await switchTab('analyze');
+    const mod = await loadModule('analyze');
+    if (mod && typeof mod.refreshDownloadedLogs === 'function') {
+      mod.refreshDownloadedLogs({ silent: true, skipButton: true, count });
+    }
+  } catch (err) {
+    console.error('[app] 下载后跳转分析页失败', err);
+  }
+});
+
 /* ---------- 初始化 ---------- */
 function initTopTabs() {
   const firstTab = qs('.tab');

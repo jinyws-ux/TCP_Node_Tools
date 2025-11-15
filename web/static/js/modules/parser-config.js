@@ -1651,13 +1651,47 @@ function searchMessageType() {
   });
 }
 
-function exportConfig() {
+async function exportConfig() {
   if (!workingFactory || !workingSystem) {
     showMessage('error', '请先进入配置工作台', 'parser-config-messages');
     return;
   }
-  const url = `/api/export-parser-config?factory=${encodeURIComponent(workingFactory)}&system=${encodeURIComponent(workingSystem)}&format=json`;
-  window.open(url, '_blank');
+
+  const btn = qs('[data-action="export-config"]');
+  setButtonLoading(btn, true, { text: '导出中...' });
+  try {
+    const url = `/api/export-parser-config?factory=${encodeURIComponent(workingFactory)}&system=${encodeURIComponent(workingSystem)}&format=json`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      let errorMsg = res.statusText || '导出失败';
+      try {
+        const data = await res.json();
+        errorMsg = data.error || errorMsg;
+      } catch (_) {}
+      throw new Error(errorMsg);
+    }
+    const blob = await res.blob();
+    let filename = `config_${workingFactory}_${workingSystem}.json`;
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    if (match && match[1]) {
+      filename = decodeURIComponent(match[1]);
+    }
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(link.href);
+      link.remove();
+    }, 0);
+    showMessage('success', '配置已导出', 'parser-config-messages');
+  } catch (e) {
+    showMessage('error', '导出失败：' + (e?.message || e), 'parser-config-messages');
+  } finally {
+    setButtonLoading(btn, false);
+  }
 }
 
 function importConfig() {

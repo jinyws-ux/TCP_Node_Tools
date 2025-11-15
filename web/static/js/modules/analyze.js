@@ -199,22 +199,33 @@ function displayDownloadedLogs(logs) {
 
 /* ---------- 事件处理 ---------- */
 
-async function loadDownloadedLogs() {
+async function loadDownloadedLogs(arg) {
+  const options = (typeof Event !== 'undefined' && arg instanceof Event) ? {} : (arg || {});
+  const { silent = false, skipButton = false } = options;
   const btnId = 'refresh-logs-btn';
-  setButtonLoading(btnId, true);
+  if (!skipButton) setButtonLoading(btnId, true);
   try {
     const data = await api.getDownloadedLogs();
-    setButtonLoading(btnId, false);
+    if (!skipButton) setButtonLoading(btnId, false);
 
     if (data.success) {
-      displayDownloadedLogs(data.logs || []);
-      showMessage('success', `已加载 ${data.logs.length} 个日志文件`, 'analyze-messages');
-    } else {
+      const logs = data.logs || [];
+      displayDownloadedLogs(logs);
+      if (!silent) {
+        showMessage('success', `已加载 ${logs.length} 个日志文件`, 'analyze-messages');
+      }
+    } else if (!silent) {
       showMessage('error', '加载已下载日志失败: ' + (data.error || ''), 'analyze-messages');
+    } else {
+      console.error('[analyze] 加载已下载日志失败', data?.error);
     }
   } catch (e) {
-    setButtonLoading(btnId, false);
-    showMessage('error', '获取已下载日志失败: ' + e.message, 'analyze-messages');
+    if (!skipButton) setButtonLoading(btnId, false);
+    if (!silent) {
+      showMessage('error', '获取已下载日志失败: ' + e.message, 'analyze-messages');
+    } else {
+      console.error('[analyze] 获取已下载日志失败', e);
+    }
   }
 }
 
@@ -429,4 +440,9 @@ export function init() {
 
 export function handleServerConfigsEvent(evt) {
   handleServerConfigsChanged(evt, { silent: !inited });
+}
+
+export function refreshDownloadedLogs(options = {}) {
+  const defaults = { silent: true, skipButton: true };
+  return loadDownloadedLogs({ ...defaults, ...(options || {}) });
 }
