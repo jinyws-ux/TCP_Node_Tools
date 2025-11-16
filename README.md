@@ -65,19 +65,7 @@ py -3.12 -m web.server
 ## 打包命令（PyInstaller）
 - 一目录模式（推荐分发）：
 ```
-py -3.12 -m PyInstaller \
-  --name LogTool \
-  --noconsole \
-  --clean \
-  --noconfirm \
-  --add-data "web\\templates;web\\templates" \
-  --add-data "web\\static;web\\static" \
-  --add-data "paths.json;." \
-  --hidden-import PyQt6 \
-  --hidden-import PyQt6.QtCore \
-  --hidden-import PyQt6.QtGui \
-  --hidden-import PyQt6.QtWidgets \
-  app.py
+py -3.12 -m PyInstaller --name LogTool --noconsole --clean --noconfirm --add-data "web\templates;web\templates" --add-data "web\static;web\static" --add-data "paths.json;." --hidden-import PyQt6 --hidden-import PyQt6.QtCore --hidden-import PyQt6.QtGui --hidden-import PyQt6.QtWidgets --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets --hidden-import qtpy --exclude-module pythonnet --exclude-module clr app.py
 ```
 - 依赖说明：已安装 `PyQt6-WebEngine` 与 `qtpy`，pywebview 会自动选择 Qt 后端；无需 .NET。
 - 分发：压缩并分发 `dist/LogTool/` 整个目录，不要只发单个 `exe`。
