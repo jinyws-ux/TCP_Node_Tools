@@ -5,7 +5,7 @@ import { setButtonLoading } from '../core/ui.js';
 import { formatFileSize, escapeHtml } from '../core/utils.js';
 
 let inited = false;
-let selectedDownloadedLogs = [];
+let selectedDownloadedLogs = new Set();
 
 // 简化选择器
 const $  = (sel, scope = document) => scope.querySelector(sel);
@@ -21,15 +21,17 @@ function bind(id, ev, fn) {
 
 function updateAnalyzeButton() {
   const btn = $('#analyze-logs-btn');
-  if (btn) btn.disabled = selectedDownloadedLogs.length === 0;
+  if (btn) btn.disabled = selectedDownloadedLogs.size === 0;
 }
 
 function updateSelectedLogs() {
-  selectedDownloadedLogs = [];
-  $$('#logs-body input[type="checkbox"]:checked').forEach(chk => {
-    selectedDownloadedLogs.push(chk.value);
+  selectedDownloadedLogs.clear();
+  $$('#logs-body input[type="checkbox"].log-select:checked').forEach(chk => {
+    const path = chk.dataset.path || chk.value;
+    if (path) selectedDownloadedLogs.add(path);
   });
   updateAnalyzeButton();
+  updateSelectAllIndicator();
 }
 
 function formatDuration(ms) {
@@ -83,8 +85,38 @@ function renderAnalysisStats(stats = []) {
 
 function toggleSelectAllLogs() {
   const checked = this.checked;
-  $$('#logs-body input[type="checkbox"]').forEach(chk => (chk.checked = checked));
-  updateSelectedLogs();
+  const tbody = $('#logs-body');
+  if (!tbody) return;
+  selectedDownloadedLogs.clear();
+  $$('#logs-body input[type="checkbox"].log-select').forEach(chk => {
+    chk.checked = checked;
+    const path = chk.dataset.path || chk.value;
+    if (checked && path) selectedDownloadedLogs.add(path);
+  });
+  updateAnalyzeButton();
+  updateSelectAllIndicator();
+}
+
+function updateSelectAllIndicator() {
+  const checkbox = $('#select-all-logs');
+  if (!checkbox) return;
+  const total = $$('#logs-body input[type="checkbox"].log-select').length;
+  const selected = selectedDownloadedLogs.size;
+  checkbox.indeterminate = false;
+  if (!total) {
+    checkbox.checked = false;
+    return;
+  }
+  if (selected === 0) {
+    checkbox.checked = false;
+    return;
+  }
+  if (selected >= total) {
+    checkbox.checked = true;
+    return;
+  }
+  checkbox.checked = false;
+  checkbox.indeterminate = true;
 }
 
 function addLogRow(log) {
@@ -97,7 +129,10 @@ function addLogRow(log) {
   const tdChk = document.createElement('td');
   const chk = document.createElement('input');
   chk.type = 'checkbox';
+  chk.className = 'log-select';
   chk.value = log.path;
+  chk.dataset.path = log.path;
+  chk.checked = selectedDownloadedLogs.has(log.path);
   chk.addEventListener('change', updateSelectedLogs);
   tdChk.appendChild(chk);
   tr.appendChild(tdChk);
@@ -194,27 +229,39 @@ function displayDownloadedLogs(logs) {
 
   Promise.all(checks).then((enriched) => {
     enriched.forEach(addLogRow);
+    updateSelectAllIndicator();
   });
 }
 
 /* ---------- 事件处理 ---------- */
 
-async function loadDownloadedLogs() {
+async function loadDownloadedLogs(arg) {
+  const options = (typeof Event !== 'undefined' && arg instanceof Event) ? {} : (arg || {});
+  const { silent = false, skipButton = false } = options;
   const btnId = 'refresh-logs-btn';
-  setButtonLoading(btnId, true);
+  if (!skipButton) setButtonLoading(btnId, true);
   try {
     const data = await api.getDownloadedLogs();
-    setButtonLoading(btnId, false);
+    if (!skipButton) setButtonLoading(btnId, false);
 
     if (data.success) {
-      displayDownloadedLogs(data.logs || []);
-      showMessage('success', `已加载 ${data.logs.length} 个日志文件`, 'analyze-messages');
-    } else {
+      const logs = data.logs || [];
+      displayDownloadedLogs(logs);
+      if (!silent) {
+        showMessage('success', `已加载 ${logs.length} 个日志文件`, 'analyze-messages');
+      }
+    } else if (!silent) {
       showMessage('error', '加载已下载日志失败: ' + (data.error || ''), 'analyze-messages');
+    } else {
+      console.error('[analyze] 加载已下载日志失败', data?.error);
     }
   } catch (e) {
-    setButtonLoading(btnId, false);
-    showMessage('error', '获取已下载日志失败: ' + e.message, 'analyze-messages');
+    if (!skipButton) setButtonLoading(btnId, false);
+    if (!silent) {
+      showMessage('error', '获取已下载日志失败: ' + e.message, 'analyze-messages');
+    } else {
+      console.error('[analyze] 获取已下载日志失败', e);
+    }
   }
 }
 
@@ -287,7 +334,7 @@ async function deleteLog(logId, logPath) {
 }
 
 async function analyzeLogs() {
-  if (selectedDownloadedLogs.length === 0) {
+  if (selectedDownloadedLogs.size === 0) {
     showMessage('error', '请选择要分析的日志文件', 'analyze-messages');
     return;
   }
@@ -299,7 +346,7 @@ async function analyzeLogs() {
 
   setButtonLoading('analyze-logs-btn', true);
   try {
-    const res = await api.analyze(selectedDownloadedLogs, configId);
+    const res = await api.analyze(Array.from(selectedDownloadedLogs), configId);
     setButtonLoading('analyze-logs-btn', false);
 
     if (res.success) {
@@ -429,4 +476,9 @@ export function init() {
 
 export function handleServerConfigsEvent(evt) {
   handleServerConfigsChanged(evt, { silent: !inited });
+}
+
+export function refreshDownloadedLogs(options = {}) {
+  const defaults = { silent: true, skipButton: true };
+  return loadDownloadedLogs({ ...defaults, ...(options || {}) });
 }

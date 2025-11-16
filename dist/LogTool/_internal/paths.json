@@ -1,0 +1,9 @@
+{
+  "CONFIG_DIR": "configs",
+  "PARSER_CONFIGS_DIR": "configs/parser_configs",
+  "REGION_TEMPLATES_DIR": "configs/region_templates",
+  "MAPPING_CONFIG_DIR": "configs/mappingconfig",
+  "DOWNLOAD_DIR": "downloads",
+  "HTML_LOGS_DIR": "html_logs",
+  "REPORT_MAPPING_FILE": ""
+}

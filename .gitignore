@@ -22,4 +22,10 @@ Thumbs.db
 # Generated data
 reports/
 downloads/
+html_logs/
+dist/
+build/
+configs/server_configs.json
+configs/parser_configs/
+configs/region_templates/
 

@@ -23,8 +23,9 @@
             </div>
         </div>
         <div class="header-actions">
-            <span class="status-pill"><i class="fas fa-signal"></i> 在线</span>
-            <span class="header-hint">智慧运维 / V2</span>
+            <button class="btn" id="btn-web-mode" title="切换到网页模式" style="display:none;"><i class="fas fa-globe"></i> 网页模式</button>
+            <button class="btn btn-primary" id="btn-show-client" title="切回客户端模式" style="display:none;"><i class="fas fa-desktop"></i> 切回客户端模式</button>
+            <button class="btn btn-danger" id="btn-exit-backend" title="退出后台" style="display:none;"><i class="fas fa-power-off"></i> 退出后台</button>
         </div>
     </header>
 
@@ -124,10 +125,11 @@
               <table>
                 <thead>
                   <tr>
+                    <th class="col-select"><input type="checkbox" id="logs-check-all" title="全选"></th>
                     <th>文件名</th><th>节点</th><th>类型</th><th>大小</th><th>时间</th><th>路径</th>
                   </tr>
                 </thead>
-                <tbody id="logs-search-body"><tr><td colspan="6" class="message-empty">尚无结果</td></tr></tbody>
+                <tbody id="logs-search-body"><tr><td colspan="7" class="message-empty">尚无结果</td></tr></tbody>
               </table>
             </div>
 
@@ -652,3 +654,14 @@
 </div>
 </body>
 </html>
+    <!-- 确认弹窗 -->
+    <div id="confirm-modal" style="display:none; position:fixed; inset:0; backdrop-filter: blur(2px); background: rgba(0,0,0,0.35); z-index: 9999;">
+      <div style="max-width: 420px; margin: 12vh auto; padding: 18px; background: #0c0f1a; border: 1px solid #2a2f45; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,0.35);">
+        <h3 style="margin:0 0 8px; color:#e8eef7;">确认操作</h3>
+        <p id="confirm-text" style="margin:0 0 16px; color:#aab4c3;"></p>
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+          <button class="btn" id="confirm-cancel">取消</button>
+          <button class="btn btn-danger" id="confirm-ok">确定</button>
+        </div>
+      </div>
+    </div>
