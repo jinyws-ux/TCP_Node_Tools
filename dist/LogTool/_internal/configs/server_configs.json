@@ -1,0 +1,13 @@
+[
+  {
+    "id": "1",
+    "factory": "大东厂区",
+    "system": "OSM 测试系统",
+    "server": {
+      "alias": "taipso71",
+      "hostname": "ltvshe0ipso13",
+      "username": "vifrk490",
+      "password": "OSM2024@linux"
+    }
+  }
+]

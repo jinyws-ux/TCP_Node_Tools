@@ -26,14 +26,39 @@ app = Flask(__name__)
 
 # 获取当前文件所在目录的绝对路径
 base_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(base_dir)  # 项目根目录
+project_root = os.path.dirname(base_dir)
 
-# 配置文件存储路径
-CONFIG_DIR = os.path.join(project_root, 'configs')
+def _resolve_dir(path_value: str, base: str) -> str:
+    p = (path_value or '').strip()
+    if not p:
+        return base
+    return p if os.path.isabs(p) else os.path.join(base, p)
+
+def _load_paths_config(root: str) -> Dict[str, str]:
+    cfg_file = os.environ.get('LOGTOOL_PATHS_FILE') or os.path.join(root, 'paths.json')
+    data: Dict[str, Any] = {}
+    if os.path.exists(cfg_file):
+        try:
+            with open(cfg_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+    return {
+        'CONFIG_DIR': _resolve_dir(data.get('CONFIG_DIR', 'configs'), root),
+        'PARSER_CONFIGS_DIR': _resolve_dir(data.get('PARSER_CONFIGS_DIR', 'configs/parser_configs'), root),
+        'REGION_TEMPLATES_DIR': _resolve_dir(data.get('REGION_TEMPLATES_DIR', 'configs/region_templates'), root),
+        'MAPPING_CONFIG_DIR': _resolve_dir(data.get('MAPPING_CONFIG_DIR', 'configs/mappingconfig'), root),
+        'DOWNLOAD_DIR': _resolve_dir(data.get('DOWNLOAD_DIR', 'downloads'), root),
+        'HTML_LOGS_DIR': _resolve_dir(data.get('HTML_LOGS_DIR', 'html_logs'), root),
+        'REPORT_MAPPING_FILE': _resolve_dir(data.get('REPORT_MAPPING_FILE', ''), root) if data.get('REPORT_MAPPING_FILE') else ''
+    }
+
+paths_cfg = _load_paths_config(project_root)
+CONFIG_DIR = paths_cfg['CONFIG_DIR']
 SERVER_CONFIGS_FILE = os.path.join(CONFIG_DIR, 'server_configs.json')
-PARSER_CONFIGS_DIR = os.path.join(CONFIG_DIR, 'parser_configs')
-REGION_TEMPLATES_DIR = os.path.join(CONFIG_DIR, 'region_templates')
-MAPPING_CONFIG_DIR = os.path.join(CONFIG_DIR, 'mappingconfig')
+PARSER_CONFIGS_DIR = paths_cfg['PARSER_CONFIGS_DIR']
+REGION_TEMPLATES_DIR = paths_cfg['REGION_TEMPLATES_DIR']
+MAPPING_CONFIG_DIR = paths_cfg['MAPPING_CONFIG_DIR']
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -43,8 +68,7 @@ logger = logging.getLogger(__name__)
 config_manager = ConfigManager(CONFIG_DIR)
 parser_config_manager = ParserConfigManager(PARSER_CONFIGS_DIR)
 
-# 初始化日志下载器
-DOWNLOAD_DIR = os.path.join(project_root, 'downloads')
+DOWNLOAD_DIR = paths_cfg['DOWNLOAD_DIR']
 metadata_store = LogMetadataStore(DOWNLOAD_DIR, MAPPING_CONFIG_DIR)
 log_downloader = LogDownloader(
     DOWNLOAD_DIR,
@@ -52,8 +76,7 @@ log_downloader = LogDownloader(
     metadata_store=metadata_store,
 )
 
-# 初始化日志分析器
-HTML_LOGS_DIR = os.path.join(project_root, 'html_logs')
+HTML_LOGS_DIR = paths_cfg['HTML_LOGS_DIR']
 log_analyzer = LogAnalyzer(
     HTML_LOGS_DIR,
     config_manager,
@@ -69,8 +92,7 @@ os.makedirs(PARSER_CONFIGS_DIR, exist_ok=True)
 os.makedirs(REGION_TEMPLATES_DIR, exist_ok=True)
 os.makedirs(MAPPING_CONFIG_DIR, exist_ok=True)
 
-# 报告映射文件路径
-REPORT_MAPPING_FILE = os.path.join(HTML_LOGS_DIR, 'report_mappings.json')
+REPORT_MAPPING_FILE = paths_cfg['REPORT_MAPPING_FILE'] or os.path.join(HTML_LOGS_DIR, 'report_mappings.json')
 
 # 服务对象
 region_template_manager = TemplateManager(REGION_TEMPLATES_DIR)
@@ -1069,6 +1091,69 @@ def open_reports_directory():
     except Exception as e:
         logger.error(f"打开报告目录失败: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/web-mode', methods=['POST'])
+def api_web_mode():
+    data = request.get_json(silent=True) or {}
+    enable = bool(data.get('enable', True))
+    if enable:
+        try:
+            url = 'http://localhost:5000'
+            if platform.system() == 'Windows':
+                subprocess.call(['start', url], shell=True)
+            elif platform.system() == 'Darwin':
+                subprocess.call(['open', url])
+            else:
+                subprocess.call(['xdg-open', url])
+        except Exception:
+            pass
+        try:
+            import webview
+            if webview.windows:
+                win = webview.windows[0]
+                try:
+                    win.hide()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            api = globals().get('TRAY_API')
+            if api and callable(api.get('show')):
+                api['show']()
+        except Exception:
+            pass
+    return jsonify({'success': True})
+
+@app.route('/api/show-client', methods=['POST'])
+def api_show_client():
+    try:
+        import webview
+        if webview.windows:
+            win = webview.windows[0]
+            try:
+                win.show()
+            except Exception:
+                pass
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"/api/show-client 失败: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': '切回客户端失败'}), 500
+
+@app.route('/api/exit', methods=['POST'])
+def api_exit():
+    try:
+        def _exit_later():
+            import time, os
+            time.sleep(0.5)
+            os._exit(0)
+        threading = __import__('threading')
+        t = threading.Thread(target=_exit_later, daemon=True)
+        t.start()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"/api/exit 失败: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': '退出后台失败'}), 500
 
 @app.route('/api/delete-config-item', methods=['POST'])
 def delete_config_item():

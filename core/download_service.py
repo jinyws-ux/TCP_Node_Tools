@@ -33,6 +33,9 @@ class DownloadService:
         normalized_nodes = self._merge_nodes(nodes, node)
         self._validate_date_range(include_archive, date_start, date_end)
 
+        if not normalized_nodes:
+            raise ValueError("必须填写节点")
+
         if len(normalized_nodes) > 1:
             logs = self._downloader.search_logs_many_nodes(
                 factory=factory,
