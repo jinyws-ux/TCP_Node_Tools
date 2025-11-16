@@ -222,7 +222,7 @@ function buildManualSearchDescriptor() {
 
   const nodes = parseNodes(qs('#node-input')?.value || '');
   if (!nodes.length) {
-    $msg('warning', '建议填写至少一个节点，或使用右侧区域模板');
+    throw new Error('必须填写节点');
   }
 
   return {

@@ -2,6 +2,7 @@
 import * as utils from './core/utils.js';
 import * as messages from './core/messages.js';
 import * as ui from './core/ui.js';
+import { api } from './core/api.js';
 
 // 模块缓存
 const loadedModules = new Map();
@@ -126,4 +127,98 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 默认打开第一个 tab
   const first = qs('.tab')?.getAttribute('data-tab') || 'download';
   await switchTab(first);
+
+  const isEmbedded = new URLSearchParams(window.location.search).get('embedded') === '1';
+  const webBtn = qs('#btn-web-mode');
+  const btnShow = qs('#btn-show-client');
+  const btnExit = qs('#btn-exit-backend');
+  if (isEmbedded) {
+    if (webBtn) webBtn.style.display = '';
+  } else {
+    if (btnShow) btnShow.style.display = '';
+    if (btnExit) btnExit.style.display = '';
+  }
+
+  const modal = qs('#confirm-modal');
+  const okBtn = qs('#confirm-ok');
+  const cancelBtn = qs('#confirm-cancel');
+  const txtEl = qs('#confirm-text');
+  async function showConfirm(text) {
+    if (!modal || !okBtn || !cancelBtn || !txtEl) return true;
+    txtEl.textContent = text || '';
+    modal.style.display = '';
+    return new Promise((resolve) => {
+      const onOk = () => { cleanup(); resolve(true); };
+      const onCancel = () => { cleanup(); resolve(false); };
+      function cleanup() {
+        okBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        modal.style.display = 'none';
+      }
+      okBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+    });
+  }
+
+  function tryCloseTab() {
+    try { window.open('', '_self'); } catch {}
+    try { window.close(); } catch {}
+    try { window.location.href = 'about:blank'; } catch {}
+  }
+
+  webBtn?.addEventListener('click', async () => {
+    const ok = await showConfirm('确定切换到网页模式，并隐藏客户端？');
+    if (!ok) return;
+    try {
+      ui.setButtonLoading('btn-web-mode', true, { text: '切换中...' });
+      const res = await api.webMode({ enable: true });
+      ui.setButtonLoading('btn-web-mode', false);
+      if (res && res.success !== false) {
+        messages.showMessage('success', '已切换到网页模式，客户端隐藏到后台', 'download-messages');
+      } else {
+        messages.showMessage('error', '切换网页模式失败: ' + (res?.error || ''), 'download-messages');
+      }
+    } catch (err) {
+      ui.setButtonLoading('btn-web-mode', false);
+      messages.showMessage('error', '切换网页模式失败: ' + (err?.message || err), 'download-messages');
+    }
+  });
+
+  
+
+  btnShow?.addEventListener('click', async () => {
+    const ok = await showConfirm('确定切回客户端模式，并关闭当前页面？');
+    if (!ok) return;
+    try {
+      ui.setButtonLoading('btn-show-client', true, { text: '切换中...' });
+      const res = await api.showClient();
+      ui.setButtonLoading('btn-show-client', false);
+      if (res && res.success !== false) {
+        tryCloseTab();
+      } else {
+        messages.showMessage('error', '切回客户端失败: ' + (res?.error || ''), 'download-messages');
+      }
+    } catch (err) {
+      ui.setButtonLoading('btn-show-client', false);
+      messages.showMessage('error', '切回客户端失败: ' + (err?.message || err), 'download-messages');
+    }
+  });
+
+  btnExit?.addEventListener('click', async () => {
+    const ok = await showConfirm('确定退出后台并关闭当前页面？');
+    if (!ok) return;
+    try {
+      ui.setButtonLoading('btn-exit-backend', true, { text: '退出中...' });
+      const res = await api.exitBackend();
+      ui.setButtonLoading('btn-exit-backend', false);
+      if (res && res.success !== false) {
+        tryCloseTab();
+      } else {
+        messages.showMessage('error', '退出后台失败: ' + (res?.error || ''), 'download-messages');
+      }
+    } catch (err) {
+      ui.setButtonLoading('btn-exit-backend', false);
+      messages.showMessage('error', '退出后台失败: ' + (err?.message || err), 'download-messages');
+    }
+  });
 });
