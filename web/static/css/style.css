@@ -1846,11 +1846,20 @@ pre.json-code {
   top: 50%; left: 50%; transform: translate(-50%, -50%);
   width: 90%;
   max-width: 520px;
-  background: rgba(255, 255, 255, 0.96);
+  background: #0c0f1a;
   border-radius: var(--radius);
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  box-shadow: 0 25px 60px rgba(15, 23, 42, 0.25);
+  border: 1px solid #2a2f45;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  color: #e8eef7;
   overflow: hidden;
+}
+
+.modal-overlay .btn:hover {
+  transform: none;
+  box-shadow: none;
+}
+.modal-overlay .btn:active {
+  transform: none;
 }
 
 .modal-header,
