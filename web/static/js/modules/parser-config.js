@@ -1214,7 +1214,7 @@ function showAddEscapeModal(mt, ver, fd) {
   escapeModalDefaults.version = ver || escapeModalDefaults.version || '';
   escapeModalDefaults.field = fd || escapeModalDefaults.field || '';
   rebuildEscapeModalOptions({ ...escapeModalDefaults });
-  modal.style.display = 'flex';
+  modal.style.display = 'block';
   qs('#escape-original')?.focus();
 }
 
@@ -1381,7 +1381,7 @@ function showAddVersionModal(mt) {
     submitVersionRaw(mt, ver, '');
     return;
   }
-  modal.style.display = 'flex';
+  modal.style.display = 'block';
   const sel = qs('#version-message-type');
   if (sel) {
     sel.innerHTML = `<option value="${escapeAttr(mt)}">${escapeHtml(mt)}</option>`;
@@ -1400,7 +1400,7 @@ function showAddFieldModal(mt, ver) {
     submitFieldRaw(mt, ver, name, isNaN(start)?0:start, isNaN(length)?-1:length);
     return;
   }
-  modal.style.display = 'flex';
+  modal.style.display = 'block';
   const mtSel = qs('#field-message-type');
   const vSel  = qs('#field-version');
   if (mtSel) { mtSel.innerHTML = `<option value="${escapeAttr(mt)}">${escapeHtml(mt)}</option>`; mtSel.value = mt; }
@@ -1409,7 +1409,7 @@ function showAddFieldModal(mt, ver) {
 
 function hideAddVersionModal() { const m=qs('#add-version-modal'); if (m) m.style.display='none'; }
 function hideAddFieldModal()   { const m=qs('#add-field-modal');   if (m) m.style.display='none';  }
-function showAddMessageTypeModal(){ const m=qs('#add-message-type-modal'); if (m) m.style.display='flex'; }
+function showAddMessageTypeModal(){ const m=qs('#add-message-type-modal'); if (m) m.style.display='block'; }
 function hideAddMessageTypeModal(){ const m=qs('#add-message-type-modal'); if (m) m.style.display='none'; }
 
 async function submitMessageTypeForm() {
