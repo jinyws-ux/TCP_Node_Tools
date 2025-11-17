@@ -6,6 +6,8 @@ import { formatFileSize, escapeHtml } from '../core/utils.js';
 
 let inited = false;
 let selectedDownloadedLogs = new Set();
+let renderToken = 0;
+let renderedPaths = new Set();
 
 // 简化选择器
 const $  = (sel, scope = document) => scope.querySelector(sel);
@@ -210,6 +212,7 @@ function displayDownloadedLogs(logs) {
   if (!tbody) return;
 
   tbody.innerHTML = '';
+  renderedPaths.clear();
   if (!Array.isArray(logs) || logs.length === 0) {
     if (empty) empty.style.display = 'block';
     return;
@@ -226,9 +229,15 @@ function displayDownloadedLogs(logs) {
     }
     return log;
   });
-
+  const myToken = ++renderToken;
   Promise.all(checks).then((enriched) => {
-    enriched.forEach(addLogRow);
+    if (myToken !== renderToken) return;
+    enriched.forEach((log) => {
+      const p = log.path;
+      if (!p || renderedPaths.has(p)) return;
+      renderedPaths.add(p);
+      addLogRow(log);
+    });
     updateSelectAllIndicator();
   });
 }
