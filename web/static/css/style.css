@@ -1834,16 +1834,16 @@ pre.json-code {
 /* ======================= Modal ======================= */
 .modal-overlay {
   position: fixed;
-  inset: 0;
+  top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(15, 23, 42, 0.45);
   backdrop-filter: blur(2px);
   display: none;
-  align-items: center;
-  justify-content: center;
   z-index: 1000;
 }
 
 .modal-content {
+  position: absolute;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
   width: 90%;
   max-width: 520px;
   background: rgba(255, 255, 255, 0.96);
