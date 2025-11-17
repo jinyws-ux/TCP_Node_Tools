@@ -647,16 +647,9 @@
 
     </div>
 
-    <!-- 页脚 -->
-    <footer>
-        <p>ITCC日志分析系统 &copy; 2025 | 版本 0.0.1 Beta</p>
-    </footer>
-</div>
-</body>
-</html>
-    <!-- 确认弹窗 -->
-    <div id="confirm-modal" style="display:none; position:fixed; inset:0; backdrop-filter: blur(2px); background: rgba(0,0,0,0.35); z-index: 9999;">
-      <div style="max-width: 420px; margin: 12vh auto; padding: 18px; background: #0c0f1a; border: 1px solid #2a2f45; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,0.35);">
+    <!-- 确认弹窗（置于 body 内） -->
+    <div id="confirm-modal" style="display:none; position:fixed; inset:0; backdrop-filter: blur(2px); background: rgba(0,0,0,0.35); z-index: 9999; align-items:center; justify-content:center;">
+      <div style="width: 92%; max-width: 460px; padding: 18px; background: #0c0f1a; border: 1px solid #2a2f45; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,0.35);">
         <h3 style="margin:0 0 8px; color:#e8eef7;">确认操作</h3>
         <p id="confirm-text" style="margin:0 0 16px; color:#aab4c3;"></p>
         <div style="display:flex; gap:10px; justify-content:flex-end;">
@@ -665,3 +658,11 @@
         </div>
       </div>
     </div>
+
+    <!-- 页脚 -->
+    <footer>
+        <p>ITCC日志分析系统 &copy; 2025 | 版本 0.0.1 Beta</p>
+    </footer>
+</div>
+</body>
+</html>

@@ -146,7 +146,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function showConfirm(text) {
     if (!modal || !okBtn || !cancelBtn || !txtEl) return true;
     txtEl.textContent = text || '';
-    modal.style.display = '';
+    modal.style.display = 'flex';
     return new Promise((resolve) => {
       const onOk = () => { cleanup(); resolve(true); };
       const onCancel = () => { cleanup(); resolve(false); };
