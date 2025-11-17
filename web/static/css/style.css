@@ -1834,26 +1834,27 @@ pre.json-code {
 /* ======================= Modal ======================= */
 .modal-overlay {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  inset: 0;
   background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(2px);
   display: none;
+  align-items: center;
+  justify-content: center;
   z-index: 1000;
 }
 
 .modal-content {
-  position: absolute;
-  top: 50%; left: 50%; transform: translate(-50%, -50%);
   width: 90%;
   max-width: 520px;
-  background: #0c0f1a;
+  background: rgba(255, 255, 255, 0.96);
   border-radius: var(--radius);
-  border: 1px solid #2a2f45;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
-  color: #e8eef7;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  box-shadow: 0 25px 60px rgba(15, 23, 42, 0.25);
   overflow: hidden;
 }
 
+.modal-overlay .btn {
+  transition: none;
+}
 .modal-overlay .btn:hover {
   transform: none;
   box-shadow: none;
