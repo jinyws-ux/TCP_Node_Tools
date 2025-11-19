@@ -85,23 +85,56 @@ class ReportGenerator:
                 <h1>日志索引</h1>
                 <div id="timestamps">\n""")
 
-                # 写入时间戳索引
+                # 写入时间戳索引（模块化片段，仅影响可点击行）
                 for index, entry in enumerate(log_entries):
                     log_id = f"log_{index}"
+                    segs = entry.get('segments') or []
+                    palette = ['#e3f2fd', '#e8f5e9', '#fff3e0', '#ede7f6', '#e0f7fa']
+                    parts = []
+                    for s in segs:
+                        kind = s.get('kind', 'field')
+                        text = s.get('text', '')
+                        idx = int(s.get('idx', 0))
+                        bg = '#e3f2fd'
+                        fg = '#1b1f23'
+                        if kind == 'ts':
+                            bg = '#e3f2fd'
+                        elif kind == 'dir':
+                            t = str(text).lower()
+                            if t.startswith('input'):
+                                bg = '#d1fae5'
+                            elif t.startswith('output'):
+                                bg = '#fee2e2'
+                            else:
+                                bg = '#ede7f6'
+                        elif kind == 'node':
+                            bg = '#e8f5e9'
+                        elif kind == 'msg_type':
+                            bg = '#fff3e0'
+                        elif kind == 'ver':
+                            bg = '#e0f7fa'
+                        else:
+                            bg = palette[idx % len(palette)]
+                        parts.append(f'<span style="display:inline-block;padding:2px 6px;margin:2px;border-radius:6px;background:{bg};color:{fg};">{text}</span>')
+                        if kind == 'node':
+                            parts.append(':')
+                    line_html = ''.join(parts)
                     f.write(f"""        <div class="timestamp" onclick="location.href='#{log_id}'">
                         <span class="index-number">{index + 1}.</span>
-                        {entry['parsed']}
+                        {line_html}
                     </div>\n""")
 
                 f.write("    </div>\n")
 
-                # 写入日志条目
+                # 写入日志条目（保持原始日志原文，不做模块化）
                 for index, entry in enumerate(log_entries):
                     log_id = f"log_{index}"
                     f.write(f"""    <div class="log-entry" id="{log_id}">
                     <pre>
             {entry['original_line1']}
-            {entry['original_line2']}  <a href="#timestamps" class="back-link">返回索引</a></pre>
+            {entry['original_line2']}
+                    </pre>
+                    <a href="#timestamps" class="back-link">返回索引</a>
                 </div>\n""")
 
                 # 写入HTML尾部
