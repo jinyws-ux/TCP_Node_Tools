@@ -174,22 +174,78 @@ class LogParser:
                 original_line1 = current_line
                 original_line2 = log_lines[i + 1].strip() if i + 1 < total_lines else "无内容"
 
-                msg = self.parse_message_segments(original_line1)
+                # PID 分支的类型/版本/字段来自第二行的消息体
+                msg = self.parse_message_segments(original_line2)
+                # 如果第二行无法提供类型/版本，尝试从第一行的 *** ... *** 中解析
+                msg_type_fallback = ""
+                version_fallback = ""
+                try:
+                    m2 = specific_pattern.match(original_line1)
+                    header = m2.group(1) if m2 else ""
+                    if header:
+                        toks = header.strip().split()
+                        if len(toks) >= 2:
+                            msg_type_fallback = toks[0].strip()
+                            cand_ver = toks[-1].strip()
+                            if re.match(r"^\d{4}$", cand_ver):
+                                version_fallback = cand_ver
+                except Exception:
+                    pass
                 segs = []
                 if timestamp:
                     ts_txt = timestamp.strftime('%d.%m.%y %H:%M:%S.%f')[:-3]
                     segs.append({'kind': 'ts', 'text': ts_txt, 'idx': 0})
-                if msg.get('message_type'):
-                    segs.append({'kind': 'msg_type', 'text': msg.get('message_type'), 'idx': 1})
-                if msg.get('version'):
-                    segs.append({'kind': 'ver', 'text': msg.get('version'), 'idx': 2})
-                for s in msg.get('segments', []):
-                    segs.append({'kind': 'field', 'text': s.get('text', ''), 'idx': s.get('idx', 0)})
+                # 追加 PID 与节点号（基于第一行）
+                try:
+                    pid_text = ""
+                    if len(original_line1) >= 31:
+                        pid_text = original_line1[22:31].strip()
+                    if not pid_text:
+                        m_pid = re.search(r"PID=\d+", original_line1)
+                        pid_text = m_pid.group(0) if m_pid else ""
+                    if pid_text:
+                        segs.append({'kind': 'pid', 'text': pid_text, 'idx': 1})
+                except Exception:
+                    pass
+                try:
+                    node_text = ""
+                    if len(original_line1) >= 40:
+                        sub = original_line1[39:]
+                        comma_idx = sub.find(',')
+                        if comma_idx != -1:
+                            node_text = sub[:comma_idx].strip()
+                    if not node_text:
+                        m_node = re.search(r"Node\s+(\d+)", original_line1)
+                        node_text = m_node.group(1) if m_node else ""
+                    if node_text:
+                        segs.append({'kind': 'node', 'text': node_text, 'idx': 2})
+                except Exception:
+                    pass
+                # 追加两条消息块：第一行与第二行
+                try:
+                    msg1 = ""
+                    if len(original_line1) >= 46:
+                        start = 45
+                        msg1 = original_line1[start:].strip()
+                    if msg1:
+                        segs.append({'kind': 'pid_msg1', 'text': msg1, 'idx': 3})
+                except Exception:
+                    pass
+                try:
+                    msg2 = ""
+                    if len(original_line2) >= 46:
+                        start2 = 45
+                        msg2 = original_line2[start2:].strip()
+                    if msg2:
+                        segs.append({'kind': 'pid_msg2', 'text': msg2, 'idx': 4})
+                except Exception:
+                    pass
+                # PID 分支仅保留五块（ts, pid, node, msg1, msg2），不追加其他字段块
                 log_entries.append({
                     'timestamp': timestamp,
                     'original_line1': original_line1,
                     'original_line2': original_line2,
-                    'parsed': self.parse_message_content(original_line1),
+                    'parsed': self.parse_message_content(original_line2),
                     'segments': segs
                 })
                 i += 2

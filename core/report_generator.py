@@ -46,22 +46,35 @@ class ReportGenerator:
                         align-items: center;
                         padding: 10px;
                         margin: 5px 0;
-                        background-color: #e9f7ff;
+                        background-color: #ffffff;
                         border-radius: 4px;
                         cursor: pointer;
                         font-size: 14px;
+                        scroll-margin-top: 80px;
                     }
                     .index-number {
                         font-weight: bold;
                         margin-right: 10px;
                         color: #007bff;
                     }
+                    .seg-fixed { display: inline-block; box-sizing: border-box; padding: 2px 6px; margin: 2px; border-radius: 6px; vertical-align: top; }
+                    .seg-ts { width: 170px; }
+                    .seg-dir { width: 80px; text-align: center; }
+                    .seg-node { width: 90px; text-align: center; }
+                    .seg-msgtype { width: 150px; text-align: center; }
+                    .seg-ver { width: 90px; text-align: center; }
+                    .seg-node-sm { width: 60px; text-align: center; }
+                    .seg-msgtype-sm { width: 100px; text-align: center; }
+                    .seg-ver-sm { width: 60px; text-align: center; }
+                    .seg-pid { width: 140px; text-align: center; }
+                    .seg-free { display: inline-block; padding: 2px 6px; margin: 2px; border-radius: 6px; }
                     .log-entry {
-                        margin: 10px 0;
-                        padding: 10px;
+                        margin: 40px 0;
+                        padding: 16px;
                         background-color: white;
                         border-radius: 4px;
                         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                        scroll-margin-top: 80px;
                     }
                     .log-entry pre {
                         white-space: pre-wrap;
@@ -79,10 +92,60 @@ class ReportGenerator:
                         text-decoration: underline;
                         font-size: 14px;
                     }
+                    #filterBar { position: sticky; top: 0; background: #ffffff; padding: 10px; margin-bottom: 10px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); display: flex; gap: 8px; align-items: center; }
+                    #filterInput { flex: 1; height: 28px; font-size: 14px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; outline: none; }
+                    .btn { height: 28px; padding: 0 12px; border: 1px solid #d1d5db; border-radius: 4px; background: #f9fafb; cursor: pointer; font-size: 13px; }
+                    .btn-primary { background: #e5f0ff; border-color: #93c5fd; }
+                    .divider { height: 1px; background: linear-gradient(to right, #e5e7eb, #cbd5e1, #e5e7eb); margin: 40px 0 32px; border: none; }
+                    .gap { height: 100vh; }
+                    @keyframes flashHighlight {
+                        from { background-color: #fde68a; }
+                        to { background-color: #ffffff; }
+                    }
+                    .flash-highlight { animation: flashHighlight 900ms ease-in-out 2 alternate; }
                 </style>
+                <script>
+                    function applyFilter() {
+                        var q = document.getElementById('filterInput').value.trim().toLowerCase();
+                        var rows = document.querySelectorAll('.timestamp');
+                        for (var i = 0; i < rows.length; i++) {
+                            var r = rows[i];
+                            var id = r.getAttribute('data-id');
+                            var raw = document.getElementById(id);
+                            var text = (r.textContent || '').toLowerCase();
+                            var rawText = raw ? (raw.textContent || '').toLowerCase() : '';
+                            var show = q === '' ? true : (text.indexOf(q) !== -1 || rawText.indexOf(q) !== -1);
+                            r.style.display = show ? '' : 'none';
+                            if (raw) raw.style.display = show ? '' : 'none';
+                        }
+                    }
+                    function clearFilter() { document.getElementById('filterInput').value = ''; applyFilter(); }
+                    function filterKey(e) { if (e.key === 'Enter') applyFilter(); }
+                    function flashTargetById(id) {
+                        if (!id) return;
+                        var el = document.getElementById(id);
+                        if (!el) return;
+                        el.classList.remove('flash-highlight');
+                        void el.offsetWidth;
+                        el.classList.add('flash-highlight');
+                    }
+                    window.addEventListener('hashchange', function() {
+                        var id = (location.hash || '').replace('#','');
+                        flashTargetById(id);
+                    });
+                    (function(){
+                        var id = (location.hash || '').replace('#','');
+                        flashTargetById(id);
+                    })();
+                </script>
             </head>
             <body>
                 <h1>日志索引</h1>
+                <div id="filterBar">
+                    <input id="filterInput" type="text" placeholder="输入关键字筛选" onkeydown="filterKey(event)" />
+                    <button class="btn btn-primary" onclick="applyFilter()">筛选</button>
+                    <button class="btn" onclick="clearFilter()">重置</button>
+                </div>
                 <div id="timestamps">\n""")
 
                 # 写入时间戳索引（模块化片段，仅影响可点击行）
@@ -91,40 +154,63 @@ class ReportGenerator:
                     segs = entry.get('segments') or []
                     palette = ['#e3f2fd', '#e8f5e9', '#fff3e0', '#ede7f6', '#e0f7fa']
                     parts = []
+                    block_map = {'ts': '', 'dir': '', 'node': '', 'msg_type': '', 'ver': '', 'pid': '', 'pid_msg1': '', 'pid_msg2': ''}
                     for s in segs:
-                        kind = s.get('kind', 'field')
-                        text = s.get('text', '')
-                        idx = int(s.get('idx', 0))
-                        bg = '#e3f2fd'
-                        fg = '#1b1f23'
-                        if kind == 'ts':
-                            bg = '#e3f2fd'
-                        elif kind == 'dir':
-                            t = str(text).lower()
-                            if t.startswith('input'):
-                                bg = '#d1fae5'
-                            elif t.startswith('output'):
-                                bg = '#fee2e2'
-                            else:
-                                bg = '#ede7f6'
-                        elif kind == 'node':
-                            bg = '#e8f5e9'
-                        elif kind == 'msg_type':
-                            bg = '#fff3e0'
-                        elif kind == 'ver':
-                            bg = '#e0f7fa'
+                        k = s.get('kind')
+                        if k in block_map and not block_map[k]:
+                            block_map[k] = s.get('text', '')
+                    nbsp = '&nbsp;'
+                    has_dir = bool(block_map['dir'])
+                    if has_dir:
+                        ts_text = block_map['ts'] or nbsp
+                        dir_text = block_map['dir'] or nbsp
+                        node_text = block_map['node'] or nbsp
+                        msgtype_text = block_map['msg_type'] or nbsp
+                        ver_text = block_map['ver'] or nbsp
+                        parts.append(f'<span class="seg-fixed seg-ts" style="background:#e3f2fd;color:#1b1f23;">{ts_text}</span>')
+                        dlow = str(block_map['dir']).lower()
+                        if dlow.startswith('input'):
+                            parts.append(f'<span class="seg-fixed seg-dir" style="background:#d1fae5;color:#1b1f23;">{dir_text}</span>')
+                        elif dlow.startswith('output'):
+                            parts.append(f'<span class="seg-fixed seg-dir" style="background:#fee2e2;color:#1b1f23;">{dir_text}</span>')
                         else:
+                            parts.append(f'<span class="seg-fixed seg-dir" style="background:#ede7f6;color:#1b1f23;">{dir_text}</span>')
+                        parts.append(f'<span class="seg-fixed seg-node-sm" style="background:#e8f5e9;color:#1b1f23;">{node_text}</span>')
+                        parts.append(':')
+                        parts.append(f'<span class="seg-fixed seg-msgtype-sm" style="background:#fff3e0;color:#1b1f23;">{msgtype_text}</span>')
+                        parts.append(f'<span class="seg-fixed seg-ver-sm" style="background:#e0f7fa;color:#1b1f23;">{ver_text}</span>')
+                    else:
+                        ts_text = block_map['ts'] or nbsp
+                        pid_text = (block_map['pid'] or '').strip()
+                        node_text = (block_map['node'] or '').strip()
+                        parts.append(f'<span class="seg-fixed seg-ts" style="background:#e3f2fd;color:#1b1f23;">{ts_text}</span>')
+                        if pid_text:
+                            parts.append(f'<span class="seg-fixed seg-pid" style="background:#fde68a;color:#1b1f23;">{pid_text}</span>')
+                        if node_text:
+                            parts.append(f'<span class="seg-fixed seg-node-sm" style="background:#e8f5e9;color:#1b1f23;">{node_text}</span>')
+                        msg1 = (block_map['pid_msg1'] or '').strip()
+                        msg2 = (block_map['pid_msg2'] or '').strip()
+                        if msg1:
+                            parts.append(f'<span class="seg-free" style="background:#e3f2fd;color:#1b1f23;">{msg1}</span>')
+                        if msg2:
+                            parts.append(f'<span class="seg-free" style="background:#e8f5e9;color:#1b1f23;">{msg2}</span>')
+                    if has_dir:
+                        for s in segs:
+                            if s.get('kind') != 'field':
+                                continue
+                            idx = int(s.get('idx', 0))
                             bg = palette[idx % len(palette)]
-                        parts.append(f'<span style="display:inline-block;padding:2px 6px;margin:2px;border-radius:6px;background:{bg};color:{fg};">{text}</span>')
-                        if kind == 'node':
-                            parts.append(':')
+                            text = s.get('text', '')
+                            parts.append(f'<span class="seg-free" style="background:{bg};color:#1b1f23;">{text}</span>')
                     line_html = ''.join(parts)
-                    f.write(f"""        <div class="timestamp" onclick="location.href='#{log_id}'">
+                    f.write(f"""        <div class="timestamp" id="ts_{index}" data-id="{log_id}" onclick="location.href='#{log_id}'">
                         <span class="index-number">{index + 1}.</span>
                         {line_html}
                     </div>\n""")
 
                 f.write("    </div>\n")
+                f.write("    <hr class=\"divider\">\n")
+                f.write("    <div class=\"gap\"></div>\n")
 
                 # 写入日志条目（保持原始日志原文，不做模块化）
                 for index, entry in enumerate(log_entries):
@@ -134,7 +220,7 @@ class ReportGenerator:
             {entry['original_line1']}
             {entry['original_line2']}
                     </pre>
-                    <a href="#timestamps" class="back-link">返回索引</a>
+                    <a href="#ts_{index}" class="back-link">返回索引</a>
                 </div>\n""")
 
                 # 写入HTML尾部
