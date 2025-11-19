@@ -1694,6 +1694,30 @@ async function exportConfig() {
   }
 }
 
+function showImportMode() {
+  const modal = document.getElementById('import-mode-modal');
+  const btnMerge = document.getElementById('import-mode-merge');
+  const btnOverwrite = document.getElementById('import-mode-overwrite');
+  const btnCancel = document.getElementById('import-mode-cancel');
+  if (!modal || !btnMerge || !btnOverwrite || !btnCancel) return Promise.resolve(null);
+  modal.style.display = 'block';
+  return new Promise((resolve) => {
+    function cleanup(val) {
+      btnMerge.removeEventListener('click', onMerge);
+      btnOverwrite.removeEventListener('click', onOverwrite);
+      btnCancel.removeEventListener('click', onCancel);
+      modal.style.display = 'none';
+      resolve(val);
+    }
+    function onMerge() { cleanup('merge'); }
+    function onOverwrite() { cleanup('overwrite'); }
+    function onCancel() { cleanup(null); }
+    btnMerge.addEventListener('click', onMerge);
+    btnOverwrite.addEventListener('click', onOverwrite);
+    btnCancel.addEventListener('click', onCancel);
+  });
+}
+
 function importConfig() {
   if (!workingFactory || !workingSystem) {
     showMessage('error', '请先进入配置工作台', 'parser-config-messages');
@@ -1705,18 +1729,20 @@ function importConfig() {
   input.onchange = async () => {
     const file = input.files?.[0];
     if (!file) return;
+    const mode = await showImportMode();
+    if (!mode) return;
     const fd = new FormData();
     fd.append('factory', workingFactory);
     fd.append('system', workingSystem);
+    fd.append('mode', mode);
     fd.append('file', file);
     try {
       const res = await fetch('/api/import-parser-config', { method: 'POST', body: fd });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || '导入失败');
-      showMessage('success', '导入成功', 'parser-config-messages');
+      showMessage('success', mode === 'merge' ? '增量导入成功' : '全覆盖导入成功', 'parser-config-messages');
       await refreshFullConfig();
       await refreshTree();
-
       notifyParserConfigChanged('import', { factory: workingFactory, system: workingSystem });
     } catch (e) {
       showMessage('error', '导入失败：' + e.message, 'parser-config-messages');

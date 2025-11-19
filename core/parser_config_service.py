@@ -54,6 +54,15 @@ class ParserConfigService:
             raise ValueError("保存配置失败")
         return patched
 
+    def merge(self, factory: str, system: str, incoming: Dict[str, Any]) -> Dict[str, Any]:
+        existing = self._manager.load_config(factory, system) or {}
+        merged = self._merge_config(existing, incoming or {})
+        self._validate_config(merged)
+        ok = self._manager.save_config(factory, system, merged)
+        if not ok:
+            raise ValueError("保存配置失败")
+        return merged
+
     def transfer_namespace(
         self,
         old_factory: str,
@@ -76,6 +85,45 @@ class ParserConfigService:
     # ------------------------------------------------------------------
     # 纯数据算法（以下方法全部是内部实现）
     # ------------------------------------------------------------------
+    def _merge_config(self, existing: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str, Any]:
+        result = deepcopy(existing or {})
+        if not isinstance(incoming, dict):
+            return result
+        for msg_type, msg_cfg in (incoming or {}).items():
+            if msg_type not in result:
+                result[msg_type] = deepcopy(msg_cfg)
+                continue
+            tgt_msg = result[msg_type]
+            if msg_cfg.get("Description") and not tgt_msg.get("Description"):
+                tgt_msg["Description"] = msg_cfg.get("Description", "")
+            tgt_versions = tgt_msg.setdefault("Versions", {})
+            src_versions = (msg_cfg.get("Versions") or {})
+            for ver, ver_cfg in src_versions.items():
+                if ver not in tgt_versions:
+                    tgt_versions[ver] = {"Fields": deepcopy((ver_cfg.get("Fields") or {}))}
+                    continue
+                tgt_fields = tgt_versions[ver].setdefault("Fields", {})
+                src_fields = (ver_cfg.get("Fields") or {})
+                for field, f_cfg in src_fields.items():
+                    if field not in tgt_fields:
+                        new_field = {
+                            "Start": f_cfg.get("Start", 0),
+                            "Length": f_cfg.get("Length", -1),
+                        }
+                        esc = f_cfg.get("Escapes")
+                        if isinstance(esc, dict):
+                            new_field["Escapes"] = deepcopy(esc)
+                        tgt_fields[field] = new_field
+                        continue
+                    tgt_field = tgt_fields[field]
+                    src_esc = (f_cfg.get("Escapes") or {})
+                    if isinstance(src_esc, dict) and src_esc:
+                        tgt_esc = tgt_field.setdefault("Escapes", {})
+                        for k, v in src_esc.items():
+                            if k not in tgt_esc:
+                                tgt_esc[k] = v
+        return result
+
     def _build_config_tree(self, config: Dict[str, Any], factory: str, system: str) -> List[Dict[str, Any]]:
         tree_data: List[Dict[str, Any]] = []
         for message_type, message_config in (config or {}).items():

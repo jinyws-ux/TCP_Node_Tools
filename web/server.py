@@ -888,10 +888,11 @@ def export_parser_config():
 
 @app.route('/api/import-parser-config', methods=['POST'])
 def import_parser_config():
-    """导入解析配置"""
+    """导入解析配置（支持全覆盖与增量插入）"""
     try:
         factory = request.form.get('factory')
         system = request.form.get('system')
+        mode = (request.form.get('mode', 'overwrite') or 'overwrite').lower()
         file = request.files.get('file')
 
         if not factory or not system or not file:
@@ -900,9 +901,8 @@ def import_parser_config():
         if not file.filename:
             return jsonify({'success': False, 'error': '无效的文件'}), 400
 
-        logger.info(f"导入解析配置: {factory}/{system}, 文件: {file.filename}")
+        logger.info(f"导入解析配置: {factory}/{system}, 文件: {file.filename}, 模式: {mode}")
 
-        # 检查文件类型
         filename = file.filename.lower()
         raw_bytes = file.stream.read()
         if not raw_bytes:
@@ -933,7 +933,10 @@ def import_parser_config():
             return jsonify({'success': False, 'error': '解析配置必须是 JSON/YAML 对象'}), 400
 
         try:
-            parser_config_service.save(factory, system, config)
+            if mode == 'merge':
+                parser_config_service.merge(factory, system, config)
+            else:
+                parser_config_service.save(factory, system, config)
         except ValueError as exc:
             return jsonify({'success': False, 'error': str(exc)}), 400
 
