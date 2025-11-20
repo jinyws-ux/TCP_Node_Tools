@@ -278,8 +278,12 @@ class LogParser:
                     i += 1
                     continue
 
+                # 恢复旧对齐：Output 分支先去除固定前缀，再进行噪声清理
+                base_content = raw_message_content
+                if direction == "Output" and len(base_content) >= 7:
+                    base_content = base_content[7:]
                 # 清理第二行前置无意义字符后再解析
-                message_content = self._strip_noise_prefix(raw_message_content)
+                message_content = self._strip_noise_prefix(base_content)
 
                 # 解析消息内容
                 try:

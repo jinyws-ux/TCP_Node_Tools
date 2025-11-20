@@ -3,6 +3,7 @@ import logging
 import os
 from datetime import datetime
 from typing import List, Dict, Any
+import html
 
 
 class ReportGenerator:
@@ -69,8 +70,8 @@ class ReportGenerator:
                     .seg-pid { width: 140px; text-align: center; }
                     .seg-free { display: inline-block; padding: 2px 6px; margin: 2px; border-radius: 6px; }
                     .log-entry {
-                        margin: 40px 0;
-                        padding: 16px;
+                        margin: 10px 0;
+                        padding: 8px;
                         background-color: white;
                         border-radius: 4px;
                         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -79,18 +80,18 @@ class ReportGenerator:
                     .log-entry pre {
                         white-space: pre-wrap;
                         word-wrap: break-word;
-                        font-size: 14px;
-                        line-height: 1.2;
+                        font-size: 13px;
+                        line-height: 1.05;
                         margin: 0;
-                        padding: 5px;
+                        padding: 0;
                     }
                     .back-link {
-                        display: block;
-                        margin-top: 10px;
+                        display: inline-block;
+                        margin-top: 2px;
                         text-align: right;
                         color: #007bff;
                         text-decoration: underline;
-                        font-size: 14px;
+                        font-size: 12px;
                     }
                     #filterBar { position: sticky; top: 0; background: #ffffff; padding: 10px; margin-bottom: 10px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); display: flex; gap: 8px; align-items: center; }
                     #filterInput { flex: 1; height: 28px; font-size: 14px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; outline: none; }
@@ -106,21 +107,30 @@ class ReportGenerator:
                 </style>
                 <script>
                     function applyFilter() {
-                        var q = document.getElementById('filterInput').value.trim().toLowerCase();
+                        var qRaw = document.getElementById('filterInput').value.trim();
+                        var q = qRaw.toLowerCase();
                         var rows = document.querySelectorAll('.timestamp');
                         for (var i = 0; i < rows.length; i++) {
                             var r = rows[i];
                             var id = r.getAttribute('data-id');
                             var raw = document.getElementById(id);
                             var text = (r.textContent || '').toLowerCase();
-                            var rawText = raw ? (raw.textContent || '').toLowerCase() : '';
+                            var pre = raw ? raw.querySelector('pre') : null;
+                            var rawText = pre ? (pre.textContent || '').toLowerCase() : '';
                             var show = q === '' ? true : (text.indexOf(q) !== -1 || rawText.indexOf(q) !== -1);
                             r.style.display = show ? '' : 'none';
                             if (raw) raw.style.display = show ? '' : 'none';
                         }
                     }
-                    function clearFilter() { document.getElementById('filterInput').value = ''; applyFilter(); }
+                    function clearFilter() {
+                        document.getElementById('filterInput').value = '';
+                        applyFilter();
+                    }
                     function filterKey(e) { if (e.key === 'Enter') applyFilter(); }
+                    function filterKey(e) { if (e.key === 'Enter') window.applyFilter(); }
+                    var applyFilter = window.applyFilter;
+                    var clearFilter = window.clearFilter;
+                    var filterKey = window.filterKey;
                     function flashTargetById(id) {
                         if (!id) return;
                         var el = document.getElementById(id);
@@ -215,13 +225,11 @@ class ReportGenerator:
                 # 写入日志条目（保持原始日志原文，不做模块化）
                 for index, entry in enumerate(log_entries):
                     log_id = f"log_{index}"
+                    raw_text = f"{entry['original_line1']}\n{entry['original_line2']}"
                     f.write(f"""    <div class="log-entry" id="{log_id}">
-                    <pre>
-            {entry['original_line1']}
-            {entry['original_line2']}
-                    </pre>
-                    <a href="#ts_{index}" class="back-link">返回索引</a>
-                </div>\n""")
+<pre>{html.escape(raw_text)}</pre>
+<a href="#ts_{index}" class="back-link">返回索引</a>
+</div>\n""")
 
                 # 写入HTML尾部
                 f.write("</body>\n</html>")
