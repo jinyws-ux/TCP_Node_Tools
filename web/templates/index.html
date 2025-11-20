@@ -22,11 +22,6 @@
                 <p>智慧运维工作台</p>
             </div>
         </div>
-        <div class="header-actions">
-            <button class="btn" id="btn-web-mode" title="切换到网页模式" style="display:none;"><i class="fas fa-globe"></i> 网页模式</button>
-            <button class="btn btn-primary" id="btn-show-client" title="切回客户端模式" style="display:none;"><i class="fas fa-desktop"></i> 切回客户端模式</button>
-            <button class="btn btn-danger" id="btn-exit-backend" title="退出后台" style="display:none;"><i class="fas fa-power-off"></i> 退出后台</button>
-        </div>
     </header>
 
     <!-- 标签页导航 -->
@@ -660,19 +655,7 @@
 
     </div>
 
-    <!-- 确认弹窗（置于 body 内） -->
-    <div id="confirm-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.35); z-index: 9999;">
-      <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); width: 92%; max-width: 460px; padding: 18px; background: #0c0f1a; border: 1px solid #2a2f45; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,0.35);">
-        <h3 style="margin:0 0 8px; color:#e8eef7;">确认操作</h3>
-        <p id="confirm-text" style="margin:0 0 16px; color:#aab4c3;"></p>
-        <div style="display:flex; gap:10px; justify-content:flex-end;">
-          <button class="btn" id="confirm-cancel">取消</button>
-          <button class="btn btn-danger" id="confirm-ok">确定</button>
-        </div>
-      </div>
-    </div
-
-    ><div id="import-mode-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.35); z-index: 9999;">
+    <div id="import-mode-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.35); z-index: 9999;">
       <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); width: 92%; max-width: 480px; padding: 18px; background: #0c0f1a; border: 1px solid #2a2f45; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,0.35);">
         <h3 style="margin:0 0 8px; color:#e8eef7;">选择导入模式</h3>
         <p style="margin:0 0 12px; color:#aab4c3;">请选择导入方式：全量覆盖或增量插入。</p>

@@ -30,9 +30,6 @@ export const api = {
   searchLogs: (payload) => post('/api/logs/search', payload),
   searchLogsByTemplate: (payload) => post('/api/logs/search_strict', payload),
   downloadLogs: (payload) => post('/api/logs/download', payload),
-  webMode: (payload) => post('/api/web-mode', payload),
-  showClient: () => post('/api/show-client', {}),
-  exitBackend: () => post('/api/exit', {}),
 
   /* -------- 分析页 -------- */
   getDownloadedLogs: () => get('/api/downloaded-logs'),

@@ -1095,69 +1095,6 @@ def open_reports_directory():
         logger.error(f"打开报告目录失败: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/web-mode', methods=['POST'])
-def api_web_mode():
-    data = request.get_json(silent=True) or {}
-    enable = bool(data.get('enable', True))
-    if enable:
-        try:
-            url = 'http://localhost:5000'
-            if platform.system() == 'Windows':
-                subprocess.call(['start', url], shell=True)
-            elif platform.system() == 'Darwin':
-                subprocess.call(['open', url])
-            else:
-                subprocess.call(['xdg-open', url])
-        except Exception:
-            pass
-        try:
-            import webview
-            if webview.windows:
-                win = webview.windows[0]
-                try:
-                    win.hide()
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        try:
-            api = globals().get('TRAY_API')
-            if api and callable(api.get('show')):
-                api['show']()
-        except Exception:
-            pass
-    return jsonify({'success': True})
-
-@app.route('/api/show-client', methods=['POST'])
-def api_show_client():
-    try:
-        import webview
-        if webview.windows:
-            win = webview.windows[0]
-            try:
-                win.show()
-            except Exception:
-                pass
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"/api/show-client 失败: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': '切回客户端失败'}), 500
-
-@app.route('/api/exit', methods=['POST'])
-def api_exit():
-    try:
-        def _exit_later():
-            import time, os
-            time.sleep(0.5)
-            os._exit(0)
-        threading = __import__('threading')
-        t = threading.Thread(target=_exit_later, daemon=True)
-        t.start()
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"/api/exit 失败: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': '退出后台失败'}), 500
-
 @app.route('/api/delete-config-item', methods=['POST'])
 def delete_config_item():
     """删除配置项（报文类型/版本/字段）"""
