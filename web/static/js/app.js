@@ -137,12 +137,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     let exitBtn = qs('#btn-exit-backend');
 
     if (!exitBtn) {
+      const anchor = qs('.header-actions') || qs('header') || document.body;
       exitBtn = document.createElement('button');
       exitBtn.id = 'btn-exit-backend';
-      exitBtn.className = 'btn btn-danger exit-floating-btn';
+      exitBtn.className = 'btn btn-danger';
       exitBtn.title = '退出后台';
       exitBtn.innerHTML = '<i class="fas fa-power-off"></i> 退出后台';
-      document.body.appendChild(exitBtn);
+      anchor.appendChild(exitBtn);
     }
 
     function tryCloseTab() {

@@ -124,25 +124,11 @@ header::after {
   display: flex;
   gap: 10px;
   align-items: center;
+  margin-left: auto;
 }
 
-.exit-floating-btn,
 #btn-exit-backend {
-  position: fixed;
-  top: 18px;
-  right: 22px;
-  z-index: 9999;
   box-shadow: 0 10px 24px rgba(244, 63, 94, 0.45);
-}
-
-@media (max-width: 768px) {
-  .exit-floating-btn,
-  #btn-exit-backend {
-    top: 12px;
-    right: 14px;
-    padding: 10px 14px;
-    font-size: 0.92rem;
-  }
 }
 
 .status-pill {

@@ -759,7 +759,8 @@ def serve_report(filename):
 @app.route('/static/<path:filename>')
 def serve_static(filename):
     """提供静态文件"""
-    return send_from_directory(os.path.join(base_dir, 'web', 'static'), filename)
+    static_dir = os.path.join(base_dir, 'static')
+    return send_from_directory(static_dir, filename)
 
 
 @app.route('/api/add-escape', methods=['POST'])
