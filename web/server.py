@@ -6,22 +6,23 @@ import os
 import platform
 import subprocess
 import threading
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TYPE_CHECKING
 import webbrowser
 
 from flask import Blueprint, Flask, render_template, request, jsonify, send_from_directory, Response
 
-from core.analysis_service import AnalysisService
-from core.config_manager import ConfigManager
-from core.download_service import DownloadService
-from core.log_analyzer import LogAnalyzer
-from core.log_downloader import LogDownloader
-from core.log_metadata_store import LogMetadataStore
-from core.parser_config_manager import ParserConfigManager
-from core.parser_config_service import ParserConfigService
-from core.report_mapping_store import ReportMappingStore
-from core.server_config_service import ServerConfigService
-from core.template_manager import TemplateManager
+if TYPE_CHECKING:  # 避免运行时提前导入重模块，提升启动速度
+    from core.analysis_service import AnalysisService
+    from core.config_manager import ConfigManager
+    from core.download_service import DownloadService
+    from core.log_analyzer import LogAnalyzer
+    from core.log_downloader import LogDownloader
+    from core.log_metadata_store import LogMetadataStore
+    from core.parser_config_manager import ParserConfigManager
+    from core.parser_config_service import ParserConfigService
+    from core.report_mapping_store import ReportMappingStore
+    from core.server_config_service import ServerConfigService
+    from core.template_manager import TemplateManager
 
 app = Flask(__name__)
 
@@ -97,6 +98,19 @@ def _ensure_services():
     with _init_lock:
         if _services_ready:
             return
+
+        # 延迟导入重量级依赖，减少应用冷启动阻塞
+        from core.analysis_service import AnalysisService
+        from core.config_manager import ConfigManager
+        from core.download_service import DownloadService
+        from core.log_analyzer import LogAnalyzer
+        from core.log_downloader import LogDownloader
+        from core.log_metadata_store import LogMetadataStore
+        from core.parser_config_manager import ParserConfigManager
+        from core.parser_config_service import ParserConfigService
+        from core.report_mapping_store import ReportMappingStore
+        from core.server_config_service import ServerConfigService
+        from core.template_manager import TemplateManager
 
         os.makedirs(CONFIG_DIR, exist_ok=True)
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
