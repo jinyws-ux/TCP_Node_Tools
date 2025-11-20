@@ -3,7 +3,7 @@ import sys
 import threading
 import json
 
-import webview
+import webbrowser
 import importlib
 import importlib.util
 if False:
@@ -31,72 +31,7 @@ def get_runtime_root():
             return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
-def setup_tray():
-    try:
-        from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction, QStyle
-        from PyQt6.QtGui import QIcon
-        app_qt = QApplication.instance()
-        if app_qt is None:
-            return
-        try:
-            app_qt.setQuitOnLastWindowClosed(False)
-        except Exception:
-            pass
-        icon_path = os.path.join(get_base_path(), 'web', 'static', 'favicon.ico')
-        icon = QIcon(icon_path) if os.path.exists(icon_path) else QIcon()
-        if icon.isNull():
-            try:
-                icon = app_qt.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
-            except Exception:
-                icon = QIcon()
-
-        tray = QSystemTrayIcon(icon, app_qt)
-        menu = QMenu()
-        tray.setToolTip('日志分析系统')
-
-        def show_client():
-            try:
-                if webview.windows:
-                    win = webview.windows[0]
-                    win.show()
-                    try:
-                        # bring to front if possible
-                        pass
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-
-        def exit_app():
-            try:
-                if webview.windows:
-                    webview.destroy_window(webview.windows[0])
-            except Exception:
-                os._exit(0)
-
-        act_show = QAction('显示客户端', menu)
-        act_show.triggered.connect(show_client)
-        menu.addAction(act_show)
-
-        act_exit = QAction('退出', menu)
-        act_exit.triggered.connect(exit_app)
-        menu.addAction(act_exit)
-
-        tray.setContextMenu(menu)
-        tray.show()
-
-        # 暴露托盘控制到 server 模块
-        server.TRAY_OBJ = tray
-        server.TRAY_API = {
-            'show': tray.show,
-            'hide': tray.hide,
-        }
-    except Exception:
-        # 无法初始化托盘（非 Qt 后端等），忽略
-        server.TRAY_API = {
-            'show': lambda: None,
-            'hide': lambda: None,
-        }
+# 客户端托盘已移除
 
 if __name__ == '__main__':
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -173,22 +108,10 @@ if __name__ == '__main__':
     app.config['CONFIG_DIR'] = config_dir
     app.config['HTML_LOGS_DIR'] = html_logs_dir
 
-    # 在单独线程中启动Flask
-    threading.Thread(target=run_flask, daemon=True).start()
-
-    # 创建webview窗口
-    base_path = get_base_path()
-    window = webview.create_window(
-        title='日志分析系统',
-        url='http://localhost:5000?embedded=1',
-        width=1500,
-        height=1000,
-        resizable=True
-    )
-
-    # 设置窗口图标
-    icon_path = os.path.join(base_path, 'web', 'static', 'favicon.ico')
-    if os.path.exists(icon_path):
-        window.set_icon(icon_path)
-
-    webview.start(gui='qt', func=setup_tray)
+    t = threading.Thread(target=run_flask, daemon=True)
+    t.start()
+    try:
+        webbrowser.open('http://localhost:5000')
+    except Exception:
+        pass
+    t.join()

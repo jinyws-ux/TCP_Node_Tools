@@ -128,17 +128,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const first = qs('.tab')?.getAttribute('data-tab') || 'download';
   await switchTab(first);
 
-  const isEmbedded = new URLSearchParams(window.location.search).get('embedded') === '1';
-  const webBtn = qs('#btn-web-mode');
-  const btnShow = qs('#btn-show-client');
+  // 仅保留退出后台按钮逻辑
   const btnExit = qs('#btn-exit-backend');
-  if (isEmbedded) {
-    if (webBtn) webBtn.style.display = '';
-  } else {
-    if (btnShow) btnShow.style.display = '';
-    if (btnExit) btnExit.style.display = '';
-  }
-
   const modal = qs('#confirm-modal');
   const okBtn = qs('#confirm-ok');
   const cancelBtn = qs('#confirm-cancel');
@@ -165,44 +156,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     try { window.close(); } catch {}
     try { window.location.href = 'about:blank'; } catch {}
   }
-
-  webBtn?.addEventListener('click', async () => {
-    const ok = await showConfirm('确定切换到网页模式，并隐藏客户端？');
-    if (!ok) return;
-    try {
-      ui.setButtonLoading('btn-web-mode', true, { text: '切换中...' });
-      const res = await api.webMode({ enable: true });
-      ui.setButtonLoading('btn-web-mode', false);
-      if (res && res.success !== false) {
-        messages.showMessage('success', '已切换到网页模式，客户端隐藏到后台', 'download-messages');
-      } else {
-        messages.showMessage('error', '切换网页模式失败: ' + (res?.error || ''), 'download-messages');
-      }
-    } catch (err) {
-      ui.setButtonLoading('btn-web-mode', false);
-      messages.showMessage('error', '切换网页模式失败: ' + (err?.message || err), 'download-messages');
-    }
-  });
-
-  
-
-  btnShow?.addEventListener('click', async () => {
-    const ok = await showConfirm('确定切回客户端模式，并关闭当前页面？');
-    if (!ok) return;
-    try {
-      ui.setButtonLoading('btn-show-client', true, { text: '切换中...' });
-      const res = await api.showClient();
-      ui.setButtonLoading('btn-show-client', false);
-      if (res && res.success !== false) {
-        tryCloseTab();
-      } else {
-        messages.showMessage('error', '切回客户端失败: ' + (res?.error || ''), 'download-messages');
-      }
-    } catch (err) {
-      ui.setButtonLoading('btn-show-client', false);
-      messages.showMessage('error', '切回客户端失败: ' + (err?.message || err), 'download-messages');
-    }
-  });
 
   btnExit?.addEventListener('click', async () => {
     const ok = await showConfirm('确定退出后台并关闭当前页面？');
