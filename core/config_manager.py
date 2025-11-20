@@ -1,9 +1,10 @@
 # core/config_manager.py
-import json
 import logging
 import os
 import time
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
+from .json_store import JsonStore
 
 
 class ConfigManager:
@@ -12,6 +13,7 @@ class ConfigManager:
         self.server_configs_file = os.path.join(config_dir, 'server_configs.json')
         self.logger = logging.getLogger(__name__)
         os.makedirs(config_dir, exist_ok=True)
+        self._store = JsonStore(self.server_configs_file, default_factory=list)
         self._init_config_file()
 
     def _init_config_file(self):
@@ -30,54 +32,43 @@ class ConfigManager:
                     }
                 }
             ]
-            with open(self.server_configs_file, 'w', encoding='utf-8') as f:
-                json.dump(default_server_configs, f, indent=2, ensure_ascii=False)
-            self.logger.info("创建服务器配置文件")
+            if self._store.save(default_server_configs):
+                self.logger.info("创建服务器配置文件")
 
     def _load_configs(self) -> List[Dict[str, Any]]:
         """从JSON文件加载数据"""
-        try:
-            if os.path.exists(self.server_configs_file):
-                with open(self.server_configs_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            return []
-        except Exception as e:
-            self.logger.error(f"加载配置文件失败: {str(e)}")
-            return []
+        return self._store.load()
 
     def _save_configs(self, configs: List[Dict[str, Any]]) -> bool:
-        """保存数据到JSON文件 - 使用原子操作"""
-        import tempfile
-
-        try:
-            # 创建临时文件
-            with tempfile.NamedTemporaryFile(
-                    mode='w',
-                    encoding='utf-8',
-                    delete=False,
-                    dir=os.path.dirname(self.server_configs_file)
-            ) as f:
-                json.dump(configs, f, indent=2, ensure_ascii=False)
-                temp_file = f.name
-
-            # 原子替换：重命名是原子操作
-            if os.path.exists(self.server_configs_file):
-                os.replace(temp_file, self.server_configs_file)
-            else:
-                os.rename(temp_file, self.server_configs_file)
-
+        """保存数据到JSON文件"""
+        if self._store.save(configs):
             self.logger.info(f"配置保存成功: {self.server_configs_file}")
             return True
+        self.logger.error("保存配置文件失败")
+        return False
 
-        except Exception as e:
-            self.logger.error(f"保存配置文件失败: {str(e)}")
-            # 清理临时文件
-            if 'temp_file' in locals() and os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                except:
-                    pass
-            return False
+    def _allocate_config_id(self, configs: List[Dict[str, Any]]) -> str:
+        numeric_ids = [
+            int(config["id"])
+            for config in configs
+            if str(config.get("id", "")).isdigit()
+        ]
+        return str(max(numeric_ids) + 1) if numeric_ids else "1"
+
+    def _find_config_index(self, configs: List[Dict[str, Any]], config_id: str) -> int:
+        for index, config in enumerate(configs):
+            if config.get('id') == config_id:
+                return index
+        return -1
+
+    def _ensure_unique(self, configs: List[Dict[str, Any]], factory: str, system: str, alias: str, *, exclude_id: Optional[str] = None) -> None:
+        for config in configs:
+            if exclude_id and config.get('id') == exclude_id:
+                continue
+            if (config.get('factory') == factory and
+                    config.get('system') == system and
+                    config.get('server', {}).get('alias') == alias):
+                raise ValueError("已存在相同厂区、系统和服务器别名的配置")
 
     def get_server_configs(self) -> List[Dict[str, Any]]:
         """获取服务器配置列表"""
@@ -96,23 +87,14 @@ class ConfigManager:
         configs = self._load_configs()
 
         # 检查是否已存在相同配置
-        for config in configs:
-            if (config.get('factory') == factory and
-                    config.get('system') == system and
-                    config.get('server', {}).get('alias') == server.get('alias')):
-                raise ValueError("该配置已存在")
+        self._ensure_unique(
+            configs,
+            factory,
+            system,
+            server.get('alias', ''),
+        )
 
-        # 生成唯一ID - 使用时间戳+随机数避免冲突
-        import time
-        import random
-        config_id = f"{int(time.time())}_{random.randint(1000, 9999)}"
-
-        # 或者使用最大ID+1
-        if configs:
-            existing_ids = [int(c['id']) for c in configs if c['id'].isdigit()]
-            config_id = str(max(existing_ids) + 1) if existing_ids else "1"
-        else:
-            config_id = "1"
+        config_id = self._allocate_config_id(configs)
 
         # 创建新配置
         new_config = {
@@ -137,23 +119,20 @@ class ConfigManager:
             configs = self._load_configs()
 
             # 查找要更新的配置
-            config_index = -1
-            for i, config in enumerate(configs):
-                if config.get('id') == config_id:
-                    config_index = i
-                    break
+            config_index = self._find_config_index(configs, config_id)
 
             if config_index == -1:
                 self.logger.error(f"未找到要更新的配置: {config_id}")
                 return False
 
             # 检查是否与其他配置冲突（排除自身）
-            for config in configs:
-                if (config.get('id') != config_id and
-                        config.get('factory') == factory and
-                        config.get('system') == system and
-                        config.get('server', {}).get('alias') == server.get('alias')):
-                    raise ValueError("已存在相同厂区、系统和服务器别名的配置")
+            self._ensure_unique(
+                configs,
+                factory,
+                system,
+                server.get('alias', ''),
+                exclude_id=config_id,
+            )
 
             # 更新配置
             configs[config_index] = {

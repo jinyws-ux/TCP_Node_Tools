@@ -1,9 +1,11 @@
 # core/log_downloader.py
+import hashlib
 import logging
 import os
 import re
+from contextlib import contextmanager
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional, Iterable
+from typing import Any, Dict, Iterable, List, Optional
 
 import paramiko
 
@@ -71,44 +73,34 @@ class LogDownloader:
         """
         多节点搜索（实时使用 tcp_trace.{node}* 模式；归档限定日期范围）。
         """
-        ssh = None
         try:
             server_config = self._get_server_config(factory, system)
             if not server_config:
                 return []
 
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
             server_info = server_config["server"]
-            ssh.connect(
-                server_info["hostname"],
-                username=server_info["username"],
-                password=server_info["password"],
-                timeout=30,
-            )
-
             server_alias = server_info["alias"]
             results: List[Dict[str, Any]] = []
             visited = set()  # 去重（remote_path）
 
-            if include_realtime:
-                realtime_path = (server_info.get("realtime_path") or f"/{server_alias}/km/log")
-                for it in self._search_realtime_for_nodes(ssh, realtime_path, nodes):
-                    rp = it.get("remote_path") or it.get("path")
-                    if rp and rp not in visited:
-                        visited.add(rp)
-                        results.append(it)
+            with self._open_ssh(server_info) as ssh:
+                if include_realtime:
+                    realtime_path = (server_info.get("realtime_path") or f"/{server_alias}/km/log")
+                    for it in self._search_realtime_for_nodes(ssh, realtime_path, nodes):
+                        rp = it.get("remote_path") or it.get("path")
+                        if rp and rp not in visited:
+                            visited.add(rp)
+                            results.append(it)
 
-            if include_archive:
-                archive_path = (server_info.get("archive_path") or f"/nfs/{server_alias}/ips_log_archive/{server_alias}/km_log")
-                for it in self._search_archive_for_nodes(
-                    ssh, archive_path, nodes, date_start=date_start, date_end=date_end
-                ):
-                    rp = it.get("remote_path") or it.get("path")
-                    if rp and rp not in visited:
-                        visited.add(rp)
-                        results.append(it)
+                if include_archive:
+                    archive_path = (server_info.get("archive_path") or f"/nfs/{server_alias}/ips_log_archive/{server_alias}/km_log")
+                    for it in self._search_archive_for_nodes(
+                        ssh, archive_path, nodes, date_start=date_start, date_end=date_end
+                    ):
+                        rp = it.get("remote_path") or it.get("path")
+                        if rp and rp not in visited:
+                            visited.add(rp)
+                            results.append(it)
 
             # 时间降序（尽量用 mtime / timestamp）
             def _key(x):
@@ -119,12 +111,6 @@ class LogDownloader:
         except Exception as e:
             self.logger.error(f"搜索日志失败: {str(e)}")
             return []
-        finally:
-            if ssh:
-                try:
-                    ssh.close()
-                except Exception:
-                    pass
 
     # ---------------------- 对外：多节点（严格/模板） ----------------------
     def search_logs_strict(
@@ -175,6 +161,37 @@ class LogDownloader:
             if config.get("factory") == factory and config.get("system") == system:
                 return config
         return None
+
+    @contextmanager
+    def _open_ssh(self, server_info: Dict[str, Any]):
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(
+            server_info["hostname"],
+            username=server_info["username"],
+            password=server_info["password"],
+            timeout=int(server_info.get("timeout", 30)),
+        )
+        try:
+            yield ssh
+        finally:
+            try:
+                ssh.close()
+            except Exception:
+                pass
+
+    @contextmanager
+    def _open_sftp(self, ssh: paramiko.SSHClient):
+        sftp = None
+        try:
+            sftp = ssh.open_sftp()
+            yield sftp
+        finally:
+            if sftp:
+                try:
+                    sftp.close()
+                except Exception:
+                    pass
 
     # ====================== 内部：实时/归档检索 ======================
     def _search_realtime_for_nodes(
@@ -310,97 +327,84 @@ class LogDownloader:
             download_base_dir = os.path.join(self.download_dir, factory, system)
             os.makedirs(download_base_dir, exist_ok=True)
 
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            sftp = None
-
             downloaded_files: List[Dict[str, Any]] = []
+            node_groups = self._group_files_by_node(log_files)
+            if not node_groups:
+                return []
 
-            try:
-                server_info = server_config["server"]
-                ssh.connect(
-                    server_info["hostname"],
-                    username=server_info["username"],
-                    password=server_info["password"],
-                    timeout=30,
-                )
-                sftp = ssh.open_sftp()
+            normalized_search_nodes = self._normalize_nodes(search_nodes or [])
+            search_nodes_payload = normalized_search_nodes or ([search_node] if search_node else [])
+            search_trace = search_node or ",".join(normalized_search_nodes)
 
-                # 归组
-                node_groups: Dict[str, List[Dict[str, Any]]] = {}
-                for file_info in log_files or []:
-                    remote_path = file_info.get("remote_path") or file_info.get("path") or ""
-                    if not remote_path:
-                        self.logger.warning(f"跳过无 remote_path 的项: {file_info}")
-                        continue
-                    filename = os.path.basename(remote_path)
-                    actual_node = file_info.get("node") or self._extract_node_from_filename(filename)
-                    node_groups.setdefault(actual_node, []).append(
-                        {**file_info, "remote_path": remote_path, "name": filename}
-                    )
+            server_info = server_config["server"]
+            with self._open_ssh(server_info) as ssh:
+                with self._open_sftp(ssh) as sftp:
+                    for actual_node, node_files in node_groups.items():
+                        node_dir = os.path.join(download_base_dir, actual_node)
+                        os.makedirs(node_dir, exist_ok=True)
 
-                # 下载
-                for actual_node, node_files in node_groups.items():
-                    node_dir = os.path.join(download_base_dir, actual_node)
-                    os.makedirs(node_dir, exist_ok=True)
+                        for file_info in node_files:
+                            remote_path = file_info["remote_path"]
+                            filename = file_info["name"]
+                            local_path = os.path.join(node_dir, filename)
 
-                    for file_info in node_files:
-                        remote_path = file_info["remote_path"]
-                        filename = file_info["name"]
-                        local_path = os.path.join(node_dir, filename)
+                            try:
+                                sftp.get(remote_path, local_path)
+                                download_time = datetime.now().isoformat()
+                                source_mtime = file_info.get("mtime") or ""
+                                entry = {
+                                    "name": filename,
+                                    "path": local_path,
+                                    "size": os.path.getsize(local_path),
+                                    "timestamp": download_time,
+                                    "download_time": download_time,
+                                    "log_time": source_mtime,
+                                    "source_mtime": source_mtime,
+                                    "factory": factory,
+                                    "system": system,
+                                    "node": actual_node,
+                                    "type": file_info.get("type", "unknown"),
+                                    "search_node": search_node,
+                                    "search_nodes": search_nodes_payload,
+                                }
+                                downloaded_files.append(entry)
+                                self._write_metadata(
+                                    local_path,
+                                    {
+                                        **entry,
+                                        "remote_path": remote_path,
+                                    },
+                                )
+                                self.logger.info(
+                                    "成功下载: %s (实际节点: %s, 搜索节点/集: %s)",
+                                    local_path,
+                                    actual_node,
+                                    search_trace or "未指定",
+                                )
+                            except Exception as e:
+                                self.logger.error(f"下载失败 {remote_path}: {str(e)}")
+                                continue
 
-                        try:
-                            sftp.get(remote_path, local_path)
-                            download_time = datetime.now().isoformat()
-                            source_mtime = file_info.get("mtime") or ""
-                            entry = {
-                                "name": filename,
-                                "path": local_path,
-                                "size": os.path.getsize(local_path),
-                                "timestamp": download_time,
-                                "download_time": download_time,
-                                "log_time": source_mtime,
-                                "source_mtime": source_mtime,
-                                "factory": factory,
-                                "system": system,
-                                "node": actual_node,
-                                "type": file_info.get("type", "unknown"),
-                                "search_node": search_node,
-                                "search_nodes": list(self._normalize_nodes(search_nodes or []))
-                                or ([search_node] if search_node else []),
-                            }
-                            downloaded_files.append(entry)
-                            self._write_metadata(
-                                local_path,
-                                {
-                                    **entry,
-                                    "remote_path": remote_path,
-                                },
-                            )
-                            self.logger.info(
-                                f"成功下载: {local_path} (实际节点: {actual_node}, 搜索节点/集: {search_node or search_nodes})"
-                            )
-                        except Exception as e:
-                            self.logger.error(f"下载失败 {remote_path}: {str(e)}")
-                            continue
-
-                return downloaded_files
-            finally:
-                if sftp:
-                    try:
-                        sftp.close()
-                    except Exception:
-                        pass
-                try:
-                    ssh.close()
-                except Exception:
-                    pass
-
+            return downloaded_files
         except Exception as e:
             self.logger.error(f"下载日志失败: {str(e)}")
             return []
 
     # ====================== 辅助 ======================
+    def _group_files_by_node(self, log_files: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+        node_groups: Dict[str, List[Dict[str, Any]]] = {}
+        for file_info in log_files or []:
+            remote_path = file_info.get("remote_path") or file_info.get("path") or ""
+            if not remote_path:
+                self.logger.warning(f"跳过无 remote_path 的项: {file_info}")
+                continue
+            filename = os.path.basename(remote_path)
+            actual_node = file_info.get("node") or self._extract_node_from_filename(filename)
+            node_groups.setdefault(actual_node, []).append(
+                {**file_info, "remote_path": remote_path, "name": filename}
+            )
+        return node_groups
+
     def _extract_node_from_filename(self, filename: str) -> str:
         """从文件名中提取节点号 - 增强版"""
         try:
@@ -499,7 +503,6 @@ class LogDownloader:
                         factory, system = "未知厂区", "未知系统"
                         actual_node = self._extract_node_from_filename(file)
 
-                    import hashlib
                     file_id = hashlib.md5(file_path.encode()).hexdigest()[:8]
 
                     metadata = self._read_metadata(file_path)
