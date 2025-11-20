@@ -256,7 +256,12 @@
                     </div>
                     <div class="form-group">
                         <label>服务器别名</label>
-                        <input id="server-alias" placeholder="例如: apipso71" type="text">
+                        <div class="input-with-action">
+                            <input id="server-alias" placeholder="例如: apipso71" type="text">
+                            <button type="button" class="btn btn-sm" id="gen-default-paths-btn" title="根据别名生成默认路径">
+                                生成默认路径
+                            </button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>主机名/IP</label>
@@ -275,6 +280,14 @@
                                 <i class="fas fa-eye-slash icon-eye-slash" aria-hidden="true"></i>
                             </button>
                         </div>
+                    </div>
+                    <div class="form-group">
+                        <label>日志路径配置</label>
+                        <input id="server-realtime-path" placeholder="例如: /apipso71/km/log" type="text">
+                    </div>
+                    <div class="form-group">
+                        <label>Archive日志配置</label>
+                        <input id="server-archive-path" placeholder="例如: /nfs/apipso71/ips_log_archive/apipso71/km_log" type="text">
                     </div>
                     <div class="form-actions">
                         <button class="btn btn-search" id="save-config-btn">

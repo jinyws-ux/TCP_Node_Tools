@@ -93,7 +93,7 @@ class LogDownloader:
             visited = set()  # 去重（remote_path）
 
             if include_realtime:
-                realtime_path = f"/{server_alias}/km/log"
+                realtime_path = (server_info.get("realtime_path") or f"/{server_alias}/km/log")
                 for it in self._search_realtime_for_nodes(ssh, realtime_path, nodes):
                     rp = it.get("remote_path") or it.get("path")
                     if rp and rp not in visited:
@@ -101,7 +101,7 @@ class LogDownloader:
                         results.append(it)
 
             if include_archive:
-                archive_path = f"/nfs/{server_alias}/ips_log_archive/{server_alias}/km_log"
+                archive_path = (server_info.get("archive_path") or f"/nfs/{server_alias}/ips_log_archive/{server_alias}/km_log")
                 for it in self._search_archive_for_nodes(
                     ssh, archive_path, nodes, date_start=date_start, date_end=date_end
                 ):

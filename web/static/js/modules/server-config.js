@@ -208,10 +208,12 @@ function collectFormPayload() {
     hostname: $('#server-hostname')?.value?.trim(),
     username: $('#server-username')?.value?.trim(),
     password: $('#server-password')?.value?.trim(),
+    realtime_path: $('#server-realtime-path')?.value?.trim(),
+    archive_path: $('#server-archive-path')?.value?.trim(),
   };
 
-  if (!factory || !system || !server.alias || !server.hostname || !server.username || !server.password) {
-    throw new Error('请完整填写厂区、系统与服务器信息');
+  if (!factory || !system || !server.alias || !server.hostname || !server.username || !server.password || !server.realtime_path || !server.archive_path) {
+    throw new Error('请完整填写厂区、系统与服务器信息（含日志路径与归档路径）');
   }
   return { factory, system, server };
 }
@@ -223,6 +225,8 @@ function fillForm(cfg) {
   $('#server-hostname') && ($('#server-hostname').value = cfg?.server?.hostname || '');
   $('#server-username') && ($('#server-username').value = cfg?.server?.username || '');
   $('#server-password') && ($('#server-password').value = cfg?.server?.password || '');
+  $('#server-realtime-path') && ($('#server-realtime-path').value = cfg?.server?.realtime_path || '');
+  $('#server-archive-path') && ($('#server-archive-path').value = cfg?.server?.archive_path || '');
 }
 
 function setEditMode(isEditing) {
@@ -386,10 +390,23 @@ function bindPasswordToggle() {
 function bindFormEvents() {
   const saveBtn = document.getElementById('save-config-btn');
   const cancelBtn = document.getElementById('cancel-edit-btn');
+  const genBtn = document.getElementById('gen-default-paths-btn');
   if (saveBtn) saveBtn.addEventListener('click', handleSave);
   if (cancelBtn) cancelBtn.addEventListener('click', () => {
     resetForm();
     renderList();
+  });
+  if (genBtn) genBtn.addEventListener('click', () => {
+    const alias = $('#server-alias')?.value?.trim();
+    if (!alias) {
+      showMessage('error', '请先填写服务器别名', 'server-config-messages');
+      return;
+    }
+    const realtime = `/${alias}/km/log`;
+    const archive = `/nfs/${alias}/ips_log_archive/${alias}/km_log`;
+    $('#server-realtime-path') && ($('#server-realtime-path').value = realtime);
+    $('#server-archive-path') && ($('#server-archive-path').value = archive);
+    showMessage('success', '已生成默认路径', 'server-config-messages');
   });
 }
 

@@ -12,6 +12,17 @@ class LogParser:
         self.parser_config = parser_config
         self.logger = logging.getLogger(__name__)
 
+    def _strip_noise_prefix(self, content: str) -> str:
+        try:
+            s = content or ""
+            s = s.lstrip()
+            m = re.match(r'^[^A-Za-z0-9]{5,12}', s)
+            if m:
+                s = s[m.end():]
+            return s.lstrip()
+        except Exception:
+            return content
+
     def extract_timestamp(self, line: str) -> Optional[datetime]:
         """提取日志行中的时间戳"""
         try:
@@ -267,10 +278,8 @@ class LogParser:
                     i += 1
                     continue
 
-                # 构造用于显示的解析文本（保持原有裁剪逻辑），但不影响原文与拆分
-                message_content = raw_message_content
-                if direction == "Output" and len(message_content) >= 7:
-                    message_content = message_content[7:]
+                # 清理第二行前置无意义字符后再解析
+                message_content = self._strip_noise_prefix(raw_message_content)
 
                 # 解析消息内容
                 try:
@@ -281,7 +290,7 @@ class LogParser:
                     log_line = f"{time_str:<16} {direction:<6} {node_number:>3}：解析错误"
 
                 timestamp = self.extract_timestamp(current_line)
-                msg = self.parse_message_segments(raw_message_content)
+                msg = self.parse_message_segments(message_content)
                 segs = []
                 segs.append({'kind': 'ts', 'text': time_str, 'idx': 0})
                 segs.append({'kind': 'dir', 'text': direction, 'idx': 1})
