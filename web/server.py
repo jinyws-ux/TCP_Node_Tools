@@ -3,10 +3,11 @@ import ast
 import json
 import logging
 import os
+import platform
+import subprocess
+import threading
 from typing import Any, Dict, List
 import webbrowser
-import subprocess
-import platform
 
 from flask import Blueprint, Flask, render_template, request, jsonify, send_from_directory, Response
 
@@ -34,6 +35,7 @@ def _resolve_dir(path_value: str, base: str) -> str:
         return base
     return p if os.path.isabs(p) else os.path.join(base, p)
 
+
 def _load_paths_config(root: str) -> Dict[str, str]:
     cfg_file = os.environ.get('LOGTOOL_PATHS_FILE') or os.path.join(root, 'paths.json')
     data: Dict[str, Any] = {}
@@ -59,58 +61,88 @@ SERVER_CONFIGS_FILE = os.path.join(CONFIG_DIR, 'server_configs.json')
 PARSER_CONFIGS_DIR = paths_cfg['PARSER_CONFIGS_DIR']
 REGION_TEMPLATES_DIR = paths_cfg['REGION_TEMPLATES_DIR']
 MAPPING_CONFIG_DIR = paths_cfg['MAPPING_CONFIG_DIR']
+DOWNLOAD_DIR = paths_cfg['DOWNLOAD_DIR']
+HTML_LOGS_DIR = paths_cfg['HTML_LOGS_DIR']
+REPORT_MAPPING_FILE = paths_cfg['REPORT_MAPPING_FILE'] or os.path.join(HTML_LOGS_DIR, 'report_mappings.json')
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 初始化配置管理器
-config_manager = ConfigManager(CONFIG_DIR)
-parser_config_manager = ParserConfigManager(PARSER_CONFIGS_DIR)
+# 服务占位符（延迟初始化以提升启动速度）
+config_manager = None
+parser_config_manager = None
+metadata_store = None
+log_downloader = None
+log_analyzer = None
+region_template_manager = None
+download_service = None
+report_mapping_store = None
+parser_config_service = None
+server_config_service = None
+analysis_service = None
 
-DOWNLOAD_DIR = paths_cfg['DOWNLOAD_DIR']
-metadata_store = LogMetadataStore(DOWNLOAD_DIR, MAPPING_CONFIG_DIR)
-log_downloader = LogDownloader(
-    DOWNLOAD_DIR,
-    config_manager,
-    metadata_store=metadata_store,
-)
+_init_lock = threading.Lock()
+_services_ready = False
 
-HTML_LOGS_DIR = paths_cfg['HTML_LOGS_DIR']
-log_analyzer = LogAnalyzer(
-    HTML_LOGS_DIR,
-    config_manager,
-    parser_config_manager,
-    metadata_store=metadata_store,
-)
 
-# 确保配置目录存在
-os.makedirs(CONFIG_DIR, exist_ok=True)
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-os.makedirs(HTML_LOGS_DIR, exist_ok=True)
-os.makedirs(PARSER_CONFIGS_DIR, exist_ok=True)
-os.makedirs(REGION_TEMPLATES_DIR, exist_ok=True)
-os.makedirs(MAPPING_CONFIG_DIR, exist_ok=True)
+def _ensure_services():
+    global config_manager, parser_config_manager, metadata_store
+    global log_downloader, log_analyzer, region_template_manager
+    global download_service, report_mapping_store, parser_config_service
+    global server_config_service, analysis_service, _services_ready
 
-REPORT_MAPPING_FILE = paths_cfg['REPORT_MAPPING_FILE'] or os.path.join(HTML_LOGS_DIR, 'report_mappings.json')
+    if _services_ready:
+        return
+    with _init_lock:
+        if _services_ready:
+            return
 
-# 服务对象
-region_template_manager = TemplateManager(REGION_TEMPLATES_DIR)
-download_service = DownloadService(log_downloader, region_template_manager)
-report_mapping_store = ReportMappingStore(REPORT_MAPPING_FILE)
-parser_config_service = ParserConfigService(parser_config_manager)
-server_config_service = ServerConfigService(
-    config_manager,
-    region_template_manager,
-    parser_config_service,
-)
-analysis_service = AnalysisService(
-    log_downloader=log_downloader,
-    log_analyzer=log_analyzer,
-    report_store=report_mapping_store,
-)
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+        os.makedirs(HTML_LOGS_DIR, exist_ok=True)
+        os.makedirs(PARSER_CONFIGS_DIR, exist_ok=True)
+        os.makedirs(REGION_TEMPLATES_DIR, exist_ok=True)
+        os.makedirs(MAPPING_CONFIG_DIR, exist_ok=True)
 
-app.config['HTML_LOGS_DIR'] = HTML_LOGS_DIR
+        config_manager = ConfigManager(CONFIG_DIR)
+        parser_config_manager = ParserConfigManager(PARSER_CONFIGS_DIR)
+        metadata_store = LogMetadataStore(DOWNLOAD_DIR, MAPPING_CONFIG_DIR)
+        log_downloader = LogDownloader(
+            DOWNLOAD_DIR,
+            config_manager,
+            metadata_store=metadata_store,
+        )
+        log_analyzer = LogAnalyzer(
+            HTML_LOGS_DIR,
+            config_manager,
+            parser_config_manager,
+            metadata_store=metadata_store,
+        )
+
+        region_template_manager = TemplateManager(REGION_TEMPLATES_DIR)
+        download_service = DownloadService(log_downloader, region_template_manager)
+        report_mapping_store = ReportMappingStore(REPORT_MAPPING_FILE)
+        parser_config_service = ParserConfigService(parser_config_manager)
+        server_config_service = ServerConfigService(
+            config_manager,
+            region_template_manager,
+            parser_config_service,
+        )
+        analysis_service = AnalysisService(
+            log_downloader=log_downloader,
+            log_analyzer=log_analyzer,
+            report_store=report_mapping_store,
+        )
+
+        app.config['HTML_LOGS_DIR'] = HTML_LOGS_DIR
+        _services_ready = True
+        logger.info("服务初始化完成，工作目录已准备好")
+
+
+@app.before_request
+def _prepare_services():
+    _ensure_services()
 
 
 # 通用工具
@@ -1064,6 +1096,23 @@ def open_in_editor():
     except Exception as e:
         logger.error(f"在编辑器中打开文件失败: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/exit', methods=['POST'])
+def api_exit():
+    """退出后台进程（网页模式右上角按钮触发）。"""
+    try:
+        def _exit_later():
+            import time
+            time.sleep(0.5)
+            os._exit(0)
+
+        t = threading.Thread(target=_exit_later, daemon=True)
+        t.start()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"/api/exit 失败: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': '退出后台失败'}), 500
 
 
 @app.route('/api/open-reports-directory', methods=['POST'])
