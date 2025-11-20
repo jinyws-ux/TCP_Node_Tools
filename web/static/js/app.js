@@ -128,29 +128,45 @@ document.addEventListener('DOMContentLoaded', async () => {
   const first = qs('.tab')?.getAttribute('data-tab') || 'download';
   await switchTab(first);
 
-  const exitBtn = qs('#btn-exit-backend');
+  /**
+   * 确保右上角的“退出后台”按钮总是存在且可见：
+   * - 模板中已有按钮则直接绑定事件。
+   * - 如果模板缺少（缓存、打包差异等），在运行时追加一个固定按钮。
+   */
+  (function ensureExitButton() {
+    let exitBtn = qs('#btn-exit-backend');
 
-  function tryCloseTab() {
-    try { window.open('', '_self'); } catch {}
-    try { window.close(); } catch {}
-    try { window.location.href = 'about:blank'; } catch {}
-  }
-
-  exitBtn?.addEventListener('click', async () => {
-    const ok = window.confirm('确定退出后台并关闭当前页面？');
-    if (!ok) return;
-    try {
-      ui.setButtonLoading('btn-exit-backend', true, { text: '退出中...' });
-      const res = await api.exitBackend();
-      ui.setButtonLoading('btn-exit-backend', false);
-      if (res && res.success !== false) {
-        tryCloseTab();
-      } else {
-        messages.showMessage('error', '退出后台失败: ' + (res?.error || ''), 'download-messages');
-      }
-    } catch (err) {
-      ui.setButtonLoading('btn-exit-backend', false);
-      messages.showMessage('error', '退出后台失败: ' + (err?.message || err), 'download-messages');
+    if (!exitBtn) {
+      exitBtn = document.createElement('button');
+      exitBtn.id = 'btn-exit-backend';
+      exitBtn.className = 'btn btn-danger exit-floating-btn';
+      exitBtn.title = '退出后台';
+      exitBtn.innerHTML = '<i class="fas fa-power-off"></i> 退出后台';
+      document.body.appendChild(exitBtn);
     }
-  });
+
+    function tryCloseTab() {
+      try { window.open('', '_self'); } catch {}
+      try { window.close(); } catch {}
+      try { window.location.href = 'about:blank'; } catch {}
+    }
+
+    exitBtn?.addEventListener('click', async () => {
+      const ok = window.confirm('确定退出后台并关闭当前页面？');
+      if (!ok) return;
+      try {
+        ui.setButtonLoading('btn-exit-backend', true, { text: '退出中...' });
+        const res = await api.exitBackend();
+        ui.setButtonLoading('btn-exit-backend', false);
+        if (res && res.success !== false) {
+          tryCloseTab();
+        } else {
+          messages.showMessage('error', '退出后台失败: ' + (res?.error || ''), 'download-messages');
+        }
+      } catch (err) {
+        ui.setButtonLoading('btn-exit-backend', false);
+        messages.showMessage('error', '退出后台失败: ' + (err?.message || err), 'download-messages');
+      }
+    });
+  })();
 });
