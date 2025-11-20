@@ -25,6 +25,7 @@ if TYPE_CHECKING:  # 避免运行时提前导入重模块，提升启动速度
     from core.template_manager import TemplateManager
 
 app = Flask(__name__)
+app.url_map.strict_slashes = False  # 放宽结尾斜杠，避免路径差异造成 404
 
 # 获取当前文件所在目录的绝对路径
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -156,7 +157,16 @@ def _ensure_services():
 
 @app.before_request
 def _prepare_services():
-    _ensure_services()
+    """仅在需要时初始化服务，避免首页/静态请求阻塞启动。"""
+    path = request.path or ''
+
+    # 静态资源与退出接口不需要加载核心服务，直接放行
+    if path.startswith('/static') or path.startswith('/report/') or path == '/api/exit':
+        return
+
+    # 仅针对实际 API 请求做懒加载，减少冷启动时的等待
+    if path.startswith('/api/'):
+        _ensure_services()
 
 
 # 通用工具
@@ -1113,7 +1123,7 @@ def open_in_editor():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/exit', methods=['POST'])
+@app.route('/api/exit', methods=['GET', 'POST', 'OPTIONS'])
 def api_exit():
     """退出后台进程（网页模式右上角按钮触发）。"""
     try:
@@ -1122,8 +1132,10 @@ def api_exit():
             time.sleep(0.5)
             os._exit(0)
 
-        t = threading.Thread(target=_exit_later, daemon=True)
-        t.start()
+        # 仅在真实的退出请求中触发关闭；GET/OPTIONS 用于探测不退出
+        if request.method == 'POST':
+            t = threading.Thread(target=_exit_later, daemon=True)
+            t.start()
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"/api/exit 失败: {e}", exc_info=True)
