@@ -128,97 +128,46 @@ document.addEventListener('DOMContentLoaded', async () => {
   const first = qs('.tab')?.getAttribute('data-tab') || 'download';
   await switchTab(first);
 
-  const isEmbedded = new URLSearchParams(window.location.search).get('embedded') === '1';
-  const webBtn = qs('#btn-web-mode');
-  const btnShow = qs('#btn-show-client');
-  const btnExit = qs('#btn-exit-backend');
-  if (isEmbedded) {
-    if (webBtn) webBtn.style.display = '';
-  } else {
-    if (btnShow) btnShow.style.display = '';
-    if (btnExit) btnExit.style.display = '';
-  }
+  /**
+   * 确保右上角的“退出后台”按钮总是存在且可见：
+   * - 模板中已有按钮则直接绑定事件。
+   * - 如果模板缺少（缓存、打包差异等），在运行时追加一个固定按钮。
+   */
+  (function ensureExitButton() {
+    let exitBtn = qs('#btn-exit-backend');
 
-  const modal = qs('#confirm-modal');
-  const okBtn = qs('#confirm-ok');
-  const cancelBtn = qs('#confirm-cancel');
-  const txtEl = qs('#confirm-text');
-  async function showConfirm(text) {
-    if (!modal || !okBtn || !cancelBtn || !txtEl) return true;
-    txtEl.textContent = text || '';
-    modal.style.display = 'block';
-    return new Promise((resolve) => {
-      const onOk = () => { cleanup(); resolve(true); };
-      const onCancel = () => { cleanup(); resolve(false); };
-      function cleanup() {
-        okBtn.removeEventListener('click', onOk);
-        cancelBtn.removeEventListener('click', onCancel);
-        modal.style.display = 'none';
+    if (!exitBtn) {
+      const anchor = qs('.header-actions') || qs('header') || document.body;
+      exitBtn = document.createElement('button');
+      exitBtn.id = 'btn-exit-backend';
+      exitBtn.className = 'btn btn-danger';
+      exitBtn.title = '退出后台';
+      exitBtn.innerHTML = '<i class="fas fa-power-off"></i> 退出后台';
+      anchor.appendChild(exitBtn);
+    }
+
+    function tryCloseTab() {
+      try { window.open('', '_self'); } catch {}
+      try { window.close(); } catch {}
+      try { window.location.href = 'about:blank'; } catch {}
+    }
+
+    exitBtn?.addEventListener('click', async () => {
+      const ok = window.confirm('确定退出后台并关闭当前页面？');
+      if (!ok) return;
+      try {
+        ui.setButtonLoading('btn-exit-backend', true, { text: '退出中...' });
+        const res = await api.exitBackend();
+        ui.setButtonLoading('btn-exit-backend', false);
+        if (res && res.success !== false) {
+          tryCloseTab();
+        } else {
+          messages.showMessage('error', '退出后台失败: ' + (res?.error || ''), 'download-messages');
+        }
+      } catch (err) {
+        ui.setButtonLoading('btn-exit-backend', false);
+        messages.showMessage('error', '退出后台失败: ' + (err?.message || err), 'download-messages');
       }
-      okBtn.addEventListener('click', onOk);
-      cancelBtn.addEventListener('click', onCancel);
     });
-  }
-
-  function tryCloseTab() {
-    try { window.open('', '_self'); } catch {}
-    try { window.close(); } catch {}
-    try { window.location.href = 'about:blank'; } catch {}
-  }
-
-  webBtn?.addEventListener('click', async () => {
-    const ok = await showConfirm('确定切换到网页模式，并隐藏客户端？');
-    if (!ok) return;
-    try {
-      ui.setButtonLoading('btn-web-mode', true, { text: '切换中...' });
-      const res = await api.webMode({ enable: true });
-      ui.setButtonLoading('btn-web-mode', false);
-      if (res && res.success !== false) {
-        messages.showMessage('success', '已切换到网页模式，客户端隐藏到后台', 'download-messages');
-      } else {
-        messages.showMessage('error', '切换网页模式失败: ' + (res?.error || ''), 'download-messages');
-      }
-    } catch (err) {
-      ui.setButtonLoading('btn-web-mode', false);
-      messages.showMessage('error', '切换网页模式失败: ' + (err?.message || err), 'download-messages');
-    }
-  });
-
-  
-
-  btnShow?.addEventListener('click', async () => {
-    const ok = await showConfirm('确定切回客户端模式，并关闭当前页面？');
-    if (!ok) return;
-    try {
-      ui.setButtonLoading('btn-show-client', true, { text: '切换中...' });
-      const res = await api.showClient();
-      ui.setButtonLoading('btn-show-client', false);
-      if (res && res.success !== false) {
-        tryCloseTab();
-      } else {
-        messages.showMessage('error', '切回客户端失败: ' + (res?.error || ''), 'download-messages');
-      }
-    } catch (err) {
-      ui.setButtonLoading('btn-show-client', false);
-      messages.showMessage('error', '切回客户端失败: ' + (err?.message || err), 'download-messages');
-    }
-  });
-
-  btnExit?.addEventListener('click', async () => {
-    const ok = await showConfirm('确定退出后台并关闭当前页面？');
-    if (!ok) return;
-    try {
-      ui.setButtonLoading('btn-exit-backend', true, { text: '退出中...' });
-      const res = await api.exitBackend();
-      ui.setButtonLoading('btn-exit-backend', false);
-      if (res && res.success !== false) {
-        tryCloseTab();
-      } else {
-        messages.showMessage('error', '退出后台失败: ' + (res?.error || ''), 'download-messages');
-      }
-    } catch (err) {
-      ui.setButtonLoading('btn-exit-backend', false);
-      messages.showMessage('error', '退出后台失败: ' + (err?.message || err), 'download-messages');
-    }
-  });
+  })();
 });

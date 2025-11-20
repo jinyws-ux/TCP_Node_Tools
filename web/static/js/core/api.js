@@ -30,9 +30,6 @@ export const api = {
   searchLogs: (payload) => post('/api/logs/search', payload),
   searchLogsByTemplate: (payload) => post('/api/logs/search_strict', payload),
   downloadLogs: (payload) => post('/api/logs/download', payload),
-  webMode: (payload) => post('/api/web-mode', payload),
-  showClient: () => post('/api/show-client', {}),
-  exitBackend: () => post('/api/exit', {}),
 
   /* -------- 分析页 -------- */
   getDownloadedLogs: () => get('/api/downloaded-logs'),
@@ -40,6 +37,7 @@ export const api = {
   checkReport: (log_path) => post('/api/check-report', { log_path }),
   openInBrowser: (url) => post('/api/open-in-browser', { url }),
   openInEditor: (file_path) => post('/api/open-in-editor', { file_path }),
+  exitBackend: () => get('/api/exit'),
   deleteLog: (id, path) => post('/api/delete-log', { id, path }),
   analyze: (logs, config) => post('/api/analyze', { logs, config }),
   getParserConfigs: () => get(`/api/parser-configs?_=${Date.now()}`),

@@ -3,26 +3,29 @@ import ast
 import json
 import logging
 import os
-from typing import Any, Dict, List
-import webbrowser
-import subprocess
 import platform
+import subprocess
+import threading
+from typing import Any, Dict, List, TYPE_CHECKING
+import webbrowser
 
 from flask import Blueprint, Flask, render_template, request, jsonify, send_from_directory, Response
 
-from core.analysis_service import AnalysisService
-from core.config_manager import ConfigManager
-from core.download_service import DownloadService
-from core.log_analyzer import LogAnalyzer
-from core.log_downloader import LogDownloader
-from core.log_metadata_store import LogMetadataStore
-from core.parser_config_manager import ParserConfigManager
-from core.parser_config_service import ParserConfigService
-from core.report_mapping_store import ReportMappingStore
-from core.server_config_service import ServerConfigService
-from core.template_manager import TemplateManager
+if TYPE_CHECKING:  # 避免运行时提前导入重模块，提升启动速度
+    from core.analysis_service import AnalysisService
+    from core.config_manager import ConfigManager
+    from core.download_service import DownloadService
+    from core.log_analyzer import LogAnalyzer
+    from core.log_downloader import LogDownloader
+    from core.log_metadata_store import LogMetadataStore
+    from core.parser_config_manager import ParserConfigManager
+    from core.parser_config_service import ParserConfigService
+    from core.report_mapping_store import ReportMappingStore
+    from core.server_config_service import ServerConfigService
+    from core.template_manager import TemplateManager
 
 app = Flask(__name__)
+app.url_map.strict_slashes = False  # 放宽结尾斜杠，避免路径差异造成 404
 
 # 获取当前文件所在目录的绝对路径
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -33,6 +36,7 @@ def _resolve_dir(path_value: str, base: str) -> str:
     if not p:
         return base
     return p if os.path.isabs(p) else os.path.join(base, p)
+
 
 def _load_paths_config(root: str) -> Dict[str, str]:
     cfg_file = os.environ.get('LOGTOOL_PATHS_FILE') or os.path.join(root, 'paths.json')
@@ -59,58 +63,110 @@ SERVER_CONFIGS_FILE = os.path.join(CONFIG_DIR, 'server_configs.json')
 PARSER_CONFIGS_DIR = paths_cfg['PARSER_CONFIGS_DIR']
 REGION_TEMPLATES_DIR = paths_cfg['REGION_TEMPLATES_DIR']
 MAPPING_CONFIG_DIR = paths_cfg['MAPPING_CONFIG_DIR']
+DOWNLOAD_DIR = paths_cfg['DOWNLOAD_DIR']
+HTML_LOGS_DIR = paths_cfg['HTML_LOGS_DIR']
+REPORT_MAPPING_FILE = paths_cfg['REPORT_MAPPING_FILE'] or os.path.join(HTML_LOGS_DIR, 'report_mappings.json')
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 初始化配置管理器
-config_manager = ConfigManager(CONFIG_DIR)
-parser_config_manager = ParserConfigManager(PARSER_CONFIGS_DIR)
+# 服务占位符（延迟初始化以提升启动速度）
+config_manager = None
+parser_config_manager = None
+metadata_store = None
+log_downloader = None
+log_analyzer = None
+region_template_manager = None
+download_service = None
+report_mapping_store = None
+parser_config_service = None
+server_config_service = None
+analysis_service = None
 
-DOWNLOAD_DIR = paths_cfg['DOWNLOAD_DIR']
-metadata_store = LogMetadataStore(DOWNLOAD_DIR, MAPPING_CONFIG_DIR)
-log_downloader = LogDownloader(
-    DOWNLOAD_DIR,
-    config_manager,
-    metadata_store=metadata_store,
-)
+_init_lock = threading.Lock()
+_services_ready = False
 
-HTML_LOGS_DIR = paths_cfg['HTML_LOGS_DIR']
-log_analyzer = LogAnalyzer(
-    HTML_LOGS_DIR,
-    config_manager,
-    parser_config_manager,
-    metadata_store=metadata_store,
-)
 
-# 确保配置目录存在
-os.makedirs(CONFIG_DIR, exist_ok=True)
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-os.makedirs(HTML_LOGS_DIR, exist_ok=True)
-os.makedirs(PARSER_CONFIGS_DIR, exist_ok=True)
-os.makedirs(REGION_TEMPLATES_DIR, exist_ok=True)
-os.makedirs(MAPPING_CONFIG_DIR, exist_ok=True)
+def _ensure_services():
+    global config_manager, parser_config_manager, metadata_store
+    global log_downloader, log_analyzer, region_template_manager
+    global download_service, report_mapping_store, parser_config_service
+    global server_config_service, analysis_service, _services_ready
 
-REPORT_MAPPING_FILE = paths_cfg['REPORT_MAPPING_FILE'] or os.path.join(HTML_LOGS_DIR, 'report_mappings.json')
+    if _services_ready:
+        return
+    with _init_lock:
+        if _services_ready:
+            return
 
-# 服务对象
-region_template_manager = TemplateManager(REGION_TEMPLATES_DIR)
-download_service = DownloadService(log_downloader, region_template_manager)
-report_mapping_store = ReportMappingStore(REPORT_MAPPING_FILE)
-parser_config_service = ParserConfigService(parser_config_manager)
-server_config_service = ServerConfigService(
-    config_manager,
-    region_template_manager,
-    parser_config_service,
-)
-analysis_service = AnalysisService(
-    log_downloader=log_downloader,
-    log_analyzer=log_analyzer,
-    report_store=report_mapping_store,
-)
+        # 延迟导入重量级依赖，减少应用冷启动阻塞
+        from core.analysis_service import AnalysisService
+        from core.config_manager import ConfigManager
+        from core.download_service import DownloadService
+        from core.log_analyzer import LogAnalyzer
+        from core.log_downloader import LogDownloader
+        from core.log_metadata_store import LogMetadataStore
+        from core.parser_config_manager import ParserConfigManager
+        from core.parser_config_service import ParserConfigService
+        from core.report_mapping_store import ReportMappingStore
+        from core.server_config_service import ServerConfigService
+        from core.template_manager import TemplateManager
 
-app.config['HTML_LOGS_DIR'] = HTML_LOGS_DIR
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+        os.makedirs(HTML_LOGS_DIR, exist_ok=True)
+        os.makedirs(PARSER_CONFIGS_DIR, exist_ok=True)
+        os.makedirs(REGION_TEMPLATES_DIR, exist_ok=True)
+        os.makedirs(MAPPING_CONFIG_DIR, exist_ok=True)
+
+        config_manager = ConfigManager(CONFIG_DIR)
+        parser_config_manager = ParserConfigManager(PARSER_CONFIGS_DIR)
+        metadata_store = LogMetadataStore(DOWNLOAD_DIR, MAPPING_CONFIG_DIR)
+        log_downloader = LogDownloader(
+            DOWNLOAD_DIR,
+            config_manager,
+            metadata_store=metadata_store,
+        )
+        log_analyzer = LogAnalyzer(
+            HTML_LOGS_DIR,
+            config_manager,
+            parser_config_manager,
+            metadata_store=metadata_store,
+        )
+
+        region_template_manager = TemplateManager(REGION_TEMPLATES_DIR)
+        download_service = DownloadService(log_downloader, region_template_manager)
+        report_mapping_store = ReportMappingStore(REPORT_MAPPING_FILE)
+        parser_config_service = ParserConfigService(parser_config_manager)
+        server_config_service = ServerConfigService(
+            config_manager,
+            region_template_manager,
+            parser_config_service,
+        )
+        analysis_service = AnalysisService(
+            log_downloader=log_downloader,
+            log_analyzer=log_analyzer,
+            report_store=report_mapping_store,
+        )
+
+        app.config['HTML_LOGS_DIR'] = HTML_LOGS_DIR
+        _services_ready = True
+        logger.info("服务初始化完成，工作目录已准备好")
+
+
+@app.before_request
+def _prepare_services():
+    """仅在需要时初始化服务，避免首页/静态请求阻塞启动。"""
+    path = (request.path or '').rstrip('/') or '/'
+
+    # 静态资源与退出接口不需要加载核心服务，直接放行
+    if path.startswith('/static') or path.startswith('/report/') or path.startswith('/api/exit'):
+        return
+
+    # 仅针对实际 API 请求做懒加载，减少冷启动时的等待
+    if path.startswith('/api/'):
+        _ensure_services()
 
 
 # 通用工具
@@ -713,7 +769,8 @@ def serve_report(filename):
 @app.route('/static/<path:filename>')
 def serve_static(filename):
     """提供静态文件"""
-    return send_from_directory(os.path.join(base_dir, 'web', 'static'), filename)
+    static_dir = os.path.join(base_dir, 'static')
+    return send_from_directory(static_dir, filename)
 
 
 @app.route('/api/add-escape', methods=['POST'])
@@ -1066,6 +1123,27 @@ def open_in_editor():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/exit', methods=['GET', 'POST', 'OPTIONS', 'HEAD'], strict_slashes=False)
+@app.route('/api/exit/', methods=['GET', 'POST', 'OPTIONS', 'HEAD'], strict_slashes=False)
+@app.route('/api/exit/<path:rest>', methods=['GET', 'POST', 'OPTIONS', 'HEAD'], strict_slashes=False)
+def api_exit(rest: str = None):
+    """退出后台进程（网页模式右上角按钮触发）。"""
+    try:
+        def _exit_later():
+            import time
+            time.sleep(0.5)
+            os._exit(0)
+
+        # 仅在真实的退出请求中触发关闭；GET/OPTIONS 用于探测不退出
+        if request.method == 'POST':
+            t = threading.Thread(target=_exit_later, daemon=True)
+            t.start()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"/api/exit 失败: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': '退出后台失败'}), 500
+
+
 @app.route('/api/open-reports-directory', methods=['POST'])
 def open_reports_directory():
     """打开报告目录"""
@@ -1094,69 +1172,6 @@ def open_reports_directory():
     except Exception as e:
         logger.error(f"打开报告目录失败: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/web-mode', methods=['POST'])
-def api_web_mode():
-    data = request.get_json(silent=True) or {}
-    enable = bool(data.get('enable', True))
-    if enable:
-        try:
-            url = 'http://localhost:5000'
-            if platform.system() == 'Windows':
-                subprocess.call(['start', url], shell=True)
-            elif platform.system() == 'Darwin':
-                subprocess.call(['open', url])
-            else:
-                subprocess.call(['xdg-open', url])
-        except Exception:
-            pass
-        try:
-            import webview
-            if webview.windows:
-                win = webview.windows[0]
-                try:
-                    win.hide()
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        try:
-            api = globals().get('TRAY_API')
-            if api and callable(api.get('show')):
-                api['show']()
-        except Exception:
-            pass
-    return jsonify({'success': True})
-
-@app.route('/api/show-client', methods=['POST'])
-def api_show_client():
-    try:
-        import webview
-        if webview.windows:
-            win = webview.windows[0]
-            try:
-                win.show()
-            except Exception:
-                pass
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"/api/show-client 失败: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': '切回客户端失败'}), 500
-
-@app.route('/api/exit', methods=['POST'])
-def api_exit():
-    try:
-        def _exit_later():
-            import time, os
-            time.sleep(0.5)
-            os._exit(0)
-        threading = __import__('threading')
-        t = threading.Thread(target=_exit_later, daemon=True)
-        t.start()
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"/api/exit 失败: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': '退出后台失败'}), 500
 
 @app.route('/api/delete-config-item', methods=['POST'])
 def delete_config_item():
