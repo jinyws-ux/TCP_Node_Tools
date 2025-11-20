@@ -124,6 +124,11 @@ header::after {
   display: flex;
   gap: 10px;
   align-items: center;
+  margin-left: auto;
+}
+
+#btn-exit-backend {
+  box-shadow: 0 10px 24px rgba(244, 63, 94, 0.45);
 }
 
 .status-pill {
