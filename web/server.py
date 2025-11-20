@@ -161,7 +161,7 @@ def _prepare_services():
     path = (request.path or '').rstrip('/') or '/'
 
     # 静态资源与退出接口不需要加载核心服务，直接放行
-    if path.startswith('/static') or path.startswith('/report/') or path == '/api/exit':
+    if path.startswith('/static') or path.startswith('/report/') or path.startswith('/api/exit'):
         return
 
     # 仅针对实际 API 请求做懒加载，减少冷启动时的等待
@@ -1125,7 +1125,8 @@ def open_in_editor():
 
 @app.route('/api/exit', methods=['GET', 'POST', 'OPTIONS', 'HEAD'], strict_slashes=False)
 @app.route('/api/exit/', methods=['GET', 'POST', 'OPTIONS', 'HEAD'], strict_slashes=False)
-def api_exit():
+@app.route('/api/exit/<path:rest>', methods=['GET', 'POST', 'OPTIONS', 'HEAD'], strict_slashes=False)
+def api_exit(rest: str = None):
     """退出后台进程（网页模式右上角按钮触发）。"""
     try:
         def _exit_later():
