@@ -158,7 +158,7 @@ def _ensure_services():
 @app.before_request
 def _prepare_services():
     """仅在需要时初始化服务，避免首页/静态请求阻塞启动。"""
-    path = request.path or ''
+    path = (request.path or '').rstrip('/') or '/'
 
     # 静态资源与退出接口不需要加载核心服务，直接放行
     if path.startswith('/static') or path.startswith('/report/') or path == '/api/exit':
@@ -1123,7 +1123,8 @@ def open_in_editor():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/exit', methods=['GET', 'POST', 'OPTIONS'])
+@app.route('/api/exit', methods=['GET', 'POST', 'OPTIONS', 'HEAD'], strict_slashes=False)
+@app.route('/api/exit/', methods=['GET', 'POST', 'OPTIONS', 'HEAD'], strict_slashes=False)
 def api_exit():
     """退出后台进程（网页模式右上角按钮触发）。"""
     try:
