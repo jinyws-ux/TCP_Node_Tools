@@ -36,14 +36,13 @@ class LogParser:
             return None
 
     def get_version_from_content(self, content: str) -> Optional[str]:
-        """从消息内容中提取版本信息"""
         try:
-            if len(content) >= 32:
+            if len(content) >= 28:
                 return content[28:32].strip()
-            return None
+            return ""
         except Exception as e:
             self.logger.error(f"获取版本信息时发生错误：{e}")
-            return None
+            return ""
 
     def parse_message_content(self, content: str) -> str:
         """根据配置解析消息内容"""
@@ -117,25 +116,17 @@ class LogParser:
     def parse_message_segments(self, content: str) -> Dict[str, Any]:
         result = {"message_type": "", "version": "", "fields": [], "segments": []}
         try:
-            if len(content) < 25:
-                result["segments"] = [{"kind": "raw", "text": content, "idx": 0}]
-                return result
-            msg_type = content[16:24]
-            if msg_type not in self.parser_config:
-                result["segments"] = [{"kind": "raw", "text": content, "idx": 0}]
-                return result
-            msg_config = self.parser_config[msg_type]
-            version = self.get_version_from_content(content)
-            if version is None:
-                result["message_type"] = msg_type
-                result["segments"] = [{"kind": "raw", "text": content, "idx": 0}]
-                return result
-            if 'Versions' in msg_config and version in msg_config['Versions']:
-                fields_config = msg_config['Versions'][version].get('Fields', {})
-            else:
-                fields_config = msg_config.get('Fields', {})
+            msg_type = content[16:24].strip() if len(content) >= 24 else ""
+            version = self.get_version_from_content(content) or ""
             result["message_type"] = msg_type
             result["version"] = version
+            fields_config = {}
+            if msg_type and msg_type in self.parser_config:
+                msg_config = self.parser_config[msg_type]
+                if 'Versions' in msg_config and version in msg_config['Versions']:
+                    fields_config = msg_config['Versions'][version].get('Fields', {})
+                else:
+                    fields_config = msg_config.get('Fields', {})
             idx = 0
             for field, field_cfg in fields_config.items():
                 start = field_cfg.get('Start', 0)
@@ -158,7 +149,8 @@ class LogParser:
                 idx += 1
             return result
         except Exception:
-            result["segments"] = [{"kind": "raw", "text": content, "idx": 0}]
+            result["message_type"] = content[16:24].strip() if len(content) >= 24 else ""
+            result["version"] = self.get_version_from_content(content) or ""
             return result
 
     def parse_log_lines(self, log_lines: List[str]) -> List[Dict[str, Any]]:
