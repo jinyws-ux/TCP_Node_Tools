@@ -51,6 +51,19 @@ export const api = {
   saveServerConfig: ({ factory, system, server }) => post('/api/save-config', { factory, system, server }),
   updateServerConfig: ({ id, factory, system, server }) => post('/api/update-config', { id, factory, system, server }),
   deleteServerConfig: (id) => post('/api/delete-config', { id }),
+  async testServerConfig(id) {
+    const res = await fetch('/api/test-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    let data = null;
+    try {
+      data = await res.json();
+    } catch (_) {}
+    if (res.ok) return data;
+    return data || { success: false, error: `HTTP ${res.status}` };
+  },
 
   /* -------- 解析配置 -------- */
   async fetchParserConfig(factory, system) {

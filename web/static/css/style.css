@@ -989,7 +989,7 @@ tbody tr:hover {
 
 .server-config-group.expanded .factory-systems {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
 .config-list-section .config-list,

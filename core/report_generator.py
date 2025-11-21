@@ -49,7 +49,7 @@ class ReportGenerator:
                         margin: 5px 0;
                         background-color: #ffffff;
                         border-radius: 4px;
-                        cursor: pointer;
+                        cursor: text;
                         font-size: 14px;
                         scroll-margin-top: 80px;
                     }
@@ -97,7 +97,10 @@ class ReportGenerator:
                     #filterInput { flex: 1; height: 28px; font-size: 14px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; outline: none; }
                     .btn { height: 28px; padding: 0 12px; border: 1px solid #d1d5db; border-radius: 4px; background: #f9fafb; cursor: pointer; font-size: 13px; }
                     .btn-primary { background: #e5f0ff; border-color: #93c5fd; }
+                    .jump-btn { height: 24px; padding: 0 10px; border-radius: 9999px; border: 1px solid #93c5fd; background: linear-gradient(to bottom, #eaf3ff, #dbeafe); color: #1b1f23; box-shadow: 0 1px 2px rgba(0,0,0,0.06); white-space: nowrap; margin-left: 16px; }
+                    .jump-btn:hover { background: #cfe3ff; border-color: #60a5fa; }
                     .divider { height: 1px; background: linear-gradient(to right, #e5e7eb, #cbd5e1, #e5e7eb); margin: 40px 0 32px; border: none; }
+                    .filter-error { color: #dc2626; font-size: 12px; padding: 2px 6px; }
                     .gap { height: 100vh; }
                     @keyframes flashHighlight {
                         from { background-color: #fde68a; }
@@ -108,16 +111,40 @@ class ReportGenerator:
                 <script>
                     function applyFilter() {
                         var qRaw = document.getElementById('filterInput').value.trim();
-                        var q = qRaw.toLowerCase();
+                        var errBox = document.getElementById('filterError');
+                        if (errBox) errBox.textContent = '';
                         var rows = document.querySelectorAll('.timestamp');
+                        if (!qRaw) {
+                            for (var i = 0; i < rows.length; i++) {
+                                var r = rows[i];
+                                var id = r.getAttribute('data-id');
+                                var raw = document.getElementById(id);
+                                r.style.display = '';
+                                if (raw) raw.style.display = '';
+                            }
+                            return;
+                        }
+                        var re = null;
+                        if (qRaw.startsWith('/') && qRaw.lastIndexOf('/') > 0) {
+                            var last = qRaw.lastIndexOf('/');
+                            var body = qRaw.slice(1, last);
+                            var flags = qRaw.slice(last + 1) || 'i';
+                            try { re = new RegExp(body, flags); } catch (e) { re = null; }
+                        } else {
+                            try { re = new RegExp(qRaw, 'i'); } catch (e) { re = null; }
+                        }
+                        if (!re) {
+                            if (errBox) errBox.textContent = '正则表达式无效';
+                            return;
+                        }
                         for (var i = 0; i < rows.length; i++) {
                             var r = rows[i];
                             var id = r.getAttribute('data-id');
                             var raw = document.getElementById(id);
-                            var text = (r.textContent || '').toLowerCase();
+                            var text = (r.textContent || '');
                             var pre = raw ? raw.querySelector('pre') : null;
-                            var rawText = pre ? (pre.textContent || '').toLowerCase() : '';
-                            var show = q === '' ? true : (text.indexOf(q) !== -1 || rawText.indexOf(q) !== -1);
+                            var rawText = pre ? (pre.textContent || '') : '';
+                            var show = re.test(text) || re.test(rawText);
                             r.style.display = show ? '' : 'none';
                             if (raw) raw.style.display = show ? '' : 'none';
                         }
@@ -152,9 +179,10 @@ class ReportGenerator:
             <body>
                 <h1>日志索引</h1>
                 <div id="filterBar">
-                    <input id="filterInput" type="text" placeholder="输入关键字筛选" onkeydown="filterKey(event)" />
+                    <input id="filterInput" type="text" placeholder="支持正则，例如 (?=.*INPUT)(?=.*OKAY) 或 /TRIG_P.*0001/i" onkeydown="filterKey(event)" />
                     <button class="btn btn-primary" onclick="applyFilter()">筛选</button>
                     <button class="btn" onclick="clearFilter()">重置</button>
+                    <span id="filterError" class="filter-error"></span>
                 </div>
                 <div id="timestamps">\n""")
 
@@ -213,9 +241,10 @@ class ReportGenerator:
                             text = s.get('text', '')
                             parts.append(f'<span class="seg-free" style="background:{bg};color:#1b1f23;">{text}</span>')
                     line_html = ''.join(parts)
-                    f.write(f"""        <div class="timestamp" id="ts_{index}" data-id="{log_id}" onclick="location.href='#{log_id}'">
+                    f.write(f"""        <div class="timestamp" id="ts_{index}" data-id="{log_id}">
                         <span class="index-number">{index + 1}.</span>
                         {line_html}
+                        <a class="btn btn-primary jump-btn" href="#{log_id}" title="查看日志原文本">查看日志原文本</a>
                     </div>\n""")
 
                 f.write("    </div>\n")

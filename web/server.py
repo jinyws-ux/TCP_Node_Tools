@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 import webbrowser
 import subprocess
 import platform
+import paramiko
 
 from flask import Blueprint, Flask, render_template, request, jsonify, send_from_directory, Response
 
@@ -245,6 +246,85 @@ def delete_config():
     except Exception as e:
         logger.error(f"删除配置失败: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/test-config', methods=['POST'])
+def test_server_config():
+    """测试服务器配置的连通性与日志路径可访问性。"""
+    try:
+        data = request.get_json(force=True) or {}
+        config_id = (data.get('id') or data.get('config_id') or '').strip()
+        if not config_id:
+            return jsonify({'success': False, 'error': '缺少配置 ID'}), 400
+
+        cfg = server_config_service.get_config(config_id)
+        server = cfg.get('server') or {}
+        hostname = server.get('hostname') or ''
+        username = server.get('username') or ''
+        password = server.get('password') or ''
+        realtime_path = server.get('realtime_path') or ''
+        archive_path = server.get('archive_path') or ''
+
+        if not all([hostname, username, password, realtime_path, archive_path]):
+            return jsonify({'success': False, 'error': '配置不完整，缺少服务器或路径信息'}), 400
+
+        result = {
+            'success': False,
+            'connect_ok': False,
+            'realtime_ok': False,
+            'archive_ok': False,
+            'errors': {}
+        }
+
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            ssh.connect(hostname, username=username, password=password, timeout=15)
+            result['connect_ok'] = True
+        except Exception as exc:
+            result['errors']['connect'] = str(exc)
+            logger.error(f"测试服务器连接失败: host={hostname}", exc_info=True)
+            return jsonify(result), 200
+
+        try:
+            sftp = ssh.open_sftp()
+        except Exception as exc:
+            result['errors']['connect'] = f"SFTP 打开失败: {exc}"
+            try:
+                ssh.close()
+            except Exception:
+                pass
+            return jsonify(result), 200
+
+        try:
+            sftp.stat(realtime_path)
+            result['realtime_ok'] = True
+        except Exception as exc:
+            result['errors']['realtime'] = str(exc)
+
+        try:
+            sftp.stat(archive_path)
+            result['archive_ok'] = True
+        except Exception as exc:
+            result['errors']['archive'] = str(exc)
+
+        try:
+            sftp.close()
+        except Exception:
+            pass
+        try:
+            ssh.close()
+        except Exception:
+            pass
+
+        result['success'] = bool(result['connect_ok'] and result['realtime_ok'] and result['archive_ok'])
+        return jsonify(result)
+
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"测试服务器配置失败: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': '测试服务器配置失败'}), 500
 
 
 @app.route('/api/parser-configs', methods=['GET'])
