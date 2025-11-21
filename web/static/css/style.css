@@ -653,9 +653,18 @@ button:focus-visible {
   border: 1px solid var(--line);
 }
 
-#btn-download-logs {
-  margin-top: 22px;
-  width: 100%;
+.action-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.action-row .btn {
+  flex: 0 0 auto;
+}
+.action-row #btn-download-logs {
+  margin-top: 0;
+  width: auto;
 }
 
 table {

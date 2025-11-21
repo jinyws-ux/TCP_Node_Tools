@@ -34,6 +34,8 @@ function restoreSearchBtnLabel() {
 function updateDownloadButton() {
   const btn = qs('#btn-download-logs');
   if (btn) btn.disabled = !state.selectedLogPaths.size;
+  const btn2 = qs('#btn-download-and-analyze');
+  if (btn2) btn2.disabled = !state.selectedLogPaths.size;
 }
 
 function updateRefreshButton() {
@@ -126,6 +128,7 @@ function bindLeftForm() {
   if (refreshBtn) refreshBtn.disabled = true;
 
   qs('#btn-download-logs')?.addEventListener('click', onDownloadLogsClick);
+  qs('#btn-download-and-analyze')?.addEventListener('click', onDownloadAndAnalyzeClick);
   qs('#btn-save-template')?.addEventListener('click', onSaveTemplate);
   qs('#btn-cancel-template')?.addEventListener('click', exitAddTemplateMode);
   qs('#btn-unselect-template')?.addEventListener('click', () => {
@@ -375,6 +378,71 @@ async function onDownloadLogsClick() {
     $msg('error', '下载失败：' + (err?.message || err));
   } finally {
     setButtonLoading('btn-download-logs', false);
+    updateDownloadButton();
+  }
+}
+
+async function onDownloadAndAnalyzeClick() {
+  const factory = qs('#factory-select')?.value || '';
+  const system  = qs('#system-select')?.value || '';
+  if (!factory || !system) {
+    $msg('error', '请先选择厂区与系统');
+    return;
+  }
+
+  const files = buildSelectedFilesPayload();
+  if (!files.length) {
+    $msg('error', '请先在下方结果中勾选要下载的日志');
+    return;
+  }
+
+  const nodes = resolveNodesForDownload();
+
+  try {
+    setButtonLoading('btn-download-and-analyze', true, { text: '下载并分析中...' });
+    const res = await api.downloadLogs({
+      files,
+      factory,
+      system,
+      nodes,
+      node: nodes[0] || ''
+    });
+    if (!res?.success) {
+      throw new Error(res?.error || '下载失败');
+    }
+    const downloaded = res.downloaded_files || [];
+    if (!downloaded.length) {
+      $msg('warning', '后端返回成功，但未包含已下载文件信息');
+      return;
+    }
+    $msg('success', `下载完成，成功下载 ${downloaded.length} 个日志文件，开始分析...`);
+
+    const logPaths = downloaded.map(d => d.path).filter(Boolean);
+    const configId = `${factory}_${system}.json`;
+    const analyzeRes = await api.analyze(logPaths, configId);
+    if (!analyzeRes?.success) {
+      throw new Error(analyzeRes?.error || '分析失败');
+    }
+
+    const reportPath = analyzeRes.html_report || '';
+    if (reportPath) {
+      const openRes = await api.openInBrowser(reportPath);
+      if (openRes?.success) {
+        $msg('success', '分析完成，报告已自动打开');
+      } else {
+        $msg('warning', '分析完成，但自动打开报告失败');
+      }
+    } else {
+      $msg('warning', '分析完成，但未生成 HTML 报告');
+    }
+
+    state.selectedLogPaths.clear();
+    syncLogCheckboxes();
+  } catch (err) {
+    console.error(err);
+    $msg('error', '下载或分析失败：' + (err?.message || err));
+  } finally {
+    setButtonLoading('btn-download-and-analyze', false);
     updateDownloadButton();
   }
 }
