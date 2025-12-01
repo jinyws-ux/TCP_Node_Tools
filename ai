@@ -1,0 +1,217 @@
+import os
+import requests
+import json
+import base64
+import pyaudio
+import wave
+import urllib3
+import re
+from openai import OpenAI
+import pygame
+import time
+
+# 禁用 SSL 警告（因为你的截图代码里用了 verify=False）
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# ================= 配置区域 =================
+ACCESS_CODE = "YOUR_ACCESS_CODE_HERE"  # <--- 请在这里填入你的 Token
+TEMP_AUDIO_DIR = "./temp_audio"
+
+# 创建临时文件夹
+if not os.path.exists(TEMP_AUDIO_DIR):
+    os.makedirs(TEMP_AUDIO_DIR)
+
+# 初始化 Pygame 用于播放音频
+pygame.mixer.init()
+
+# ================= 1. 语音识别 (ASR) 模块 =================
+def stt_service(audio_file_path):
+    """调用 AI Studio 的 ASR 接口"""
+    url = f'https://aistudio.bmwbrill.cn/api/service/49/{ACCESS_CODE}/asr?task=transcribe'
+    
+    print(">>> 正在识别语音...")
+    try:
+        with open(audio_file_path, 'rb') as audio_file:
+            files = {
+                'audio_file': (os.path.basename(audio_file_path), audio_file, 'audio/wav')
+            }
+            headers = {'accept': 'text/plain'}
+            # 你的环境是内网，可能需要 verify=False
+            response = requests.post(url, headers=headers, files=files, verify=False)
+            
+        if response.status_code == 200:
+            text = response.text.strip()
+            print(f"识别结果: {text}")
+            return text
+        else:
+            print(f"ASR Error: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        print(f"ASR Exception: {e}")
+        return None
+
+# ================= 2. 语音合成 (TTS) 模块 =================
+def tts_service(text, index):
+    """调用 AI Studio 的 TTS 接口"""
+    url = f'https://aistudio.bmwbrill.cn/api/service/66/{ACCESS_CODE}/createRec'
+    
+    payload = json.dumps({
+        "endFlag": True,
+        "sessionParam": {
+            "native_voice_name": "xiaoyan", # 你截图里的参数
+            "sid": "zmigfpbts",
+            "speed": "100",
+            "volume": "0",
+            "pitch": "100",
+            "read_number": "0",
+            "read_english": "2"
+        },
+        "text": text
+    })
+    headers = {'Content-Type': 'application/json'}
+    
+    try:
+        response = requests.post(url, headers=headers, data=payload, verify=False)
+        response_json = response.json()
+        
+        # 解析 Base64 数据
+        if "resultlist" in response_json and len(response_json["resultlist"]) > 0:
+            data_value = response_json["resultlist"][0]["data"]
+            audio_data = base64.b64decode(data_value)
+            
+            # 保存为临时文件
+            filename = os.path.join(TEMP_AUDIO_DIR, f"reply_{index}.mp3")
+            with open(filename, 'wb') as f:
+                f.write(audio_data)
+            return filename
+        else:
+            print(f"TTS Error: {response_json}")
+            return None
+    except Exception as e:
+        print(f"TTS Exception: {e}")
+        return None
+
+def play_audio(file_path):
+    """播放音频文件"""
+    if not file_path: return
+    try:
+        # 必须重新加载 mixer 以避免占用文件
+        pygame.mixer.music.load(file_path)
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(10)
+    except Exception as e:
+        print(f"Play Error: {e}")
+
+# ================= 3. 录音模块 =================
+def record_audio(output_filename):
+    """简单的按回车录音逻辑"""
+    CHUNK = 1024
+    FORMAT = pyaudio.paInt16
+    CHANNELS = 1
+    RATE = 16000 # 推荐 16k 采样率用于 ASR
+    
+    p = pyaudio.PyAudio()
+    stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+    
+    print("\n按住 [Enter] 键开始录音，松开结束 (或者简单的：按回车开始，再按回车结束)...")
+    input(">>> 按回车键开始录音...")
+    print("🔴 正在录音... (再次按回车停止)")
+    
+    frames = []
+    # 这里做一个简单的非阻塞录音模拟，实际可能需要多线程或检测静音
+    # 为了简化代码，这里设定录音最长 10 秒，或者你可以强制用 Ctrl+C
+    # ** 更好的方式是使用非阻塞输入，但 Python 标准库做这个比较麻烦 **
+    # ** 这里我们采用：录音 5 秒自动停止的简单逻辑作为测试，或者使用 VAD **
+    
+    # 临时改为：录制固定时长用于测试，或者你可以集成键盘监听库 keyboard
+    for i in range(0, int(RATE / CHUNK * 5)): # 录音 5 秒
+        data = stream.read(CHUNK)
+        frames.append(data)
+        if i % 10 == 0: print(".", end="", flush=True)
+    
+    print("\n⏹️ 录音结束")
+    
+    stream.stop_stream()
+    stream.close()
+    p.terminate()
+    
+    wf = wave.open(output_filename, 'wb')
+    wf.setnchannels(CHANNELS)
+    wf.setsampwidth(p.get_sample_size(FORMAT))
+    wf.setframerate(RATE)
+    wf.writeframes(b''.join(frames))
+    wf.close()
+    return output_filename
+
+# ================= 4. 主逻辑 (DeepSeek 流式处理) =================
+def chat_loop():
+    # 初始化 OpenAI 客户端 (适配 DeepSeek)
+    client = OpenAI(
+        api_key=f'ACCESSCODE {ACCESS_CODE}',
+        base_url=f'https://aistudio.bmwbrill.cn/function-service/open-ai/deepseek-v3-0324/v3',
+        http_client=requests.Session() # 使用 requests session 以支持 verify=False (如果需要深度定制)
+    )
+    # Monkey patch for verify=False because openai lib validates SSL by default
+    client._client.verify = False 
+
+    history = []
+    print("\n********** 语音助手已启动 **********")
+    
+    while True:
+        # 1. 录音
+        audio_path = os.path.join(TEMP_AUDIO_DIR, "user_input.wav")
+        record_audio(audio_path)
+        
+        # 2. 识别
+        user_text = stt_service(audio_path)
+        if not user_text:
+            print("未检测到语音，请重试。")
+            continue
+            
+        history.append({"role": "user", "content": user_text})
+        
+        # 3. 发送给 DeepSeek 并流式处理 TTS
+        print(">>> 思考中...")
+        
+        response = client.chat.completions.create(
+            model="DeepSeek-V3-0324",
+            messages=history,
+            stream=True
+        )
+        
+        full_response_text = ""
+        sentence_buffer = ""
+        sentence_count = 0
+        
+        print("AI: ", end="")
+        
+        # 流式读取
+        for chunk in response:
+            if chunk.choices[0].delta.content:
+                token = chunk.choices[0].delta.content
+                print(token, end="", flush=True)
+                full_response_text += token
+                sentence_buffer += token
+                
+                # 简单断句逻辑：遇到标点符号就去合成
+                if token in ["，", "。", "？", "！", ",", ".", "?", "!", "\n"]:
+                    # 只有缓冲区有一定长度才合成，避免频繁调用
+                    if len(sentence_buffer) > 2:
+                        sentence_count += 1
+                        audio_file = tts_service(sentence_buffer, sentence_count)
+                        if audio_file:
+                            play_audio(audio_file)
+                        sentence_buffer = "" # 清空缓冲
+        
+        # 处理剩余的缓冲区
+        if sentence_buffer:
+            sentence_count += 1
+            audio_file = tts_service(sentence_buffer, sentence_count)
+            play_audio(audio_file)
+            
+        print("\n")
+        history.append({"role": "assistant", "content": full_response_text})
+
+if __name__ == "__main__":
+    chat_loop()
