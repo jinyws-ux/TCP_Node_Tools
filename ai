@@ -1,96 +1,163 @@
-def stt_service(audio_file_path):
-    """
-    调用新的 ASR 接口 (Service 65)
-    流程：上传音频 -> 获取 OrderID -> 查询结果 -> 解析拼接文字
-    """
-    # 1. 定义接口地址
-    base_url = "https://aistudio.bmwbrill.cn/api/service/65"
-    upload_url = f"{base_url}/{ACCESS_CODE}/v1/upload"
-    result_url = f"{base_url}/{ACCESS_CODE}/v1/getResult"
-    
-    filename = os.path.basename(audio_file_path)
-    
-    print(">>> [ASR] 正在上传语音...")
-    
-    # --- 第一步：上传音频 ---
-    try:
-        # 注意：新接口要求 binary 传输，Content-Type 为 octet-stream
-        with open(audio_file_path, 'rb') as f:
-            audio_data = f.read()
-            
-        headers = {
-            'Content-Type': 'application/octet-stream',
-            'accept': 'application/json'
-        }
-        
-        # URL 参数带上文件名
-        upload_params = {'fileName': filename}
-        
-        response = requests.post(upload_url, params=upload_params, data=audio_data, headers=headers, verify=False)
-        
-        if response.status_code != 200:
-            print(f"[ASR] 上传失败: {response.status_code} - {response.text}")
-            return None
-            
-        resp_json = response.json()
-        if resp_json.get("code") != "000000":
-            print(f"[ASR] API报错: {resp_json.get('descInfo')}")
-            return None
-            
-        # 获取订单号
-        order_id = resp_json["content"]["orderId"]
-        print(f">>> [ASR] 获取订单号: {order_id}，正在获取结果...")
-        
-    except Exception as e:
-        print(f"[ASR] 上传异常: {e}")
-        return None
+既然你确认了就是这个问题，那么修复的核心逻辑是：
+我们需要建立“分析后的对象”与“原始列表索引”之间的映射关系。
+因为在 log_entries（分析后的列表）里，日志可能被重新排序、分组成了事务对象，其 index 和 raw_log_entries（原始扁平列表）里的 index 已经完全对应不上了。
+修复方案
+利用 Python 的对象同一性（Identity）。假设分析过程没有深度拷贝（Deep Copy）字典对象，那么 log_entries 里的每一个日志条目对象（dict），在内存中和 raw_log_entries 里对应的那个对象是同一个。
+我们可以利用 id(对象) 来查找它在原始列表中的真实位置。
+具体修改步骤
+请在 generate_html_logs 方法中，找到 with open(output_path, 'w', encoding='utf-8') as f: 这行代码之前，插入映射逻辑，并修改后续写入链接的部分。
+第一步：建立映射索引 (插入在写入文件之前)
+在 sorted_msg_types = sorted(list(all_msg_types)) 这行代码之后，插入下面这段代码：
+            # ... (原有代码)
+            sorted_msg_types = sorted(list(all_msg_types))
 
-    # --- 第二步：轮询/查询结果 ---
-    # 因为是异步的，可能需要稍微等一下，或者查几次（这里简单处理，先查一次，不行再循环）
-    for i in range(5): # 最多试 5 次
-        time.sleep(0.5) # 稍微等0.5秒让服务器处理
+            # [新增修复逻辑] 建立 内存地址 -> 原始索引 的映射表
+            # 这样无论日志被封装在哪，只要是同一个字典对象，就能找到它在 raw 文件里的 id
+            entry_id_map = {id(entry): i for i, entry in enumerate(raw_log_entries)}
+
+            def get_raw_anchor(entry_obj):
+                """辅助函数：根据对象找到原文页面的锚点ID"""
+                if entry_obj is None: return ""
+                raw_idx = entry_id_map.get(id(entry_obj))
+                # 如果找到了索引，返回 log_123；如果没找到，默认返回空或由逻辑决定
+                return f"log_{raw_idx}" if raw_idx is not None else ""
+
+            # =================================================================
+            # 1. 生成主分析页面 (Index Page)
+            # ... (后续原有代码)
+
+第二步：修改主循环中的链接 (修改写入 HTML 的部分)
+找到 for index, item in enumerate(log_entries): 循环内部，我们需要修改 3处 生成 href 的地方。
+注意：不要修改 id="log_{index}" 或 toggleRetries('log_{index}') 里的 ID，那些是控制当前页面显示隐藏的，必须保持当前页面的索引。我们要改的是 href="{raw_filename}#..." 里面的内容。
+1. 修改主条目 (Main Entry) 的链接
+找到写入主行 <div class="timestamp" ...> 的地方，修改 <a> 标签的 href：
+原代码：
+<a class="btn btn-primary jump-btn" href="{raw_filename}#{log_id}" target="_blank" title="查看原文">查看原文</a>
+
+修改为：
+<a class="btn btn-primary jump-btn" href="{raw_filename}#{get_raw_anchor(main_entry)}" target="_blank" title="查看原文">查看原文</a>
+
+2. 修改重试条目 (Retries) 的链接
+找到 if is_transaction and retry_count > 0: 代码块内部，修改重试行的 href：
+原代码：
+<a class="btn btn-primary jump-btn" href="{raw_filename}#log_{index}_r{r_idx}" target="_blank" title="查看原文">查看原文</a>
+
+修改为：
+<a class="btn btn-primary jump-btn" href="{raw_filename}#{get_raw_anchor(req)}" target="_blank" title="查看原文">查看原文</a>
+
+3. 修改回复条目 (Response) 的链接
+找到 if is_transaction and has_response: 代码块内部，修改回复行的 href：
+原代码：
+<a class="btn btn-primary jump-btn" href="{raw_filename}#log_{index}_resp" target="_blank" title="查看原文">查看原文</a>
+
+修改为：
+<a class="btn btn-primary jump-btn" href="{raw_filename}#{get_raw_anchor(resp_entry)}" target="_blank" title="查看原文">查看原文</a>
+
+完整的修改后代码片段对照
+为了方便你复制，这里是 generate_html_logs 方法的核心修改部分（省略了前面的 CSS 样式字符串）：
+    def generate_html_logs(self, log_entries: List[Any], output_path: str, raw_log_entries: List[Dict[str, Any]] = None) -> str:
+        """生成HTML格式的日志报告 - 已拆分为分析页和原文页"""
         try:
-            params = {'orderId': order_id}
-            headers = {'accept': 'application/json'}
-            
-            res_response = requests.get(result_url, params=params, headers=headers, verify=False)
-            res_json = res_response.json()
-            
-            # 检查是否成功
-            # 根据截图，content 里有 orderInfo，status=2 代表完成
-            content = res_json.get("content", {})
-            order_info = content.get("orderInfo", {})
-            
-            if order_info.get("status") == 2: # 2 代表成功
-                # --- 第三步：解析复杂的 JSON 结果 ---
-                # 结果在 content -> orderResult，这是一个字符串，需要再 json.loads 一次
-                raw_result_str = content.get("orderResult", "[]")
-                try:
-                    segments = json.loads(raw_result_str)
-                    
-                    full_text = ""
-                    # 遍历每一个片段
-                    for segment in segments:
-                        # 遍历片段里的 'cw' (content words)
-                        if "cw" in segment:
-                            for word_info in segment["cw"]:
-                                if "w" in word_info:
-                                    full_text += word_info["w"]
-                    
-                    print(f"识别结果: {full_text}")
-                    return full_text
-                    
-                except Exception as parse_e:
-                    print(f"[ASR] 解析结果JSON失败: {parse_e}")
-                    return None
-            else:
-                # 还没处理完，继续循环
-                print(f"[ASR] 处理中... (status: {order_info.get('status')})")
-                continue
+            # ... (前面的路径处理代码保持不变) ...
+
+            if raw_log_entries is None:
+                raw_log_entries = log_entries
+
+            self.logger.info(f"生成HTML报告，主文件: {output_path}，原文文件: {raw_output_path}，日志条目数: {len(log_entries)}")
+
+            # 收集所有出现的报文类型
+            all_msg_types = set()
+            for entry in raw_log_entries:
+                for seg in entry.get('segments', []):
+                    if seg.get('kind') == 'msg_type':
+                        mt = seg.get('text', '').strip()
+                        if mt:
+                            all_msg_types.add(mt)
+            sorted_msg_types = sorted(list(all_msg_types))
+
+            # [FIX START] 建立对象ID到原始索引的映射
+            entry_id_map = {id(entry): i for i, entry in enumerate(raw_log_entries)}
+
+            def get_raw_anchor(entry_obj):
+                idx = entry_id_map.get(id(entry_obj))
+                return f"log_{idx}" if idx is not None else ""
+            # [FIX END]
+
+            # =================================================================
+            # 1. 生成主分析页面 (Index Page)
+            # =================================================================
+            with open(output_path, 'w', encoding='utf-8') as f:
+                # ... (这里是那一大段 HTML 头部、CSS、JS，完全不用动) ...
                 
-        except Exception as e:
-            print(f"[ASR] 查询异常: {e}")
-            break
-            
-    print("[ASR] 识别超时或失败")
-    return None
+                # ... (接上文 HTML 头部写入完毕)
+                f.write("""    <div id="timestamps">\n""")
+
+                # 写入时间戳索引（BS结构，左侧）
+                for index, item in enumerate(log_entries):
+                    # 判断是普通日志条目还是事务对象
+                    is_transaction = hasattr(item, 'requests') and hasattr(item, 'response')
+                    
+                    # 准备要渲染的主条目
+                    if is_transaction:
+                        main_entry = item.latest_request
+                        if not main_entry: 
+                            continue
+                        retry_count = len(item.requests) - 1
+                        has_response = item.response is not None
+                    else:
+                        main_entry = item
+                        retry_count = 0
+                        has_response = False 
+
+                    # 渲染主条目
+                    log_id = f"log_{index}" # 这个ID用于当前页面的JS交互（如展开重试），必须保持顺序
+                    trans_group_id = f"trans_{index}" if is_transaction else ""
+                    trans_attr = f'data-trans-group="{trans_group_id}" onmouseover="highlightTransaction(\'{trans_group_id}\')" onmouseout="clearHighlight()"' if is_transaction else ""
+                    
+                    # ... (render_line_content 函数定义保持不变) ...
+                    # ... (render_line_content 函数定义保持不变) ...
+
+                    # 构建主行内容
+                    # ... (中间渲染 HTML 内容的逻辑保持不变) ...
+                    
+                    line_html = prefix_html + render_line_content(main_entry, extra_badges)
+                    timestamp_ms = int(main_entry['timestamp'].timestamp() * 1000) if main_entry.get('timestamp') else 0
+                    
+                    # [FIX] 写入主行 - 修改 href 为 get_raw_anchor(main_entry)
+                    f.write(f"""        <div class="timestamp" id="ts_{index}" data-id="{log_id}" data-timestamp="{timestamp_ms}" {trans_attr}>
+                                {line_html}
+                                <a class="btn btn-primary jump-btn" href="{raw_filename}#{get_raw_anchor(main_entry)}" target="_blank" title="查看原文">查看原文</a>
+                            </div>\n""")
+
+                    # [FIX] 如果是事务且有重试，写入隐藏的重试行
+                    if is_transaction and retry_count > 0:
+                        f.write(f'<div id="retries_{log_id}" style="display:none; margin-left: 20px; border-left: 2px solid #e5e7eb; padding-left: 10px;">\n')
+                        # 遍历旧请求
+                        for r_idx, req in enumerate(item.requests[:-1]):
+                            r_html = render_line_content(req)
+                            # 修改 href 为 get_raw_anchor(req)
+                            f.write(f"""            <div class="timestamp" style="border:none; padding: 4px 0;">
+                                    <span style="color:#9ca3af; margin-right:8px;">├─ 重试 {r_idx+1}</span>
+                                    {r_html}
+                                    <a class="btn btn-primary jump-btn" href="{raw_filename}#{get_raw_anchor(req)}" target="_blank" title="查看原文">查看原文</a>
+                                </div>\n""")
+                        f.write('</div>\n')
+
+                    # [FIX] 如果有回复，写入回复行
+                    if is_transaction and has_response:
+                        resp_entry = item.response
+                        resp_html = render_line_content(resp_entry)
+                        # 修改 href 为 get_raw_anchor(resp_entry)
+                        f.write(f"""        <div class="timestamp" id="ts_{index}_resp" data-timestamp="{timestamp_ms}" {trans_attr} style="border-top:none; margin-top:-1px; padding-top:4px;">
+                                <div class="resp-container">
+                                    <span class="tree-connector">└──</span>
+                                    <span class="badge-resp">回复</span>
+                                    {resp_html}
+                                </div>
+                                <a class="btn btn-primary jump-btn" href="{raw_filename}#{get_raw_anchor(resp_entry)}" target="_blank" title="查看原文">查看原文</a>
+                            </div>\n""")
+
+                f.write("""    </div>
+                # ... (后续代码不变)
+
+这样修改后，无论事务（Transaction）是如何组合的，点击“查看原文”都能精准跳转到 raw.html 中对应的原始行。
