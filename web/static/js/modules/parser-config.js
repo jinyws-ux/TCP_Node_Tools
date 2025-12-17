@@ -9,9 +9,9 @@ let inited = false;
 
 // 轻量状态
 let workingFactory = '';
-let workingSystem  = '';
-let workingConfig  = {};   // 全量 JSON（内存）
-let workingTree    = [];   // 树结构缓存
+let workingSystem = '';
+let workingConfig = {};   // 全量 JSON（内存）
+let workingTree = [];   // 树结构缓存
 const historyStack = [];   // 本地撤销快照
 const HISTORY_LIMIT = 15;
 const escapeModalDefaults = { messageType: '', version: '', field: '' };
@@ -21,6 +21,12 @@ const TYPE_LABELS = {
   field: '字段',
   escape: '转义',
 };
+const ESCAPE_TAGS = {
+  ABNORMAL: 'abnormal_error',
+};
+const ESCAPE_TAG_LABELS = {
+  [ESCAPE_TAGS.ABNORMAL]: '异常报错',
+};
 const clipboardState = {
   type: null,
   label: '',
@@ -29,6 +35,8 @@ const clipboardState = {
 };
 let pendingPreviewPath = '';
 const expandedTreeNodes = new Set();
+let fieldLibrary = [];
+let selectedFieldTemplate = null;
 
 const cssEscape = (value) => {
   if (typeof value !== 'string') value = String(value ?? '');
@@ -36,8 +44,44 @@ const cssEscape = (value) => {
 };
 
 // 工具
-const qs  = (sel, scope = document) => scope.querySelector(sel);
+const qs = (sel, scope = document) => scope.querySelector(sel);
 const qsa = (sel, scope = document) => Array.from(scope.querySelectorAll(sel));
+
+function normalizeTags(tags) {
+  return Array.isArray(tags) ? tags.filter((t) => t && typeof t === 'string') : [];
+}
+
+function ensureFieldRef(mt, ver, fd, cfg = workingConfig) {
+  return cfg?.[mt]?.Versions?.[ver]?.Fields?.[fd] || null;
+}
+
+function readEscapeMeta(mt, ver, fd, key) {
+  const fieldRef = ensureFieldRef(mt, ver, fd);
+  const val = fieldRef?.Escapes?.[key];
+  const tags = normalizeTags(fieldRef.EscapeTags?.[key]);
+  return { value: val, tags };
+}
+
+function setEscapeEntry(fieldRef, key, value, tags = []) {
+  if (!fieldRef) return;
+  if (!fieldRef.Escapes) fieldRef.Escapes = {};
+  fieldRef.Escapes[key] = value;
+
+  const normalized = normalizeTags(tags);
+  if (normalized.length) {
+    if (!fieldRef.EscapeTags) fieldRef.EscapeTags = {};
+    fieldRef.EscapeTags[key] = normalized;
+  } else if (fieldRef.EscapeTags) {
+    delete fieldRef.EscapeTags[key];
+    if (!Object.keys(fieldRef.EscapeTags).length) delete fieldRef.EscapeTags;
+  }
+}
+
+function collectEscapeTagsFromForm(scope = document) {
+  const tags = [];
+  if (scope.querySelector('#escape-tag-abnormal')?.checked) tags.push(ESCAPE_TAGS.ABNORMAL);
+  return tags;
+}
 
 function selectHasOption(sel, val) {
   if (!sel || val === undefined || val === null) return false;
@@ -183,8 +227,8 @@ export function init() {
 
   // 顶部选择器与进入按钮
   const factorySel = qs('#parser-factory-select');
-  const systemSel  = qs('#parser-system-select');
-  const enterBtn   = qs('#enter-workspace-btn');
+  const systemSel = qs('#parser-system-select');
+  const enterBtn = qs('#enter-workspace-btn');
 
   if (factorySel) {
     factorySel.addEventListener('change', loadParserSystems);
@@ -192,7 +236,7 @@ export function init() {
   if (enterBtn) {
     enterBtn.addEventListener('click', async () => {
       const f = factorySel?.value || '';
-      const s = systemSel?.value  || '';
+      const s = systemSel?.value || '';
       if (!f || !s) {
         showMessage('error', '请先选择厂区与系统', 'parser-config-messages');
         return;
@@ -300,7 +344,7 @@ function focusPreviewPath(path) {
 // =============== 进入/退出工作台 ===============
 async function enterWorkspace(factory, system) {
   workingFactory = factory;
-  workingSystem  = system;
+  workingSystem = system;
 
   // 面包屑
   const fCrumb = qs('#current-factory-breadcrumb');
@@ -325,10 +369,10 @@ function exitWorkspace() {
   qs('#factory-system-selection')?.setAttribute('style', 'display:block;');
   qs('.simple-config-workspace')?.setAttribute('style', 'display:none;');
   const treeHost = qs('#left-nav-tree');
-  const jsonBox  = qs('#json-preview-content');
+  const jsonBox = qs('#json-preview-content');
   const rightBox = qs('#full-layers-container');
-  const layout   = qs('.parser-three-column');
-  const panel    = qs('#parser-preview-panel');
+  const layout = qs('.parser-three-column');
+  const panel = qs('#parser-preview-panel');
   pendingPreviewPath = '';
   expandedTreeNodes.clear();
   if (layout) {
@@ -384,7 +428,7 @@ async function loadParserFactoriesSafe() {
       opt.value = f.id; opt.textContent = f.name;
       sel.appendChild(opt);
     });
-  } catch (_) {}
+  } catch (_) { }
 }
 
 async function loadParserSystems() {
@@ -479,7 +523,7 @@ async function handleServerConfigsEvent(evt) {
       showMessage('warning', '当前工作台对应的厂区/系统已删除，请重新选择', 'parser-config-messages');
     } else if (action === 'update' && config) {
       workingFactory = config.factory;
-      workingSystem  = config.system;
+      workingSystem = config.system;
       const fCrumb = qs('#current-factory-breadcrumb');
       const sCrumb = qs('#current-system-breadcrumb');
       if (fCrumb) fCrumb.textContent = workingFactory;
@@ -513,7 +557,7 @@ async function refreshFullConfig() {
 async function refreshStats() {
   try {
     await api.fetchParserConfigStats(workingFactory, workingSystem);
-  } catch(_) {}
+  } catch (_) { }
 }
 
 // =============== 左侧树渲染 ===============
@@ -623,10 +667,13 @@ function buildTreeNode(node) {
   if (node.type === 'field') {
     const lenText = node.length == null ? '到结尾' : node.length;
     const startText = node.start == null ? 0 : node.start;
+    const orderText = (node.order == null ? '' : ` · 序号 ${node.order}`);
     const hasEscape = node.children && node.children.length ? ' · 转义' : '';
-    meta = `<span class="meta">起点 ${startText} / 长度 ${lenText}${hasEscape}</span>`;
+    meta = `<span class="meta">起点 ${startText} / 长度 ${lenText}${orderText}${hasEscape}</span>`;
   } else if (node.type === 'escape') {
-    meta = `<span class="meta">→ ${escapeHtml(String(node.value ?? ''))}</span>`;
+    const tagList = normalizeTags(node.tags || node.escapeTags);
+    const tagBadge = tagList.includes(ESCAPE_TAGS.ABNORMAL) ? '<span class="escape-tag-badge">异常报错</span>' : '';
+    meta = `${tagBadge}<span class="meta">→ ${escapeHtml(String(node.value ?? ''))}</span>`;
   } else if (node.description && node.type !== 'message_type' && node.type !== 'version') {
     meta = `<span class="meta">${escapeHtml(node.description)}</span>`;
   }
@@ -711,12 +758,12 @@ function copyField(mt, ver, field) {
 }
 
 function copyEscape(mt, ver, field, key) {
-  const data = workingConfig?.[mt]?.Versions?.[ver]?.Fields?.[field]?.Escapes?.[key];
-  if (data === undefined) {
+  const meta = readEscapeMeta(mt, ver, field, key);
+  if (meta.value === undefined) {
     showMessage('error', '未找到转义项', 'parser-config-messages');
     return;
   }
-  setClipboard('escape', `${field} → ${key}`, data, { messageType: mt, version: ver, field, escapeKey: key });
+  setClipboard('escape', `${field} → ${key}`, { value: meta.value, tags: meta.tags }, { messageType: mt, version: ver, field, escapeKey: key });
 }
 
 async function pasteMessageType() {
@@ -819,6 +866,9 @@ async function pasteEscape(targetMt, targetVer, targetField) {
     showMessage('warning', '剪贴板中没有转义', 'parser-config-messages');
     return;
   }
+  const clip = clipboardState.data;
+  const value = (clip && typeof clip === 'object' && 'value' in clip) ? clip.value : clip;
+  const tags = (clip && typeof clip === 'object' && Array.isArray(clip.tags)) ? clip.tags : [];
   const escMap = workingConfig?.[targetMt]?.Versions?.[targetVer]?.Fields?.[targetField]?.Escapes || {};
   const base = clipboardState.meta?.escapeKey || '新转义';
   const suggested = suggestName(base, Object.keys(escMap));
@@ -828,13 +878,12 @@ async function pasteEscape(targetMt, targetVer, targetField) {
     showMessage('error', '该转义键已存在', 'parser-config-messages');
     return;
   }
-  const path = `${targetMt}.Versions.${targetVer}.Fields.${targetField}.Escapes.${newKey}`;
   try {
-    await postJSON('/api/update-parser-config', {
-      factory: workingFactory,
-      system: workingSystem,
-      updates: { [path]: deepCopy(clipboardState.data) },
-    });
+    const clone = cloneDeep(workingConfig);
+    const fieldRef = ensureFieldRef(targetMt, targetVer, targetField, clone);
+    if (!fieldRef) throw new Error('目标字段不存在');
+    setEscapeEntry(fieldRef, newKey, value, tags);
+    await saveFullConfig(clone, { silent: true });
     showMessage('success', '转义已粘贴', 'parser-config-messages');
     await refreshFullConfig();
     await refreshTree();
@@ -892,6 +941,14 @@ function renderEditorFor(node) {
         <label>描述</label>
         <input id="mt-desc" type="text" value="${escapeAttr(desc)}">
       </div>
+      <div class="form-group">
+        <label>关联回复类型 (ResponseType)</label>
+        <input id="mt-response-type" type="text" value="${escapeAttr(workingConfig?.[mt]?.ResponseType || '')}" placeholder="例如：LOGIN_RESPONSE">
+      </div>
+      <div class="form-group">
+        <label>TransID 位置 (Start,Length)</label>
+        <input id="mt-trans-id-pos" type="text" value="${escapeAttr(workingConfig?.[mt]?.TransIdPosition || '')}" placeholder="例如：32,12">
+      </div>
       <div class="parser-card-actions parser-card-actions--bottom">
         <button class="btn btn-primary" id="btn-save-mt"><i class="fas fa-save"></i> 保存信息</button>
         <button class="btn btn-danger" id="btn-del-mt"><i class="fas fa-trash"></i> 删除</button>
@@ -917,12 +974,20 @@ function renderEditorFor(node) {
       <div class="parser-card-actions parser-card-actions--top">
         <button class="btn btn-outline btn-compact" id="btn-copy-ver"><i class="fas fa-copy"></i> 复制</button>
         <button class="btn btn-compact" id="btn-add-field"><i class="fas fa-plus"></i> 添加字段</button>
+        <button class="btn btn-compact" id="btn-add-field-history"><i class="fas fa-history"></i> 添加历史字段</button>
         ${pasteFieldBtn}
       </div>
       <p class="parser-edit-label">版本</p>
       <div class="form-group">
         <label>版本号</label>
         <input id="ver-name" type="text" value="${escapeAttr(ver)}">
+      </div>
+      <div class="form-group">
+        <label>字段顺序</label>
+        <div id="field-order-list" class="config-list"></div>
+        <div class="parser-card-actions parser-card-actions--bottom">
+          <button class="btn btn-primary btn-sm" id="btn-save-field-order"><i class="fas fa-save"></i> 保存顺序</button>
+        </div>
       </div>
       <div class="parser-card-actions parser-card-actions--bottom">
         <button class="btn btn-primary" id="btn-save-ver"><i class="fas fa-save"></i> 保存版本</button>
@@ -933,6 +998,9 @@ function renderEditorFor(node) {
     qs('#btn-del-ver')?.addEventListener('click', () => deleteConfigItem('version', mt, ver));
     qs('#btn-add-field')?.addEventListener('click', () => addFieldInline(mt, ver));
     qs('#btn-paste-field')?.addEventListener('click', () => pasteField(mt, ver));
+    qs('#btn-add-field-history')?.addEventListener('click', () => openFieldHistoryDropdown(mt, ver));
+    setupFieldOrderList(mt, ver);
+    qs('#btn-save-field-order')?.addEventListener('click', () => saveFieldOrder(mt, ver));
     focusPreviewPath(nodePath);
     return;
   }
@@ -961,7 +1029,11 @@ function renderEditorFor(node) {
         </div>
         <div class="form-group">
           <label>Length（留空表示到结尾）</label>
-          <input id="fd-length" type="number" min="-1" value="${fcfg.Length==null?'':escapeAttr(fcfg.Length)}" placeholder="空 = 到结尾">
+          <input id="fd-length" type="number" min="-1" value="${fcfg.Length == null ? '' : escapeAttr(fcfg.Length)}" placeholder="空 = 到结尾">
+        </div>
+        <div class="form-group">
+          <label>显示顺序（可选）</label>
+          <input id="fd-order" type="number" min="0" value="${fcfg.Order == null ? '' : escapeAttr(fcfg.Order)}" placeholder="1,2,3...">
         </div>
       </div>
       <div class="parser-card-actions parser-card-actions--bottom">
@@ -997,7 +1069,8 @@ function renderEscapeEditor(node) {
   const box = qs('#full-layers-container');
   if (!box) return;
   const { messageType: mt, version: ver, field: fd, escapeKey: key } = node;
-  const value = workingConfig?.[mt]?.Versions?.[ver]?.Fields?.[fd]?.Escapes?.[key];
+  const {value, tags} = readEscapeMeta(mt, ver, fd, key);
+  const isAbnormal = tags.includes(ESCAPE_TAGS.ABNORMAL);
   box.innerHTML = `
     <h4><i class="fas fa-exchange-alt"></i> 转义：${escapeHtml(mt)} / ${escapeHtml(ver)} / ${escapeHtml(fd)} / ${escapeHtml(key)}</h4>
     <div class="form-group">
@@ -1007,6 +1080,12 @@ function renderEscapeEditor(node) {
     <div class="form-group">
       <label>转义后值</label>
       <input id="escape-value-input" type="text" value="${value == null ? '' : escapeAttr(String(value))}">
+    </div>
+    <div class="form-group">
+      <label class = "checkbox-inline"><input type="checkbox" id="escape-abnormal-input" ${isAbnormal ? 'checked' : ''}> 标记为异常报错</label>
+      <p class="form-hint">
+        勾选后可在解析结果中额外提示此转义对应的异常状态。
+      </p>
     </div>
     <div class="form-actions">
       <button class="btn btn-primary" id="btn-save-escape"><i class="fas fa-save"></i> 保存</button>
@@ -1026,13 +1105,16 @@ function renderEscapeEditor(node) {
 async function saveMessageType(mt) {
   const name = (qs('#mt-name')?.value || '').trim() || mt;
   const desc = (qs('#mt-desc')?.value || '').trim();
+  const responseType = (qs('#mt-response-type')?.value || '').trim();
   try {
     await postJSON('/api/update-message-type', {
       factory: workingFactory,
       system: workingSystem,
       old_name: mt,
       new_name: name,
-      description: desc
+      description: desc,
+      response_type: responseType,
+      trans_id_pos: (qs('#mt-trans-id-pos')?.value || '').trim()
     });
     showMessage('success', '报文类型已保存', 'parser-config-messages');
     await refreshFullConfig();
@@ -1073,6 +1155,8 @@ async function saveField(mt, ver, fd) {
   const start = parseInt(qs('#fd-start')?.value ?? '0', 10);
   const lenRaw = (qs('#fd-length')?.value ?? '').trim();
   const length = (lenRaw === '') ? null : parseInt(lenRaw, 10);
+  const orderRaw = (qs('#fd-order')?.value ?? '').trim();
+  const orderVal = orderRaw === '' ? null : parseInt(orderRaw, 10);
 
   const newFieldName = (qs('#fd-name')?.value || '').trim() || fd;
   const startValue = Number.isNaN(start) ? 0 : start;
@@ -1088,6 +1172,7 @@ async function saveField(mt, ver, fd) {
       const fieldData = deepCopy(verObj.Fields[fd]);
       fieldData.Start = startValue;
       fieldData.Length = lengthValue;
+      if (orderVal !== null && !Number.isNaN(orderVal)) fieldData.Order = orderVal;
       verObj.Fields[newFieldName] = fieldData;
       delete verObj.Fields[fd];
       await saveFullConfig(clone);
@@ -1096,6 +1181,7 @@ async function saveField(mt, ver, fd) {
       const updates = {};
       updates[`${base}.Start`] = startValue;
       updates[`${base}.Length`] = lengthValue;
+      if (orderVal !== null && !Number.isNaN(orderVal)) updates[`${base}.Order`] = orderVal;
       await postJSON('/api/update-parser-config', {
         factory: workingFactory,
         system: workingSystem,
@@ -1145,27 +1231,24 @@ async function saveEscapeValue(mt, ver, fd, key) {
   const value = qs('#escape-value-input')?.value ?? '';
   const newKey = (qs('#escape-key-input')?.value || '').trim() || key;
   const needsRename = newKey !== key;
+  const scope = qs('#full-layers-container') || document;
+  const tags = collectEscapeTagsFromForm(scope);
   try {
+    const clone = cloneConfig(workingConfig);
+    const fieldRef = ensureFieldRef(mt, ver, fd, clone);
+    if (!fieldRef) throw new Error('转义不存在');
+    if (needsRename && fieldRef.Escapes?.[newKey]) throw new Error('转义键已存在');
     if (needsRename) {
-      const clone = cloneConfig(workingConfig);
-      const escMap = clone?.[mt]?.Versions?.[ver]?.Fields?.[fd]?.Escapes;
-      if (!escMap || !Object.prototype.hasOwnProperty.call(escMap, key)) {
-        throw new Error('转义不存在');
+      if (fieldRef.Escapes && Object.prototype.hasOwnProperty.call(fieldRef.Escapes, key)) {
+        delete fieldRef.Escapes[key];
       }
-      if (Object.prototype.hasOwnProperty.call(escMap, newKey)) {
-        throw new Error('转义键已存在');
+      if (fieldRef.EscapeTags && Object.prototype.hasOwnProperty.call(fieldRef.EscapeTags, key)) {
+        delete fieldRef.EscapeTags[key];
       }
-      delete escMap[key];
-      escMap[newKey] = value;
-      await saveFullConfig(clone);
-    } else {
-      const base = `${mt}.Versions.${ver}.Fields.${fd}.Escapes.${key}`;
-      await postJSON('/api/update-parser-config', {
-        factory: workingFactory,
-        system: workingSystem,
-        updates: { [base]: value }
-      });
     }
+
+    setEscapeEntry(fieldRef, newKey, value, tags);
+    await saveFullConfig(clone, {silent: true});
     showMessage('success', '转义已保存', 'parser-config-messages');
     await refreshFullConfig();
     await refreshTree();
@@ -1183,6 +1266,10 @@ async function deleteEscape(mt, ver, fd, key, opts = {}) {
     throw new Error('未找到转义项');
   }
   delete escMap[key];
+  const tagMap = clone?.[mt]?.Versions?.[ver]?.Fields?.[fd]?.EscapeTags;
+  if (tagMap && Object.prototype.hasOwnProperty.call(tagMap, key)) {
+    delete tagMap[key];
+  }
   await saveFullConfig(clone);
   showMessage('success', '已删除转义', 'parser-config-messages');
   await refreshFullConfig();
@@ -1207,14 +1294,18 @@ function showAddEscapeModal(mt, ver, fd) {
     if (key == null || key === '') return;
     const val = prompt('转义后值：', '');
     if (val == null) return;
-    submitEscapeRaw(fallbackMt, fallbackVer, fallbackField, key, val);
+    const markAbnormal = confirm('是否将此转义标记为”异常报错“？');
+    const tags = markAbnormal ? [ABNORMAL_ESCAPE_TAG] : [];
+    submitEscapeRaw(fallbackMt, fallbackVer, fallbackField, key, val, tags);
     return;
   }
   escapeModalDefaults.messageType = mt || escapeModalDefaults.messageType || '';
   escapeModalDefaults.version = ver || escapeModalDefaults.version || '';
   escapeModalDefaults.field = fd || escapeModalDefaults.field || '';
   rebuildEscapeModalOptions({ ...escapeModalDefaults });
-  modal.style.display = 'flex';
+  const tagInput = modal.querySelector('#escape-tag-abnormal');
+  if (tagInput) tagInput.checked = false;
+  modal.style.display = 'block';
   qs('#escape-original')?.focus();
 }
 
@@ -1293,17 +1384,20 @@ function handleEscapeFieldChange(e) {
   if (submitBtn) submitBtn.disabled = !escapeModalDefaults.field;
 }
 
-async function submitEscapeRaw(mt, ver, fd, key, val, opts = {}) {
+async function submitEscapeRaw(mt, ver, fd, key, val, tags = [], opts = {}) {
   if (!fd) {
     showMessage('error', '请选择要添加转义的字段', 'parser-config-messages');
     return;
   }
   try {
-    await postJSON('/api/add-escape', {
-      factory: workingFactory, system: workingSystem,
-      message_type: mt, version: ver, field: fd,
-      escape_key: key, escape_value: val
-    });
+    const clone = cloneConfig(workingConfig);
+    const fieldRef = ensureFieldRef(clone, mt, ver, fd);
+    if (!fieldRef) throw new Error('未找到字段，无法添加转义');
+    if (Object.prototype.hasOwnProperty.call(fieldRef.Escapes, key)) {
+      throw new Error('已存在相同原值的转义，无法添加');
+    }
+    setEscapeEntry(fieldRef, key, val ?? '', tags);
+    await saveFullConfig(clone, {silent: true});
     showMessage('success', '转义已添加', 'parser-config-messages');
     await refreshFullConfig();
     await refreshTree();
@@ -1321,16 +1415,18 @@ async function submitEscapeRaw(mt, ver, fd, key, val, opts = {}) {
 
 function submitEscapeForm() {
   const mt = qs('#escape-message-type')?.value?.trim();
-  const ver= qs('#escape-version')?.value?.trim();
+  const ver = qs('#escape-version')?.value?.trim();
   const key = qs('#escape-original')?.value?.trim();
   const val = qs('#escape-target')?.value?.trim();
   const fd = qs('#escape-field')?.value?.trim();
+  const modal = qs('#add-escape-modal');
+  const tags = collectEscapeTagsFromForm(modal || document);
   if (!mt || !ver || !key || !fd) {
-    showMessage('error','请完整填写转义信息','parser-config-messages');
+    showMessage('error', '请完整填写转义信息', 'parser-config-messages');
     return;
   }
   hideAddEscapeModal();
-  submitEscapeRaw(mt, ver, fd, key, val, { focusEscape: true });
+  submitEscapeRaw(mt, ver, fd, key, val, tags, { focusEscape: true });
 }
 
 function hideAddEscapeModal() {
@@ -1358,7 +1454,7 @@ async function addEscapeInline(mt, ver, fd) {
   }
   if (!fieldRef.Escapes) fieldRef.Escapes = {};
   const key = suggestName('新转义', Object.keys(fieldRef.Escapes));
-  fieldRef.Escapes[key] = '';
+  setEscapeEntry(fieldRef, key, '', []);
   try {
     await saveFullConfig(clone, { silent: true });
     await refreshFullConfig();
@@ -1381,7 +1477,7 @@ function showAddVersionModal(mt) {
     submitVersionRaw(mt, ver, '');
     return;
   }
-  modal.style.display = 'flex';
+  modal.style.display = 'block';
   const sel = qs('#version-message-type');
   if (sel) {
     sel.innerHTML = `<option value="${escapeAttr(mt)}">${escapeHtml(mt)}</option>`;
@@ -1392,43 +1488,58 @@ function showAddVersionModal(mt) {
 function showAddFieldModal(mt, ver) {
   const modal = qs('#add-field-modal');
   if (!modal) {
-    const name = prompt('字段名：','');
+    const name = prompt('字段名：', '');
     if (!name) return;
-    const start = parseInt(prompt('起始位置 Start（整数）','0')||'0',10);
-    const lenStr = prompt('长度 Length（留空=到结尾）','') || '';
-    const length = (lenStr === '' ? -1 : parseInt(lenStr,10));
-    submitFieldRaw(mt, ver, name, isNaN(start)?0:start, isNaN(length)?-1:length);
+    const start = parseInt(prompt('起始位置 Start（整数）', '0') || '0', 10);
+    const lenStr = prompt('长度 Length（留空=到结尾）', '') || '';
+    const length = (lenStr === '' ? -1 : parseInt(lenStr, 10));
+    submitFieldRaw(mt, ver, name, isNaN(start) ? 0 : start, isNaN(length) ? -1 : length);
     return;
   }
-  modal.style.display = 'flex';
+  modal.style.display = 'block';
   const mtSel = qs('#field-message-type');
-  const vSel  = qs('#field-version');
+  const vSel = qs('#field-version');
   if (mtSel) { mtSel.innerHTML = `<option value="${escapeAttr(mt)}">${escapeHtml(mt)}</option>`; mtSel.value = mt; }
-  if (vSel)  { vSel.innerHTML  = `<option value="${escapeAttr(ver)}">${escapeHtml(ver)}</option>`; vSel.value = ver; }
+  if (vSel) { vSel.innerHTML = `<option value="${escapeAttr(ver)}">${escapeHtml(ver)}</option>`; vSel.value = ver; }
+  selectedFieldTemplate = null;
+
+  const fieldNameEl = qs('#field-name');
+  const fieldStartEl = qs('#field-start');
+  const fieldLengthEl = qs('#field-length');
+  const suggested = suggestName('新字段', Object.keys(workingConfig?.[mt]?.Versions?.[ver]?.Fields || {}));
+  if (fieldNameEl) fieldNameEl.value = suggested;
+  if (fieldStartEl) fieldStartEl.value = '0';
+  if (fieldLengthEl) fieldLengthEl.value = '';
+  if (fieldNameEl) fieldNameEl.focus();
 }
 
-function hideAddVersionModal() { const m=qs('#add-version-modal'); if (m) m.style.display='none'; }
-function hideAddFieldModal()   { const m=qs('#add-field-modal');   if (m) m.style.display='none';  }
-function showAddMessageTypeModal(){ const m=qs('#add-message-type-modal'); if (m) m.style.display='flex'; }
-function hideAddMessageTypeModal(){ const m=qs('#add-message-type-modal'); if (m) m.style.display='none'; }
+function hideAddVersionModal() { const m = qs('#add-version-modal'); if (m) m.style.display = 'none'; }
+function hideAddFieldModal() {
+  const m = qs('#add-field-modal');
+  if (m) m.style.display = 'none';
+  const dd = qs('#field-history-dropdown');
+  if (dd) dd.remove();
+}
+function showAddMessageTypeModal() { const m = qs('#add-message-type-modal'); if (m) m.style.display = 'block'; }
+function hideAddMessageTypeModal() { const m = qs('#add-message-type-modal'); if (m) m.style.display = 'none'; }
 
 async function submitMessageTypeForm() {
   const name = qs('#message-type-name')?.value?.trim();
   const desc = qs('#message-type-description')?.value?.trim() || '';
-  if (!name) { showMessage('error','请输入报文类型名称','parser-config-messages'); return; }
+  if (!name) { showMessage('error', '请输入报文类型名称', 'parser-config-messages'); return; }
   try {
     await postJSON('/api/add-message-type', {
       factory: workingFactory, system: workingSystem,
       message_type: name, description: desc
     });
     hideAddMessageTypeModal();
-    showMessage('success','报文类型已添加','parser-config-messages');
+    showMessage('success', '报文类型已添加', 'parser-config-messages');
     await refreshFullConfig();
     await refreshTree();
 
     notifyParserConfigChanged('add-mt', { name });
   } catch (e) {
-    showMessage('error','添加失败：' + e.message,'parser-config-messages');
+    showMessage('error', '添加失败：' + e.message, 'parser-config-messages');
   }
 }
 
@@ -1440,22 +1551,22 @@ async function submitVersionRaw(mt, ver) {
       msg_type: mt,
       version: ver
     });
-    showMessage('success','版本已添加','parser-config-messages');
+    showMessage('success', '版本已添加', 'parser-config-messages');
     await refreshFullConfig();
     await refreshTree();
-    renderEditorFor({ type:'version', messageType: mt, version: ver });
+    renderEditorFor({ type: 'version', messageType: mt, version: ver });
 
     notifyParserConfigChanged('add-ver', { mt, ver });
   } catch (e) {
-    showMessage('error','添加版本失败：' + e.message,'parser-config-messages');
+    showMessage('error', '添加版本失败：' + e.message, 'parser-config-messages');
   }
 }
 
 function submitVersionForm() {
-  const mt  = qs('#version-message-type')?.value?.trim();
+  const mt = qs('#version-message-type')?.value?.trim();
   const ver = qs('#version-number')?.value?.trim();
   if (!mt || !ver) {
-    showMessage('error','请选择报文类型并填写版本','parser-config-messages');
+    showMessage('error', '请选择报文类型并填写版本', 'parser-config-messages');
     return;
   }
   hideAddVersionModal();
@@ -1469,27 +1580,296 @@ async function submitFieldRaw(mt, ver, name, start, length) {
       message_type: mt, version: ver,
       field: name, start, length
     });
-    showMessage('success','字段已添加','parser-config-messages');
+    showMessage('success', '字段已添加', 'parser-config-messages');
     await refreshFullConfig();
     await refreshTree();
-    renderEditorFor({ type:'field', messageType: mt, version: ver, field: name });
+    renderEditorFor({ type: 'field', messageType: mt, version: ver, field: name });
 
     notifyParserConfigChanged('add-field', { mt, ver, field: name });
   } catch (e) {
-    showMessage('error','添加字段失败：' + e.message,'parser-config-messages');
+    showMessage('error', '添加字段失败：' + e.message, 'parser-config-messages');
   }
 }
 
 function submitFieldForm() {
   const mt = qs('#field-message-type')?.value?.trim();
-  const ver= qs('#field-version')?.value?.trim();
+  const ver = qs('#field-version')?.value?.trim();
   const name = qs('#field-name')?.value?.trim();
-  const start= parseInt(qs('#field-start')?.value ?? '0',10);
-  const lenRaw= (qs('#field-length')?.value ?? '').trim();
-  const length= lenRaw===''? -1 : parseInt(lenRaw,10);
-  if (!mt || !ver || !name) { showMessage('error','请完整填写字段信息','parser-config-messages'); return; }
+  const start = parseInt(qs('#field-start')?.value ?? '0', 10);
+  const lenRaw = (qs('#field-length')?.value ?? '').trim();
+  const length = lenRaw === '' ? -1 : parseInt(lenRaw, 10);
+  if (!mt || !ver || !name) { showMessage('error', '请完整填写字段信息', 'parser-config-messages'); return; }
   hideAddFieldModal();
-  submitFieldRaw(mt, ver, name, (isNaN(start)?0:start), (isNaN(length)?-1:length));
+  const sVal = (isNaN(start) ? 0 : start);
+  const lVal = (isNaN(length) ? -1 : length);
+  submitFieldRaw(mt, ver, name, sVal, lVal).then(async () => {
+    const withEsc = !!qs('#field-lib-include-escapes')?.checked;
+    if (withEsc && selectedFieldTemplate && selectedFieldTemplate.escapes && Object.keys(selectedFieldTemplate.escapes).length) {
+      const base = `${mt}.Versions.${ver}.Fields.${name}.Escapes`;
+      const updates = {};
+      updates[base] = selectedFieldTemplate.escapes;
+      try {
+        await postJSON('/api/update-parser-config', { factory: workingFactory, system: workingSystem, updates });
+        showMessage('success', '已带出转义映射', 'parser-config-messages');
+        await refreshFullConfig();
+        await refreshTree();
+        renderEditorFor({ type: 'field', messageType: mt, version: ver, field: name });
+      } catch (err) {
+        showMessage('error', '带出转义失败：' + err.message, 'parser-config-messages');
+      }
+    }
+  });
+}
+
+function openFieldHistoryDropdown(mt, ver, anchorEl = null) {
+  const box = qs('#full-layers-container');
+  if (!box) return;
+  let dd = qs('#field-history-dropdown');
+  if (dd) { dd.remove(); }
+  dd = document.createElement('div');
+  dd.id = 'field-history-dropdown';
+  dd.style.cssText = 'position:fixed; z-index:9999;';
+  const panel = document.createElement('div');
+  panel.className = 'neon-card';
+  panel.style.cssText = 'width:480px; max-height:420px; overflow:auto; padding:16px;';
+  panel.innerHTML = `
+    <div class="panel-heading" style="margin-bottom:10px;">
+      <div>
+        <p class="panel-label">历史字段</p>
+        <h4>选择历史字段</h4>
+      </div>
+      <button class="btn btn-sm" id="field-history-close"><i class="fas fa-times"></i> 关闭</button>
+    </div>
+    <div class="search-box search-box--pill">
+      <i class="fas fa-search"></i>
+      <input id="field-history-search" class="search-input" placeholder="搜索字段名">
+      <label class="checkbox-item" style="margin-left:auto;">
+        <input type="checkbox" id="field-history-include-esc"> 带出转义
+      </label>
+    </div>
+    <div id="field-history-list" class="config-list"></div>
+  `;
+  dd.appendChild(panel);
+  const editCard = qs('.parser-edit-card');
+  (editCard || box).appendChild(dd);
+  // 定位到按钮附近
+  const btn = anchorEl || qs('#btn-add-field-history');
+  const rect = panel.getBoundingClientRect();
+  const centerLeft = Math.max(12, Math.floor((window.innerWidth - rect.width) / 2));
+  const centerTop = Math.max(12, Math.floor((window.innerHeight - rect.height) / 2));
+  dd.style.left = `${centerLeft}px`;
+  dd.style.top = `${centerTop}px`;
+  qs('#field-history-close')?.addEventListener('click', () => dd.remove());
+  panel.addEventListener('click', (e) => e.stopPropagation());
+
+  const header = panel.querySelector('.panel-heading');
+  if (header) {
+    let dragging = false;
+    let offsetX = 0;
+    let offsetY = 0;
+    const onMouseMove = (e) => {
+      if (!dragging) return;
+      dd.style.left = `${Math.max(4, e.clientX - offsetX)}px`;
+      dd.style.top = `${Math.max(4, e.clientY - offsetY)}px`;
+    };
+    const onMouseUp = () => {
+      dragging = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+    header.style.cursor = 'move';
+    header.addEventListener('mousedown', (e) => {
+      dragging = true;
+      const rect = dd.getBoundingClientRect();
+      offsetX = e.clientX - rect.left;
+      offsetY = e.clientY - rect.top;
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
+  }
+
+  setTimeout(() => {
+    const onDocClick = (e) => {
+      const target = e.target;
+      if (dd.contains(target)) return;
+      if (anchorEl && anchorEl.contains(target)) return;
+      dd.remove();
+      document.removeEventListener('click', onDocClick);
+    };
+    document.addEventListener('click', onDocClick);
+  }, 0);
+  renderFieldHistoryList(mt, ver);
+}
+
+async function renderFieldHistoryList(mt, ver) {
+  let list = [];
+  try {
+    list = await api.fetchFieldHistory(workingFactory, workingSystem);
+  } catch (e) {
+    list = buildFieldLibrary(workingConfig);
+  }
+  const box = qs('#field-history-list');
+  const search = qs('#field-history-search');
+  if (!box) return;
+  const render = (items) => {
+    box.innerHTML = '';
+    if (!items || !items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'message-empty';
+      empty.textContent = '暂无历史字段';
+      box.appendChild(empty);
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    items.slice(0, 50).forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'config-item config-item--slim';
+      row.innerHTML = `
+        <div class="config-info">
+          <div class="config-compact-title">
+            <h3>${escapeHtml(item.name)}</h3>
+            <span class="config-chip">使用次数：${item.usageCount || 1}</span>
+          </div>
+          <div class="config-compact-subline">Start ${item.start} / Len ${item.length === -1 ? '到结尾' : item.length}</div>
+        </div>
+        <div class="config-actions">
+          <button class="btn btn-sm btn-primary" data-action="apply">应用</button>
+        </div>
+      `;
+      row.querySelector('[data-action="apply"]').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const withEsc = !!qs('#field-history-include-esc')?.checked;
+        try {
+          await submitFieldRaw(mt, ver, item.name, Number(item.start || 0), Number(item.length || -1));
+          if (withEsc && item.escapes && Object.keys(item.escapes).length) {
+            const base = `${mt}.Versions.${ver}.Fields.${item.name}.Escapes`;
+            const updates = {}; updates[base] = item.escapes;
+            await postJSON('/api/update-parser-config', { factory: workingFactory, system: workingSystem, updates });
+            showMessage('success', '已带出转义映射', 'parser-config-messages');
+            await refreshFullConfig(); await refreshTree();
+            renderEditorFor({ type: 'field', messageType: mt, version: ver, field: item.name });
+          }
+          const dd = qs('#field-history-dropdown'); if (dd) dd.remove();
+        } catch (err) {
+          showMessage('error', '添加历史字段失败：' + err.message, 'parser-config-messages');
+        }
+      });
+      frag.appendChild(row);
+    });
+    box.appendChild(frag);
+  };
+  render(list);
+  if (search) {
+    search.oninput = () => {
+      const kw = (search.value || '').trim().toLowerCase();
+      const filtered = (list || []).filter(it => String(it.name || '').toLowerCase().includes(kw));
+      render(filtered);
+    };
+  }
+}
+async function buildAndRenderFieldLibrary() {
+  try {
+    const list = await api.fetchFieldHistory(workingFactory, workingSystem);
+    fieldLibrary = Array.isArray(list) ? list : [];
+  } catch (e) {
+    fieldLibrary = buildFieldLibrary(workingConfig);
+  }
+  renderFieldLibrary(fieldLibrary);
+}
+
+function buildFieldLibrary(config) {
+  const map = new Map();
+  const result = [];
+  Object.keys(config || {}).forEach(mt => {
+    const verMap = config[mt]?.Versions || {};
+    Object.keys(verMap).forEach(ver => {
+      const fields = verMap[ver]?.Fields || {};
+      Object.keys(fields).forEach(fname => {
+        const f = fields[fname] || {};
+        const start = Number(f.Start ?? 0);
+        const length = (f.Length == null ? -1 : Number(f.Length));
+        const key = `${fname}|${start}|${length}`;
+        const esc = f.Escapes || {};
+        if (!map.has(key)) {
+          map.set(key, { name: fname, start, length, usageCount: 1, escapes: esc });
+        } else {
+          const item = map.get(key);
+          item.usageCount += 1;
+        }
+      });
+    });
+  });
+  map.forEach(v => result.push(v));
+  result.sort((a, b) => b.usageCount - a.usageCount || a.name.localeCompare(b.name));
+  return result;
+}
+
+function ensureFieldLibraryUI() {
+  const modal = qs('#add-field-modal .modal-body');
+  if (!modal) return;
+  let host = qs('#field-library-host', modal);
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'field-library-host';
+    host.innerHTML = `
+      <div class="form-group">
+        <label>历史字段</label>
+        <div class="form-row">
+          <input type="text" id="field-lib-search" class="form-control" placeholder="搜索字段名">
+          <label style="display:flex; align-items:center; gap:6px; margin-left:8px;">
+            <input type="checkbox" id="field-lib-include-escapes"> 带出转义
+          </label>
+        </div>
+      </div>
+      <div id="field-lib-list" class="list-group"></div>
+    `;
+    modal.appendChild(host);
+    const search = qs('#field-lib-search');
+    if (search) {
+      search.addEventListener('input', () => {
+        const kw = (search.value || '').trim().toLowerCase();
+        const filtered = fieldLibrary.filter(it => it.name.toLowerCase().includes(kw));
+        renderFieldLibrary(filtered);
+      });
+    }
+  }
+}
+
+function renderFieldLibrary(list) {
+  const box = qs('#field-lib-list');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!list || !list.length) {
+    const empty = document.createElement('div');
+    empty.className = 'message-empty';
+    empty.textContent = '暂无历史字段';
+    box.appendChild(empty);
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  list.slice(0, 100).forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'list-item';
+    row.innerHTML = `
+      <div class="list-item-main">
+        <strong>${escapeHtml(item.name)}</strong>
+        <span style="margin-left:8px; color:#8f98aa;">Start ${item.start} / Len ${item.length === -1 ? '到结尾' : item.length}</span>
+      </div>
+      <div class="list-item-meta">使用次数：${item.usageCount}</div>
+    `;
+    row.addEventListener('click', () => {
+      const nameEl = qs('#field-name');
+      const startEl = qs('#field-start');
+      const lenEl = qs('#field-length');
+      if (nameEl) nameEl.value = item.name;
+      if (startEl) startEl.value = String(item.start);
+      if (lenEl) lenEl.value = item.length === -1 ? '' : String(item.length);
+      selectedFieldTemplate = { name: item.name, start: item.start, length: item.length, escapes: item.escapes };
+      showMessage('success', '已填充历史字段', 'parser-config-messages');
+    });
+    frag.appendChild(row);
+  });
+  box.appendChild(frag);
 }
 
 // =============== JSON 预览 / 撤销 / 搜索 / 导入导出 ===============
@@ -1528,7 +1908,7 @@ function copyJsonPreview() {
   const pre = qs('#json-preview-content .json-code');
   if (!pre) return;
   navigator?.clipboard?.writeText(pre.textContent)
-    .then(()=> showMessage('success', 'JSON 已复制', 'parser-config-messages'))
+    .then(() => showMessage('success', 'JSON 已复制', 'parser-config-messages'))
     .catch(err => showMessage('error', '复制失败：' + err.message, 'parser-config-messages'));
 }
 
@@ -1572,11 +1952,17 @@ function buildJsonLinesFromConfig(config) {
           fieldKeys.forEach((fdKey, fdIndex) => {
             const field = fields[fdKey] || {};
             const escapes = field.Escapes || {};
+            const escapeTags = field.EscapeTags || {};
             const escapeKeys = Object.keys(escapes);
+            const escapeTagKeys = Object.keys(escapeTags);
+            const hasEscapeTags = escapeTagKeys.length > 0;
             const fieldPath = buildNodePath({ type: 'field', messageType: mtKey, version: verKey, field: fdKey });
             pushLine(`"${fdKey}": {`, 5, fieldPath);
             pushLine(`"Start": ${formatJsonValue(field.Start ?? 0)},`, 6);
             pushLine(`"Length": ${formatJsonValue(field.Length ?? null)},`, 6);
+            if (field.Order !== undefined) {
+              pushLine(`"Order": ${formatJsonValue(field.Order ?? null)},`, 6);
+            }
             if (escapeKeys.length) {
               pushLine('"Escapes": {', 6);
               escapeKeys.forEach((escKey, escIndex) => {
@@ -1584,9 +1970,17 @@ function buildJsonLinesFromConfig(config) {
                 const suffix = escIndex === escapeKeys.length - 1 ? '' : ',';
                 pushLine(`"${escKey}": ${formatJsonValue(escapes[escKey])}${suffix}`, 7, escPath);
               });
-              pushLine('}', 6);
-            } else {
-              pushLine('"Escapes": {}', 6);
+              pushLine(`)${hasEscapeTags ? ',' : ''}`, 6);
+            }else{
+              pushLine(`"Escapes": {}${hasEscapeTags ? ',' : ''}`, 6);
+            } 
+            if (hasEscapeTags){
+              pushLine('"EscapeTags": {', 6);
+              escapeTagKeys.forEach((tagKey, tagIdx) => {
+                const suffix = tagIdx === escapeTagKeys.length - 1 ? '' : ',';
+                pushLine(`"${tagKey}": ${formatJsonValue(escapeTags[tagKey])}${suffix}`, 7);
+              });
+              pushLine(`)`, 6);
             }
             const fieldSuffix = fdIndex === fieldKeys.length - 1 ? '' : ',';
             pushLine(`}${fieldSuffix}`, 5);
@@ -1667,7 +2061,7 @@ async function exportConfig() {
       try {
         const data = await res.json();
         errorMsg = data.error || errorMsg;
-      } catch (_) {}
+      } catch (_) { }
       throw new Error(errorMsg);
     }
     const blob = await res.blob();
@@ -1694,6 +2088,30 @@ async function exportConfig() {
   }
 }
 
+function showImportMode() {
+  const modal = document.getElementById('import-mode-modal');
+  const btnMerge = document.getElementById('import-mode-merge');
+  const btnOverwrite = document.getElementById('import-mode-overwrite');
+  const btnCancel = document.getElementById('import-mode-cancel');
+  if (!modal || !btnMerge || !btnOverwrite || !btnCancel) return Promise.resolve(null);
+  modal.style.display = 'block';
+  return new Promise((resolve) => {
+    function cleanup(val) {
+      btnMerge.removeEventListener('click', onMerge);
+      btnOverwrite.removeEventListener('click', onOverwrite);
+      btnCancel.removeEventListener('click', onCancel);
+      modal.style.display = 'none';
+      resolve(val);
+    }
+    function onMerge() { cleanup('merge'); }
+    function onOverwrite() { cleanup('overwrite'); }
+    function onCancel() { cleanup(null); }
+    btnMerge.addEventListener('click', onMerge);
+    btnOverwrite.addEventListener('click', onOverwrite);
+    btnCancel.addEventListener('click', onCancel);
+  });
+}
+
 function importConfig() {
   if (!workingFactory || !workingSystem) {
     showMessage('error', '请先进入配置工作台', 'parser-config-messages');
@@ -1705,18 +2123,20 @@ function importConfig() {
   input.onchange = async () => {
     const file = input.files?.[0];
     if (!file) return;
+    const mode = await showImportMode();
+    if (!mode) return;
     const fd = new FormData();
     fd.append('factory', workingFactory);
     fd.append('system', workingSystem);
+    fd.append('mode', mode);
     fd.append('file', file);
     try {
       const res = await fetch('/api/import-parser-config', { method: 'POST', body: fd });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || '导入失败');
-      showMessage('success', '导入成功', 'parser-config-messages');
+      showMessage('success', mode === 'merge' ? '增量导入成功' : '全覆盖导入成功', 'parser-config-messages');
       await refreshFullConfig();
       await refreshTree();
-
       notifyParserConfigChanged('import', { factory: workingFactory, system: workingSystem });
     } catch (e) {
       showMessage('error', '导入失败：' + e.message, 'parser-config-messages');
@@ -1729,7 +2149,7 @@ function importConfig() {
 async function postJSON(url, body) {
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type':'application/json' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1752,7 +2172,7 @@ async function saveFullConfig(newConfig, opts = {}) {
 
 // =============== 兼容旧 inline onclick（可选） ===============
 if (typeof window !== 'undefined') {
-  window.enterConfigWorkspace   = () => {
+  window.enterConfigWorkspace = () => {
     const f = qs('#parser-factory-select')?.value || '';
     const s = qs('#parser-system-select')?.value || '';
     if (!f || !s) {
@@ -1761,20 +2181,96 @@ if (typeof window !== 'undefined') {
     }
     enterWorkspace(f, s);
   };
-  window.exitConfigWorkspace    = exitWorkspace;
-  window.expandAllLayers        = expandAllLayers;
-  window.collapseAllLayers      = collapseAllLayers;
-  window.copyJsonPreview        = copyJsonPreview;
-  window.showAddMessageTypeModal= showAddMessageTypeModal;
-  window.hideAddMessageTypeModal= hideAddMessageTypeModal;
-  window.showAddVersionModal    = showAddVersionModal;
-  window.hideAddVersionModal    = hideAddVersionModal;
-  window.showAddFieldModal      = showAddFieldModal;
-  window.hideAddFieldModal      = hideAddFieldModal;
-  window.showAddEscapeModal     = showAddEscapeModal;
-  window.hideAddEscapeModal     = hideAddEscapeModal;
-  window.submitMessageTypeForm  = submitMessageTypeForm;
-  window.submitVersionForm      = submitVersionForm;
-  window.submitFieldForm        = submitFieldForm;
-  window.submitEscapeForm       = submitEscapeForm;
+  window.exitConfigWorkspace = exitWorkspace;
+  window.expandAllLayers = expandAllLayers;
+  window.collapseAllLayers = collapseAllLayers;
+  window.copyJsonPreview = copyJsonPreview;
+  window.showAddMessageTypeModal = showAddMessageTypeModal;
+  window.hideAddMessageTypeModal = hideAddMessageTypeModal;
+  window.showAddVersionModal = showAddVersionModal;
+  window.hideAddVersionModal = hideAddVersionModal;
+  window.showAddFieldModal = showAddFieldModal;
+  window.hideAddFieldModal = hideAddFieldModal;
+  window.showAddEscapeModal = showAddEscapeModal;
+  window.hideAddEscapeModal = hideAddEscapeModal;
+  window.submitMessageTypeForm = submitMessageTypeForm;
+  window.submitVersionForm = submitVersionForm;
+  window.submitFieldForm = submitFieldForm;
+  window.submitEscapeForm = submitEscapeForm;
+}
+function setupFieldOrderList(mt, ver) {
+  const box = qs('#field-order-list');
+  if (!box) return;
+  const fieldsObj = workingConfig?.[mt]?.Versions?.[ver]?.Fields || {};
+  const entries = Object.entries(fieldsObj).map(([name, cfg], idx) => ({
+    name,
+    start: Number(cfg.Start ?? 0),
+    length: cfg.Length == null ? -1 : Number(cfg.Length),
+    order: cfg.Order == null ? null : Number(cfg.Order),
+    idx
+  }));
+  entries.sort((a, b) => {
+    const ao = a.order == null ? a.idx : a.order;
+    const bo = b.order == null ? b.idx : b.order;
+    return ao - bo;
+  });
+  let state = entries;
+  const render = () => {
+    box.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    state.forEach((item, i) => {
+      const row = document.createElement('div');
+      row.className = 'config-item config-item--slim';
+      row.draggable = true;
+      row.dataset.index = String(i);
+      row.innerHTML = `
+        <div class="config-info">
+          <div class="config-compact-title">
+            <h3>${escapeHtml(item.name)}</h3>
+            <span class="config-chip">${i + 1}</span>
+          </div>
+          <div class="config-compact-subline">Start ${item.start} / Len ${item.length === -1 ? '到结尾' : item.length}</div>
+        </div>
+      `;
+      row.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', String(i));
+      });
+      row.addEventListener('dragover', (e) => {
+        e.preventDefault();
+      });
+      row.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const from = Number(e.dataTransfer.getData('text/plain'));
+        const to = Number(row.dataset.index || '0');
+        if (Number.isNaN(from) || Number.isNaN(to) || from === to) return;
+        const moved = state.splice(from, 1)[0];
+        state.splice(to, 0, moved);
+        render();
+      });
+      frag.appendChild(row);
+    });
+    box.appendChild(frag);
+  };
+  render();
+  box._getOrder = () => state.map((it, i) => ({ name: it.name, order: i + 1 }));
+}
+
+async function saveFieldOrder(mt, ver) {
+  const box = qs('#field-order-list');
+  if (!box || typeof box._getOrder !== 'function') return;
+  const list = box._getOrder();
+  const updates = {};
+  list.forEach(({ name, order }) => {
+    const base = `${mt}.Versions.${ver}.Fields.${name}.Order`;
+    updates[base] = order;
+  });
+  try {
+    await postJSON('/api/update-parser-config', { factory: workingFactory, system: workingSystem, updates });
+    showMessage('success', '字段顺序已保存', 'parser-config-messages');
+    await refreshFullConfig();
+    await refreshTree();
+    renderEditorFor({ type: 'version', messageType: mt, version: ver });
+  } catch (e) {
+    showMessage('error', '保存顺序失败：' + e.message, 'parser-config-messages');
+  }
 }

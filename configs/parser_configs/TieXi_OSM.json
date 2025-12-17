@@ -1,0 +1,50 @@
+{
+  "IPSRDATA": {
+    "Description": "测试",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "孔牌": {
+            "Escapes": {},
+            "Length": 7,
+            "Start": 116
+          },
+          "点位": {
+            "Escapes": {},
+            "Length": 5,
+            "Start": 93
+          }
+        }
+      }
+    }
+  },
+  "TRIG_P_R": {
+    "Description": "置点报文回复",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "点位": {
+            "Escapes": {},
+            "Length": 5,
+            "Start": 71
+          },
+          "车号": {
+            "Escapes": {
+              "A": "B"
+            },
+            "Length": 7,
+            "Start": 82
+          }
+        }
+      }
+    }
+  },
+  "R": {
+    "Description": "R",
+    "Versions": {
+      "Default": {
+        "Fields": {}
+      }
+    }
+  }
+}

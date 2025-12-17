@@ -5,6 +5,7 @@ import os
 from typing import Any, Dict, Iterable, List, Optional
 
 from .report_mapping_store import ReportMappingStore
+from .report_data_store import ReportDataStore
 
 
 class AnalysisService:
@@ -19,6 +20,8 @@ class AnalysisService:
         self.log_downloader = log_downloader
         self.log_analyzer = log_analyzer
         self.report_store = report_store
+        # 初始化报告数据存储
+        self.report_data_store = ReportDataStore(getattr(log_analyzer, "output_dir", "."))
 
     # -------- 列表与辅助 --------
     def list_downloaded_logs(self) -> List[Dict[str, Any]]:
@@ -47,8 +50,11 @@ class AnalysisService:
             options=options,
         )
 
-        if result.get("success") and result.get("html_report"):
-            self.report_store.save_many(log_paths, result["html_report"])
+        if result.get("success"):
+            # 保存报告数据到报告数据存储
+            if result.get("report_data"):
+                self.save_report_data(result["report_data"])
+            # 不再保存HTML报告映射，因为我们已经迁移到报告数据存储
         return result
 
     def delete_log(self, log_path: str) -> Dict[str, Any]:
@@ -69,6 +75,59 @@ class AnalysisService:
             "report_path": report_path,
             "has_report": has_report,
         }
+
+    # -------- 报告数据管理 --------
+    def save_report_data(self, report_data: Dict[str, Any]) -> str:
+        """保存报告数据
+        
+        Args:
+            report_data: 报告数据，包含元数据和内容数据
+            
+        Returns:
+            str: 报告ID
+        """
+        return self.report_data_store.save_report(report_data)
+
+    def get_report_list(self, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """获取报告列表
+        
+        Args:
+            filters: 过滤条件
+            
+        Returns:
+            List[Dict[str, Any]]: 报告列表
+        """
+        return self.report_data_store.list_reports(filters)
+
+    def get_report_details(self, report_id: str) -> Optional[Dict[str, Any]]:
+        """获取报告详情
+        
+        Args:
+            report_id: 报告ID
+            
+        Returns:
+            Optional[Dict[str, Any]]: 报告详情
+        """
+        return self.report_data_store.get_report(report_id)
+
+    def delete_report(self, report_id: str) -> bool:
+        """删除报告
+        
+        Args:
+            report_id: 报告ID
+            
+        Returns:
+            bool: 是否删除成功
+        """
+        return self.report_data_store.delete_report(report_id)
+
+    def get_report_stats(self) -> Dict[str, Any]:
+        """获取报告统计信息
+        
+        Returns:
+            Dict[str, Any]: 报告统计信息
+        """
+        return self.report_data_store.get_report_stats()
 
     # -------- 私有工具 --------
     def _parse_config_id(self, config_id: str) -> List[str]:

@@ -4,9 +4,11 @@ import json
 import logging
 import os
 from typing import Any, Dict, List
+from datetime import datetime
 import webbrowser
 import subprocess
 import platform
+import paramiko
 
 from flask import Blueprint, Flask, render_template, request, jsonify, send_from_directory, Response
 
@@ -247,6 +249,85 @@ def delete_config():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/test-config', methods=['POST'])
+def test_server_config():
+    """测试服务器配置的连通性与日志路径可访问性。"""
+    try:
+        data = request.get_json(force=True) or {}
+        config_id = (data.get('id') or data.get('config_id') or '').strip()
+        if not config_id:
+            return jsonify({'success': False, 'error': '缺少配置 ID'}), 400
+
+        cfg = server_config_service.get_config(config_id)
+        server = cfg.get('server') or {}
+        hostname = server.get('hostname') or ''
+        username = server.get('username') or ''
+        password = server.get('password') or ''
+        realtime_path = server.get('realtime_path') or ''
+        archive_path = server.get('archive_path') or ''
+
+        if not all([hostname, username, password, realtime_path, archive_path]):
+            return jsonify({'success': False, 'error': '配置不完整，缺少服务器或路径信息'}), 400
+
+        result = {
+            'success': False,
+            'connect_ok': False,
+            'realtime_ok': False,
+            'archive_ok': False,
+            'errors': {}
+        }
+
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            ssh.connect(hostname, username=username, password=password, timeout=15)
+            result['connect_ok'] = True
+        except Exception as exc:
+            result['errors']['connect'] = str(exc)
+            logger.error(f"测试服务器连接失败: host={hostname}", exc_info=True)
+            return jsonify(result), 200
+
+        try:
+            sftp = ssh.open_sftp()
+        except Exception as exc:
+            result['errors']['connect'] = f"SFTP 打开失败: {exc}"
+            try:
+                ssh.close()
+            except Exception:
+                pass
+            return jsonify(result), 200
+
+        try:
+            sftp.stat(realtime_path)
+            result['realtime_ok'] = True
+        except Exception as exc:
+            result['errors']['realtime'] = str(exc)
+
+        try:
+            sftp.stat(archive_path)
+            result['archive_ok'] = True
+        except Exception as exc:
+            result['errors']['archive'] = str(exc)
+
+        try:
+            sftp.close()
+        except Exception:
+            pass
+        try:
+            ssh.close()
+        except Exception:
+            pass
+
+        result['success'] = bool(result['connect_ok'] and result['realtime_ok'] and result['archive_ok'])
+        return jsonify(result)
+
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"测试服务器配置失败: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': '测试服务器配置失败'}), 500
+
+
 @app.route('/api/parser-configs', methods=['GET'])
 def get_parser_configs():
     """获取所有解析配置列表"""
@@ -325,6 +406,8 @@ def add_message_type():
         system = data.get('system')
         message_type = data.get('message_type')
         description = data.get('description', '')
+        response_type = data.get('response_type', '')
+        trans_id_pos = data.get('trans_id_pos', '')
 
         if not all([factory, system, message_type]):
             return jsonify({'success': False, 'error': '缺少必要参数'}), 400
@@ -341,6 +424,8 @@ def add_message_type():
         # 添加新的报文类型
         config[message_type] = {
             'Description': description,
+            'ResponseType': response_type,
+            'TransIdPosition': trans_id_pos,
             'Versions': {}
         }
 
@@ -367,6 +452,8 @@ def update_message_type():
         old_name = data.get('old_name')
         new_name = data.get('new_name')
         description = data.get('description')
+        response_type = data.get('response_type')
+        trans_id_pos = data.get('trans_id_pos')
 
         if not all([factory, system, old_name, new_name]):
             return jsonify({'success': False, 'error': '缺少必要参数'}), 400
@@ -385,6 +472,10 @@ def update_message_type():
         message_config = config.pop(old_name)
         if description is not None:
             message_config['Description'] = description
+        if response_type is not None:
+            message_config['ResponseType'] = response_type
+        if trans_id_pos is not None:
+            message_config['TransIdPosition'] = trans_id_pos
 
         config[new_name] = message_config
 
@@ -607,6 +698,11 @@ def add_field():
         success = parser_config_manager.save_config(factory, system, config)
         if success:
             logger.info(f"成功添加字段: {field}")
+            try:
+                esc = version_config['Fields'][field].get('Escapes') or {}
+                _add_field_history(factory, system, field, start, (length if length != -1 else None), esc)
+            except Exception as e:
+                logger.warning(f"更新字段历史失败: {e}")
             return jsonify({'success': True, 'message': '字段添加成功'})
         else:
             return jsonify({'success': False, 'error': '添加字段失败'}), 500
@@ -703,10 +799,10 @@ def delete_log():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/report/<path:filename>')
+@app.route('/generated-reports/<path:filename>')
 def serve_report(filename):
     """提供生成的报告文件"""
-    report_dir = os.path.join(HTML_LOGS_DIR, 'html_logs')
+    report_dir = HTML_LOGS_DIR
     return send_from_directory(report_dir, filename)
 
 
@@ -888,10 +984,11 @@ def export_parser_config():
 
 @app.route('/api/import-parser-config', methods=['POST'])
 def import_parser_config():
-    """导入解析配置"""
+    """导入解析配置（支持全覆盖与增量插入）"""
     try:
         factory = request.form.get('factory')
         system = request.form.get('system')
+        mode = (request.form.get('mode', 'overwrite') or 'overwrite').lower()
         file = request.files.get('file')
 
         if not factory or not system or not file:
@@ -900,9 +997,8 @@ def import_parser_config():
         if not file.filename:
             return jsonify({'success': False, 'error': '无效的文件'}), 400
 
-        logger.info(f"导入解析配置: {factory}/{system}, 文件: {file.filename}")
+        logger.info(f"导入解析配置: {factory}/{system}, 文件: {file.filename}, 模式: {mode}")
 
-        # 检查文件类型
         filename = file.filename.lower()
         raw_bytes = file.stream.read()
         if not raw_bytes:
@@ -933,7 +1029,10 @@ def import_parser_config():
             return jsonify({'success': False, 'error': '解析配置必须是 JSON/YAML 对象'}), 400
 
         try:
-            parser_config_service.save(factory, system, config)
+            if mode == 'merge':
+                parser_config_service.merge(factory, system, config)
+            else:
+                parser_config_service.save(factory, system, config)
         except ValueError as exc:
             return jsonify({'success': False, 'error': str(exc)}), 400
 
@@ -1016,6 +1115,39 @@ def open_in_browser():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/get-log-content', methods=['POST'])
+def get_log_content():
+    """获取日志文件内容"""
+    try:
+        data = request.json
+        file_path = data.get('file_path')
+
+        if not file_path:
+            return jsonify({'success': False, 'error': '缺少文件路径参数'}), 400
+
+        if not os.path.exists(file_path):
+            return jsonify({'success': False, 'error': '文件不存在'}), 404
+
+        logger.info(f"尝试获取文件内容: {file_path}")
+
+        # 读取文件内容，使用utf-8编码，同时处理可能的编码问题
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+
+        # 获取文件大小
+        file_size = os.path.getsize(file_path)
+
+        return jsonify({
+            'success': True,
+            'content': content,
+            'file_name': os.path.basename(file_path),
+            'file_size': file_size
+        })
+    except Exception as e:
+        logger.error(f"获取文件内容失败: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/open-in-editor', methods=['POST'])
 def open_in_editor():
     """在默认文本编辑器中打开文件"""
@@ -1092,53 +1224,7 @@ def open_reports_directory():
         logger.error(f"打开报告目录失败: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/web-mode', methods=['POST'])
-def api_web_mode():
-    data = request.get_json(silent=True) or {}
-    enable = bool(data.get('enable', True))
-    if enable:
-        try:
-            url = 'http://localhost:5000'
-            if platform.system() == 'Windows':
-                subprocess.call(['start', url], shell=True)
-            elif platform.system() == 'Darwin':
-                subprocess.call(['open', url])
-            else:
-                subprocess.call(['xdg-open', url])
-        except Exception:
-            pass
-        try:
-            import webview
-            if webview.windows:
-                win = webview.windows[0]
-                try:
-                    win.hide()
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        try:
-            api = globals().get('TRAY_API')
-            if api and callable(api.get('show')):
-                api['show']()
-        except Exception:
-            pass
-    return jsonify({'success': True})
-
-@app.route('/api/show-client', methods=['POST'])
-def api_show_client():
-    try:
-        import webview
-        if webview.windows:
-            win = webview.windows[0]
-            try:
-                win.show()
-            except Exception:
-                pass
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"/api/show-client 失败: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': '切回客户端失败'}), 500
+# 已移除客户端模式相关接口
 
 @app.route('/api/exit', methods=['POST'])
 def api_exit():
@@ -1203,6 +1289,108 @@ def delete_config_item():
 
     except Exception as e:
         logger.error(f"删除配置项失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# 报告管理API
+@app.route('/api/reports-list', methods=['GET'])
+def get_reports_list():
+    """获取报告列表"""
+    try:
+        # 使用报告数据存储服务获取报告列表
+        reports = analysis_service.get_report_list()
+        return jsonify({'success': True, 'reports': reports})
+    except Exception as e:
+        logger.error(f"获取报告列表失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/report-details/<report_id>', methods=['GET'])
+def get_report_details(report_id):
+    """获取报告详情"""
+    try:
+        # 检查报告ID是否有效，处理'undefined'或其他无效值
+        if not report_id or report_id.lower() == 'undefined' or report_id.lower() == 'null':
+            return jsonify({'success': False, 'error': '缺少或无效的报告ID'}), 400
+        
+        # 使用报告数据存储服务获取报告详情
+        report_data = analysis_service.get_report_details(report_id)
+        if not report_data:
+            return jsonify({'success': False, 'error': '报告不存在'}), 404
+        
+        return jsonify({'success': True, 'report_data': report_data})
+    except Exception as e:
+        logger.error(f"获取报告详情失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/delete-report', methods=['POST'])
+def delete_report():
+    """删除报告"""
+    try:
+        data = request.json
+        report_id = data.get('report_id')
+        
+        if not report_id:
+            return jsonify({'success': False, 'error': '缺少报告ID'}), 400
+        
+        # 使用报告数据存储服务删除报告
+        success = analysis_service.delete_report(report_id)
+        if success:
+            logger.info(f"删除报告: {report_id}")
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': '删除报告失败'}), 500
+    except Exception as e:
+        logger.error(f"删除报告失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/report/<report_id>', methods=['GET'])
+def view_report(report_id):
+    """报告查看页面"""
+    try:
+        return render_template('report_viewer.html', report_id=report_id)
+    except Exception as e:
+        logger.error(f"渲染报告查看页面失败: {str(e)}")
+        return jsonify({'success': False, 'error': '报告查看页面渲染失败'}), 500
+
+
+@app.route('/api/export-pure-report', methods=['POST'])
+def export_pure_report():
+    """导出纯净版报告"""
+    try:
+        data = request.json
+        report_id = data.get('report_id')
+        
+        # 检查报告ID是否有效，处理'undefined'或其他无效值
+        if not report_id or report_id.lower() == 'undefined' or report_id.lower() == 'null':
+            return jsonify({'success': False, 'error': '缺少或无效的报告ID'}), 400
+        
+        # 获取报告数据
+        report_data = analysis_service.get_report_details(report_id)
+        if not report_data:
+            return jsonify({'success': False, 'error': '报告不存在'}), 404
+        
+        # 渲染纯净版报告HTML
+        html_content = render_template('pure_report.html', report_data=report_data)
+        
+        # 设置响应头，返回HTML文件
+        import urllib.parse
+        # 对文件名进行URL编码，处理中文字符
+        report_name = report_data.get("name", "report")
+        encoded_filename = urllib.parse.quote(f"{report_name}_pure.html")
+        # 使用filename*参数支持UTF-8文件名
+        return Response(
+            html_content,
+            mimetype='text/html',
+            headers={
+                'Content-Disposition': f'attachment; filename="{encoded_filename}"; filename*=UTF-8''{encoded_filename}',
+                'Content-Type': 'text/html; charset=utf-8'
+            }
+        )
+    except Exception as e:
+        logger.error(f"导出纯净版报告失败: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # --- server.py 里：Templates API（使用 core/template_manager.TemplateManager） ---
@@ -1396,3 +1584,115 @@ if __name__ == '__main__':
     print(f"服务器配置文件: {SERVER_CONFIGS_FILE}")
     print(f"访问地址: http://127.0.0.1:5000")
     app.run(host='127.0.0.1', port=5000, debug=True)
+# 字段历史存储
+def _field_history_file(factory: str, system: str) -> str:
+    cfg_path = parser_config_manager.get_config_path(factory, system)
+    base_dirname = os.path.dirname(cfg_path)
+    base_filename = os.path.splitext(os.path.basename(cfg_path))[0]
+    return os.path.join(base_dirname, f"{base_filename}.fields_history.json")
+
+def _read_field_history(factory: str, system: str) -> List[Dict[str, Any]]:
+    path = _field_history_file(factory, system)
+    if os.path.exists(path):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                return data
+        except Exception:
+            pass
+    return []
+
+def _write_field_history(factory: str, system: str, items: List[Dict[str, Any]]) -> None:
+    path = _field_history_file(factory, system)
+    try:
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(items, f, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        logger.warning(f"写入字段历史失败: {exc}")
+
+def _add_field_history(factory: str, system: str, name: str, start: int, length: Any, escapes: Dict[str, Any] = None):
+    items = _read_field_history(factory, system)
+    key = f"{name}|{start}|{length if length is not None else -1}"
+    now = datetime.utcnow().isoformat() + 'Z'
+    found = False
+    for it in items:
+        it_key = f"{it.get('name','')}|{int(it.get('start',0))}|{int(it.get('length',-1))}"
+        if it_key == key:
+            it['usageCount'] = int(it.get('usageCount', 0)) + 1
+            it['lastUsed'] = now
+            if escapes and isinstance(escapes, dict):
+                # 合并Escapes但不覆盖已有键
+                it.setdefault('escapes', {})
+                for k, v in escapes.items():
+                    if k not in it['escapes']:
+                        it['escapes'][k] = v
+            found = True
+            break
+    if not found:
+        items.append({
+            'name': name,
+            'start': int(start),
+            'length': int(length if length is not None else -1),
+            'usageCount': 1,
+            'lastUsed': now,
+            'escapes': escapes or {}
+        })
+    _write_field_history(factory, system, items)
+@app.route('/api/parser-field-history', methods=['GET'])
+def get_parser_field_history():
+    try:
+        factory = request.args.get('factory')
+        system = request.args.get('system')
+        if not factory or not system:
+            return jsonify({'success': False, 'error': '缺少厂区或系统参数'}), 400
+
+        cfg = parser_config_manager.load_config(factory, system) or {}
+        agg_map: Dict[str, Dict[str, Any]] = {}
+
+        # 先聚合当前配置
+        for mt, mt_obj in (cfg.items() if isinstance(cfg, dict) else []):
+            versions = (mt_obj or {}).get('Versions') or {}
+            for ver, ver_obj in versions.items():
+                fields = (ver_obj or {}).get('Fields') or {}
+                for name, f in fields.items():
+                    start = int((f or {}).get('Start', 0))
+                    length = (f or {}).get('Length')
+                    length_val = -1 if length is None else int(length)
+                    key = f"{name}|{start}|{length_val}"
+                    esc = (f or {}).get('Escapes') or {}
+                    if key not in agg_map:
+                        agg_map[key] = {'name': name, 'start': start, 'length': length_val, 'usageCount': 1, 'escapes': esc}
+                    else:
+                        agg_map[key]['usageCount'] += 1
+
+        # 再合并历史文件
+        hist_items = _read_field_history(factory, system)
+        for it in hist_items:
+            name = it.get('name') or ''
+            start = int(it.get('start', 0))
+            length_val = int(it.get('length', -1))
+            key = f"{name}|{start}|{length_val}"
+            if key in agg_map:
+                agg_map[key]['usageCount'] += int(it.get('usageCount', 1))
+                # 合并Escapes但不覆盖已有键
+                if isinstance(it.get('escapes'), dict):
+                    agg_map[key].setdefault('escapes', {})
+                    for k, v in it['escapes'].items():
+                        if k not in agg_map[key]['escapes']:
+                            agg_map[key]['escapes'][k] = v
+            else:
+                agg_map[key] = {
+                    'name': name,
+                    'start': start,
+                    'length': length_val,
+                    'usageCount': int(it.get('usageCount', 1)),
+                    'escapes': it.get('escapes') or {}
+                }
+
+        items = list(agg_map.values())
+        items.sort(key=lambda x: (-int(x.get('usageCount', 0)), x.get('name', '')))
+        return jsonify({'success': True, 'items': items})
+    except Exception as e:
+        logger.error(f"获取历史字段失败: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500

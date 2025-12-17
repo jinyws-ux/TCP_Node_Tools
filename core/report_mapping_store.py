@@ -1,10 +1,11 @@
 """报告映射存储 - 统一管理日志到报告的对应关系。"""
 from __future__ import annotations
 
-import json
 import logging
 import os
 from typing import Dict, Iterable
+
+from .json_store import JsonStore
 
 
 class ReportMappingStore:
@@ -14,27 +15,14 @@ class ReportMappingStore:
         self.filepath = filepath
         self.logger = logging.getLogger(__name__)
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        self._store = JsonStore(filepath, default_factory=dict)
 
     def _load(self) -> Dict[str, str]:
-        if not os.path.exists(self.filepath):
-            return {}
-        try:
-            with open(self.filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    return data
-        except Exception as exc:  # pragma: no cover - 记录即可
-            self.logger.error("加载报告映射失败: %s", exc)
-        return {}
+        return self._store.load()
 
     def _save(self, mapping: Dict[str, str]) -> None:
-        try:
-            tmp_path = f"{self.filepath}.tmp"
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(mapping, f, ensure_ascii=False, indent=2)
-            os.replace(tmp_path, self.filepath)
-        except Exception as exc:  # pragma: no cover - 记录即可
-            self.logger.error("保存报告映射失败: %s", exc)
+        if not self._store.save(mapping):
+            self.logger.error("保存报告映射失败: %s", self.filepath)
 
     def save_many(self, log_paths: Iterable[str], report_path: str) -> None:
         mapping = self._load()

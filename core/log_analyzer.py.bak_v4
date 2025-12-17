@@ -3,14 +3,12 @@ import json
 import logging
 import os
 import re
-from datetime import datetime
 from time import perf_counter
 from typing import Any, Dict, List, Optional, Tuple
 
 from .log_parser import LogParser
 from .report_generator import ReportGenerator
 from .log_metadata_store import LogMetadataStore
-from .log_matcher import LogMatcher
 
 
 class LogAnalyzer:
@@ -40,7 +38,7 @@ class LogAnalyzer:
         """分析日志文件并生成报告，顺便记录阶段耗时。"""
         stats: List[Dict[str, Any]] = []
         opts = {
-            'generate_html': False,
+            'generate_html': True,
             'generate_original_log': True,
             'generate_sorted_log': True,
         }
@@ -62,11 +60,7 @@ class LogAnalyzer:
                 }
 
             parser = LogParser(parser_config)
-            matcher = LogMatcher(parser_config)
-            # 修改报告生成目录，使其与报告管理API的查询目录一致
-            report_output_dir = os.path.join(self.output_dir, 'html_logs')
-            os.makedirs(report_output_dir, exist_ok=True)
-            report_generator = ReportGenerator(report_output_dir)
+            report_generator = ReportGenerator(self.output_dir)
 
             stage_start = perf_counter()
             all_log_lines, _ = self._read_log_files(log_paths)
@@ -82,127 +76,19 @@ class LogAnalyzer:
                 self.logger.error("未解析到有效的日志条目")
                 return {'success': False, 'error': '未解析到有效的日志条目', 'stats': stats}
 
-            # 3. 匹配请求-回复
-            stage_start = perf_counter()
-            matched_entries = matcher.match_logs(log_entries)
-            self._record_stage(stats, '匹配请求-回复', stage_start, len(log_entries), len(matched_entries))
-
             timestamp = self._get_timestamp()
             html_report_path = ''
-            report_data = {}
-            
-            # 生成报告数据
             if opts.get('generate_html', True):
-                # 提取消息类型
-                all_msg_types = set()
-                for entry in log_entries:
-                    segments = entry.get('segments', [])
-                    for seg in segments:
-                        if seg.get('kind') == 'msg_type':
-                            mt = str(seg.get('text', '')).strip()
-                            if mt:
-                                all_msg_types.add(mt)
-                sorted_msg_types = sorted(list(all_msg_types))
-                
-                # 收集异常项
-                def collect_abnormal_items(entries):
-                    abnormal_items = []
-                    for index, item in enumerate(entries):
-                        # 处理Transaction对象
-                        if hasattr(item, 'requests') and hasattr(item, 'response'):
-                            # 检查请求中的异常
-                            for req in item.requests:
-                                if req.get('escape_hits'):
-                                    abnormal_items.append({
-                                        'anchor': f"ts_{index}",
-                                        'time': req.get('timestamp', ''),
-                                        'msgType': req.get('message_type', '未知报文'),
-                                        'fields': [],
-                                        'count': len(req['escape_hits']),
-                                        'details': [f"{hit.get('field', '')}={hit.get('value', '')}" for hit in req['escape_hits']]
-                                    })
-                            # 检查回复中的异常
-                            if item.response and item.response.get('escape_hits'):
-                                abnormal_items.append({
-                                    'anchor': f"ts_{index}",
-                                    'time': item.response.get('timestamp', ''),
-                                    'msgType': item.response.get('message_type', '未知回复'),
-                                    'fields': [],
-                                    'count': len(item.response['escape_hits']),
-                                    'details': [f"{hit.get('field', '')}={hit.get('value', '')}" for hit in item.response['escape_hits']]
-                                })
-                        # 处理普通字典对象
-                        elif isinstance(item, dict) and item.get('escape_hits'):
-                            abnormal_items.append({
-                                'anchor': f"ts_{index}",
-                                'time': item.get('timestamp', ''),
-                                'msgType': item.get('message_type', '未知报文'),
-                                'fields': [],
-                                'count': len(item['escape_hits']),
-                                'details': [f"{hit.get('field', '')}={hit.get('value', '')}" for hit in item['escape_hits']]
-                            })
-                    return abnormal_items
-                
-                abnormal_items = collect_abnormal_items(matched_entries)
-                
-                # 递归转换所有datetime对象为ISO字符串，以便JSON序列化
-                def convert_to_dict(obj):
-                    if isinstance(obj, dict):
-                        result = {}
-                        for key, value in obj.items():
-                            result[key] = convert_to_dict(value)
-                        return result
-                    elif isinstance(obj, (list, tuple)):
-                        return [convert_to_dict(item) for item in obj]
-                    elif hasattr(obj, 'requests') and hasattr(obj, 'response'):
-                        # Transaction对象
-                        return {
-                            'node_id': obj.node_id,
-                            'trans_id': obj.trans_id,
-                            'requests': convert_to_dict(obj.requests),
-                            'response': convert_to_dict(obj.response),
-                            'latest_request': convert_to_dict(obj.latest_request),
-                            'start_time': obj.start_time.isoformat() if hasattr(obj.start_time, 'isoformat') else obj.start_time,
-                            'message_type': obj.latest_request.get('message_type', '未知报文') if obj.latest_request else '未知报文'
-                        }
-                    elif hasattr(obj, 'isoformat'):
-                        # datetime对象
-                        return obj.isoformat()
-                    else:
-                        # 其他类型，直接返回
-                        return obj
-                
-                # 构建报告数据
-                report_data = {
-                    'name': self._generate_smart_filename(factory, system, log_paths, timestamp).replace('.html', ''),
-                    'factory': factory,
-                    'system': system,
-                    'nodes': [self._extract_node_from_path(p) for p in log_paths],
-                    'log_entries': [convert_to_dict(item) for item in matched_entries],
-                    'abnormal_items': abnormal_items,
-                    'message_types': sorted_msg_types,
-                    'stats': stats,
-                    'generated_at': datetime.now().isoformat()
-                }
-                
-                # 保存报告数据到文件系统（临时保存，后续会由AnalysisService保存到报告数据存储）
-                temp_report_data_path = os.path.join(self.output_dir, f'report_data_{timestamp}.json')
-                with open(temp_report_data_path, 'w', encoding='utf-8') as f:
-                    json.dump(report_data, f, ensure_ascii=False, indent=2)
-                
+                report_filename = self._generate_smart_filename(factory, system, log_paths, timestamp)
+                html_report_path = os.path.join(self.output_dir, report_filename)
                 stage_start = perf_counter()
-                # 仍然生成HTML报告，但作为可选功能
-                generate_html = opts.get('generate_html', True)
-                if generate_html:
-                    report_filename = self._generate_smart_filename(factory, system, log_paths, timestamp)
-                    html_report_path = os.path.join(self.output_dir, 'html_logs', report_filename)
-                    generated_html_path = report_generator.generate_html_logs(matched_entries, html_report_path, raw_log_entries=log_entries)
-                    self._record_stage(stats, '生成HTML报告', stage_start, len(matched_entries), 1)
+                generated_html_path = report_generator.generate_html_logs(log_entries, html_report_path)
+                self._record_stage(stats, '生成HTML报告', stage_start, len(log_entries), 1)
 
-                    if not generated_html_path or not os.path.exists(generated_html_path):
-                        self.logger.error("HTML报告生成失败")
-                        return {'success': False, 'error': 'HTML报告生成失败', 'stats': stats}
-                    html_report_path = generated_html_path
+                if not generated_html_path or not os.path.exists(generated_html_path):
+                    self.logger.error("HTML报告生成失败")
+                    return {'success': False, 'error': 'HTML报告生成失败', 'stats': stats}
+                html_report_path = generated_html_path
 
             original_log_path = ''
             sorted_log_path = ''
@@ -230,7 +116,6 @@ class LogAnalyzer:
                 'sorted_log': sorted_log_path,
                 'log_entries_count': len(log_entries),
                 'stats': stats,
-                'report_data': report_data  # 添加报告数据到返回值中
             }
 
         except Exception as e:

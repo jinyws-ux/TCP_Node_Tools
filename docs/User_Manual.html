@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>日志分析系统用户使用手顺书（使用者版）</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", Arial, sans-serif; line-height: 1.7; color: #1f2937; margin: 0; padding: 24px; background: #f7f9fc; }
+    main { max-width: 900px; margin: 0 auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px 28px; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+    h1 { font-size: 1.8rem; margin: 0 0 10px; color: #111827; }
+    h2 { font-size: 1.2rem; margin: 22px 0 8px; color: #111827; }
+    p { margin: 8px 0; }
+    ul { margin: 6px 0 8px 22px; }
+    li { margin: 4px 0; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; background: #f3f4f6; padding: 1px 6px; border-radius: 4px; }
+    .hr { height: 1px; background: #e5e7eb; margin: 16px 0; }
+    .small { color: #6b7280; font-size: 0.9rem; }
+    .section { margin-bottom: 18px; }
+    .tip { background: #f0f9ff; border: 1px solid #bae6fd; color: #0c4a6e; padding: 8px 10px; border-radius: 6px; }
+    @media print { body { padding:0; background:#fff; } main { box-shadow:none; border-color:#ddd; } }
+  </style>
+  </head>
+<body>
+  <main>
+    <h1>日志分析系统用户使用手顺书（使用者版）</h1>
+    <p class="small">面向非开发人员，说明如何启动、切换模式、配置服务器、下载与分析日志，以及解析配置工作台的日常使用。</p>
+    <div class="hr"></div>
+
+    <div class="section">
+      <h2>概览</h2>
+      <ul>
+        <li>用途：在服务器上检索与下载日志，使用预设的解析配置生成报告与文本日志。</li>
+        <li>模块：服务器配置、下载、分析、解析配置。</li>
+        <li>模式：客户端模式与网页模式（<code>http://localhost:5000</code>）。</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>快速开始</h2>
+      <ul>
+        <li>解压并复制整个 <code>dist/LogTool/</code> 文件夹到本机（如 <code>D:\Tools\LogTool\</code>）。</li>
+        <li>双击 <code>D:\Tools\LogTool\LogTool.exe</code> 启动客户端模式。</li>
+        <li>首次启动会自动准备本地目录（下载与报告）。路径与解析配置由管理员预设，无需用户修改。</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>运行模式</h2>
+      <ul>
+        <li>切换到网页模式：客户端右上角点击“网页模式” → 弹窗确认 → 打开浏览器并隐藏客户端窗口。</li>
+        <li>网页模式右上角“切回客户端模式” → 弹窗确认 → 恢复客户端窗口并关闭当前浏览器页。</li>
+        <li>网页模式右上角“退出后台” → 弹窗确认 → 停止服务并关闭当前浏览器页。</li>
+      </ul>
+      <p class="tip">提示：部分浏览器会阻止脚本自动关闭标签页，如出现提示可手动关闭该页签。</p>
+    </div>
+
+    <div class="section">
+      <h2>服务器配置页</h2>
+      <ul>
+        <li>新增：点击“新增配置”，填写厂区、系统、主机名、用户名、密码、别名 → 保存。</li>
+        <li>编辑/删除：在配置卡片上点击“编辑”“删除”。删除后该配置不再出现在下载页选择中。</li>
+        <li>搜索：顶部搜索框按别名/主机过滤；列表固定高度、内部滚动。</li>
+        <li>说明：服务器项通常由管理员维护；使用者可根据权限新增或编辑。</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>下载页</h2>
+      <ul>
+        <li>选择厂区与系统。</li>
+        <li>节点：必填。可输入单个或多个（逗号分隔，如 <code>001,002,003</code>），或使用右侧区域模板。</li>
+        <li>搜索：选择实时或归档（归档支持日期范围），点击“搜索”显示日志列表。</li>
+        <li>下载：勾选 → 点击“下载”。完成后文件出现在“分析页”的已下载列表，并保存在本地目录。</li>
+      </ul>
+      <p class="tip">未填写节点会阻止搜索并提示错误；请至少填写一个节点或选择模板。</p>
+    </div>
+
+    <div class="section">
+      <h2>分析页</h2>
+      <ul>
+        <li>点击“刷新列表”，显示已下载日志（文件名、节点、时间、大小）。</li>
+        <li>多选与全选：支持“全选/部分选/未选”，必须至少选择一条。</li>
+        <li>选择解析配置：从下拉框选择对应厂区/系统的配置；未选择会阻止分析。</li>
+        <li>开始分析：勾选日志 → 点击“开始分析”。生成报告（HTML）、转换日志（<code>converted_*.log</code>）、排序日志（<code>sorted_*.log</code>）。</li>
+        <li>查看结果：点击“打开报告”在浏览器查看；点击“打开报告目录”在资源管理器查看文件。</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>解析配置页（工作台使用）</h2>
+      <ul>
+        <li>进入工作台：选择厂区与系统 → 点击“进入工作台”。</li>
+        <li>浏览结构：左侧树（报文类型 → 版本 → 字段 → 转义），中间编辑卡片，右侧 JSON 预览。</li>
+        <li>复制/粘贴：在卡片顶部点击“复制”，到目标层点击“粘贴”。粘贴成功后系统自动刷新。</li>
+        <li>添加项：点击“添加报文类型/版本/字段/转义”，弹窗居中，填写后确认即生效并刷新。</li>
+        <li>撤销：支持撤销最近一次变更（有限次记录）。</li>
+        <li>导入/导出（管理员用）：支持导入 JSON/YAML 与导出当前系统配置为 JSON。</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>常用操作速查</h2>
+      <ul>
+        <li>打开日志：在“分析页”列表点击“查看”，用默认编辑器打开。</li>
+        <li>删除日志：在“分析页”列表点击“删除”，同时移除对应元数据。</li>
+        <li>刷新解析配置：在“解析配置页”点击刷新，或配置变更后自动刷新。</li>
+        <li>报告目录：在“分析页”点击“打开报告目录”，直接查看输出文件。</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>附录（路径与配置简述）</h2>
+      <p>路径与解析配置由管理员统一设定，使用者无需修改。如需指向共享盘或调整目录结构，管理员会更新 <code>paths.json</code> 并通知使用者。</p>
+    </div>
+
+    <div class="hr"></div>
+    <p class="small">如遇使用问题，请记录操作步骤与页面提示，并联系管理员。</p>
+  </main>
+</body>
+</html>

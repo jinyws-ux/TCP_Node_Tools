@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <title>日志分析报告</title>
+    <meta charset="utf-8">
+    <script>
+        // 兼容 URLSearchParams (适配IE/旧浏览器)
+        if (!window.URLSearchParams) {
+            window.URLSearchParams = function(search) {
+                const params = {};
+                search = search || window.location.search.slice(1);
+                search.split('&').forEach(pair => {
+                    const [k, v] = pair.split('=').map(decodeURIComponent);
+                    if (k) params[k] = v || '';
+                });
+                this.get = (k) => params[k] || null;
+            };
+        }
+
+        // 报告数据将通过API动态加载
+        var reportData = null;
+        var selectedMsgTypes = new Set();
+        var reportId = null; // 全局报告ID变量
+        var API_BASE = function() {
+            try {
+                var params = new URLSearchParams(window.location.search || '');
+                var queryBase = (params.get('api_base') || '').trim();
+                if (queryBase) return queryBase.replace(/\/$/, '');
+            } catch (_) {}
+            // 始终使用当前页面的origin，确保指向服务器端
+            return window.location.origin;
+        }();
+
+        // 页面加载完成后初始化
+        window.addEventListener('DOMContentLoaded', function() {
+            // 从URL路径中获取报告ID
+            var pathParts = window.location.pathname.split('/').filter(function(item) {
+                return Boolean(item);
+            }); // 过滤空字符串
+            reportId = pathParts[pathParts.length - 1];
+            
+            // 如果URL路径中没有报告ID，尝试从URL查询参数获取
+            if (!reportId || reportId === '') {
+                var params = new URLSearchParams(window.location.search || '');
+                reportId = params.get('report_id') || params.get('id');
+            }
+            
+            // 确保reportId是有效的，不是undefined或null
+            if (!reportId || reportId === '' || reportId === 'undefined' || reportId === 'null') {
+                showError('缺少报告ID');
+                return;
+            }
+            
+            // 加载报告数据
+            loadReportData(reportId).then(function() {
+                // 初始化页面
+                initPage();
+            }).catch(function(error) {
+                showError('初始化页面失败: ' + error.message);
+            });
+        });
+
+        // 加载报告数据
+        async function loadReportData(reportIdParam) {
+            try {
+                const response = await fetch(`${API_BASE}/api/report-details/${encodeURIComponent(reportIdParam)}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || '加载报告数据失败');
+                }
+                reportData = data.report_data;
+                // 确保reportData有name属性
+                document.title = `${reportData?.name || '日志分析报告'} - 日志分析报告`;
+            } catch (error) {
+                showError(`加载报告数据失败: ${error.message}`);
+                throw error; // 重新抛出错误，让外层catch捕获
+            }
+        }
+
+        // 显示错误信息
+        function showError(message) {
+            var container = document.getElementById('log-container');
+            if (container) {
+                container.innerHTML = '<div style="padding: 20px; text-align: center; color: red;">' + message + '</div>';
+            }
+        }
+
+        // 初始化页面
+        function initPage() {
+            try {
+                if (!reportData) {
+                    showError('报告数据未加载成功');
+                    return;
+                }
+                
+                // 清空加载提示
+                document.getElementById('log-container').innerHTML = '';
+                
+                // 渲染异常导航
+                renderAbnormalNav();
+                
+                // 渲染日志内容
+                renderLogEntries();
+                
+                // 绑定事件
+                bindEvents();
+            } catch (error) {
+                showError('初始化页面失败: ' + error.message);
+            }
+        }
+
+        // 绑定事件
+        function bindEvents() {
+            try {
+                // 侧边栏切换
+                const sidebarHeader = document.querySelector('.sidebar-header');
+                if (sidebarHeader) {
+                    sidebarHeader.addEventListener('click', toggleSidebar);
+                }
+                
+                // 筛选按钮
+                const applyFilterBtn = document.getElementById('apply-filter-btn');
+                if (applyFilterBtn) {
+                    applyFilterBtn.addEventListener('click', applyFilter);
+                }
+                
+                // 重置按钮
+                const clearFilterBtn = document.getElementById('clear-filter-btn');
+                if (clearFilterBtn) {
+                    clearFilterBtn.addEventListener('click', clearFilter);
+                }
+                
+                // 排序按钮
+                const sortAscBtn = document.getElementById('sort-asc-btn');
+                const sortDescBtn = document.getElementById('sort-desc-btn');
+                if (sortAscBtn) {
+                    sortAscBtn.addEventListener('click', () => sortLogs('asc'));
+                }
+                if (sortDescBtn) {
+                    sortDescBtn.addEventListener('click', () => sortLogs('desc'));
+                }
+                
+                // 导出按钮
+                const exportBtn = document.getElementById('export-btn');
+                if (exportBtn) {
+                    exportBtn.addEventListener('click', exportPureReport);
+                }
+                
+                // 搜索框Enter键事件
+                const filterInput = document.getElementById('filterInput');
+                if (filterInput) {
+                    filterInput.addEventListener('keydown', (event) => {
+                        if (event.key === 'Enter') {
+                            applyFilter();
+                        }
+                    });
+                }
+                
+                // 消息类型输入
+                const msgTypeInput = document.getElementById('msgTypeInput');
+                const msgTypeDropdown = document.getElementById('msgTypeDropdown');
+                if (msgTypeInput && msgTypeDropdown) {
+                    msgTypeInput.addEventListener('focus', () => {
+                        renderDropdown(msgTypeInput.value);
+                        msgTypeDropdown.style.display = 'block';
+                    });
+                    msgTypeInput.addEventListener('input', (e) => {
+                        renderDropdown(e.target.value);
+                        msgTypeDropdown.style.display = 'block';
+                    });
+                    document.addEventListener('click', (e) => {
+                        if (!e.target.closest('.msg-type-container')) {
+                            msgTypeDropdown.style.display = 'none';
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('绑定事件失败:', error);
+            }
+        }
+
+        // 渲染异常导航
+        function renderAbnormalNav() {
+            try {
+                if (!reportData) return;
+                
+                const list = document.getElementById('sidebarContent');
+                const badge = document.getElementById('sidebarBadge');
+                // 空值保护：确保abnormal_items是数组
+                const abnormalItems = Array.isArray(reportData.abnormal_items) ? reportData.abnormal_items : [];
+                
+                // 设置徽章
+                const count = abnormalItems.length;
+                if (badge) {
+                    badge.textContent = count;
+                    badge.classList.toggle('zero', count === 0); // 简化class操作
+                }
+                
+                // 渲染列表
+                if (!list) return;
+                
+                if (count === 0) {
+                    list.innerHTML = '<div class="ab-empty">🎉 无异常报错</div>';
+                    return;
+                }
+                
+                let html = '';
+                for (const item of abnormalItems) {
+                    if (item) {
+                        const detailsHtml = Array.isArray(item.details) ? item.details.map(detail => `<div class="ab-detail-row">${detail}</div>`).join('') : '';
+                        html += `
+                            <div class="abnormal-item" data-anchor="${item.anchor || ''}">
+                                <span class="ab-time">${item.time || ''}</span>
+                                <div style="font-weight:600; font-size:13px; margin-bottom:4px;">${item.msgType || '未知报文'}</div>
+                                ${detailsHtml}
+                            </div>
+                        `;
+                    }
+                }
+                list.innerHTML = html;
+                
+                // 绑定点击事件
+                const abnormalItemsList = list.querySelectorAll('.abnormal-item');
+                abnormalItemsList.forEach(item => {
+                    item.addEventListener('click', () => {
+                        const anchor = item.getAttribute('data-anchor');
+                        scrollToLog(anchor);
+                    });
+                });
+            } catch (error) {
+                console.error('渲染异常导航失败:', error);
+            }
+        }
+
+        // 渲染日志条目
+        function renderLogEntries() {
+            try {
+                if (!reportData) return;
+                
+                const container = document.getElementById('log-container');
+                if (!container) return;
+                
+                const logEntries = Array.isArray(reportData.log_entries) ? reportData.log_entries : [];
+                let html = '';
+                
+                for (let index = 0; index < logEntries.length; index++) {
+                    const item = logEntries[index];
+                    if (item) {
+                        html += renderLogEntry(item, index);
+                    }
+                }
+                
+                container.innerHTML = html;
+            } catch (error) {
+                console.error('渲染日志条目失败:', error);
+            }
+        }
+
+        // 渲染单个日志条目
+        function renderLogEntry(entry, index) {
+            try {
+                if (!entry) return '';
+                
+                const segments = entry.segments || [];
+                const isTransaction = entry.requests && entry.response;
+                let mainEntry = entry;
+                let retryCount = 0;
+                let hasResponse = false;
+                
+                if (isTransaction && Array.isArray(entry.requests)) {
+                    mainEntry = entry.latest_request || entry;
+                    retryCount = entry.requests.length - 1;
+                    hasResponse = entry.response !== null && entry.response !== undefined;
+                }
+                
+                const logId = `log_${index}`;
+                const transGroupId = isTransaction ? `trans_${index}` : '';
+                const transAttr = isTransaction ? `data-trans-group="${transGroupId}" onmouseover="highlightTransaction('${transGroupId}')" onmouseout="clearHighlight()"` : '';
+                
+                // 渲染日志条目内容
+                const lineHtml = renderLineContent(mainEntry);
+                
+                let html = `
+                    <div class="timestamp" id="ts_${index}" data-log-id="${logId}" data-timestamp="${entry.timestamp || 0}" ${transAttr}>
+                        ${lineHtml}
+                    </div>
+                `;
+                
+                // 渲染重试行
+                if (isTransaction && Array.isArray(entry.requests) && retryCount > 0) {
+                    html += `<div id="retries_${logId}" style="display:none; margin-left: 20px; border-left: 2px solid #e5e7eb; padding-left: 8px;">`;
+                    for (const req of entry.requests.slice(0, -1)) {
+                        if (req) {
+                            const reqHtml = renderLineContent(req);
+                            html += `
+                                <div class="timestamp" style="border:none; padding: 2px 0;">
+                                    <span style="color:#9ca3af; margin-right:8px; font-size:12px;">├─ 重试</span>
+                                    ${reqHtml}
+                                </div>
+                            `;
+                        }
+                    }
+                    html += `</div>`;
+                }
+                
+                // 渲染回复行
+                if (isTransaction && hasResponse && entry.response) {
+                    const respHtml = renderLineContent(entry.response);
+                    html += `
+                        <div class="timestamp" id="ts_${index}_resp" data-timestamp="${entry.timestamp || 0}" ${transAttr} style="border-top:none; margin-top:-1px;">
+                            <div class="resp-container">
+                                <span class="tree-connector">└──</span>
+                                <span class="badge-resp">回复</span>
+                                ${respHtml}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                return html;
+            } catch (error) {
+                console.error('渲染单个日志条目失败:', error);
+                return '';
+            }
+        }
+
+        // 渲染日志行内容
+        function renderLineContent(entry) {
+            try {
+                if (!entry) return '';
+                
+                const segments = entry.segments || [];
+                const blockMap = {'ts': '', 'dir': '', 'node': '', 'msg_type': '', 'ver': '', 'pid': ''};
+                
+                // 解析段信息
+                for (const s of segments) {
+                    if (s && typeof s === 'object') {
+                        const k = s.kind;
+                        if (k && k in blockMap && !blockMap[k]) {
+                            blockMap[k] = s.text || '';
+                        }
+                    }
+                }
+                
+                // 处理时间戳
+                let tsDisplay = blockMap['ts'] || '&nbsp;';
+                const tsVal = entry.timestamp;
+                if (tsVal) {
+                    if (typeof tsVal === 'string') {
+                        tsDisplay = tsVal;
+                    } else if (tsVal instanceof Date) {
+                        tsDisplay = tsVal.toISOString().replace('T', ' ').substring(0, 23);
+                    } else {
+                        tsDisplay = String(tsVal);
+                    }
+                }
+                
+                const parts = [];
+                const hasDir = Boolean(blockMap['dir']);
+                
+                // 渲染时间戳
+                parts.push(`<span class="seg-fixed seg-ts" style="background:#e3f2fd;color:#0c4a6e;">${tsDisplay}</span>`);
+                
+                if (hasDir) {
+                    const dlow = blockMap['dir'].toLowerCase();
+                    const bg_c = dlow.indexOf('output') !== -1 ? '#fee2e2' : '#d1fae5'; // Red/Green
+                    parts.push(`<span class="seg-fixed seg-dir" style="background:${bg_c};color:#1b1f23;">${blockMap['dir']}</span>`);
+                    parts.push(`<span class="seg-fixed seg-node-sm" style="background:#f3f4f6;">${blockMap['node']}</span>`);
+                    parts.push('<span style="color:#9ca3af;margin:0 2px;">:</span>');
+                    
+                    // 渲染消息类型
+                    let desc = '';
+                    for (const s of segments) {
+                        if (s && typeof s === 'object' && s.kind === 'msg_type') {
+                            desc = s.description || '';
+                            break;
+                        }
+                    }
+                    const titleAttr = desc ? `title="${htmlEscape(desc || '')}"` : '';
+                    parts.push(`<span class="seg-fixed seg-msgtype-sm seg-msgtype" ${titleAttr} style="background:#fff7ed;color:#9a3412;">${blockMap['msg_type']}</span>`);
+                } else {
+                    // 自由格式日志
+                    if (blockMap['pid']) {
+                        parts.push(`<span class="seg-fixed seg-pid" style="background:#fef3c7;">${blockMap['pid']}</span>`);
+                    }
+                    for (const s of segments) {
+                        if (s && typeof s === 'object' && !blockMap[s.kind] && s.kind !== 'field') {
+                            parts.push(`<span class="seg-free" style="background:#f3f4f6;">${s.text || ''}</span>`);
+                        }
+                    }
+                }
+                
+                // 渲染字段
+                if (hasDir) {
+                    const palette = ['#e0f2fe', '#f0fdf4', '#ffedd5', '#f3e8ff', '#ecfeff'];
+                    for (let idx = 0; idx < segments.length; idx++) {
+                        const s = segments[idx];
+                        if (s && typeof s === 'object' && s.kind === 'field') {
+                            const bg = palette[idx % palette.length];
+                            parts.push(`<span class="seg-free" style="background:${bg};color:#374151;">${s.text || ''}</span>`);
+                        }
+                    }
+                }
+                
+                // 添加异常标记
+                if (entry.escape_hits && Array.isArray(entry.escape_hits) && entry.escape_hits.length > 0) {
+                    parts.push(' <span class="tag-abnormal">异常报错</span>');
+                }
+                
+                return parts.join('');
+            } catch (error) {
+                console.error('渲染日志行内容失败:', error);
+                return '';
+            }
+        }
+
+        // HTML转义
+        function htmlEscape(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 切换侧边栏
+        function toggleSidebar() {
+            const sb = document.getElementById('sidebar');
+            sb.classList.toggle('expanded');
+        }
+
+        // 滚动到指定日志
+        function scrollToLog(anchor) {
+            const target = document.getElementById(anchor);
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                target.classList.remove('flash-highlight');
+                void target.offsetWidth; // trigger reflow
+                target.classList.add('flash-highlight');
+            }
+        }
+
+        // 应用筛选
+        function applyFilter() {
+            const qRaw = document.getElementById('filterInput').value.trim();
+            let re = null;
+            if (qRaw) {
+                try {
+                    re = new RegExp(qRaw.startsWith('/') ? qRaw.slice(1, qRaw.lastIndexOf('/')) : qRaw, 'i');
+                } catch (e) {}
+            }
+            
+            // 处理时间范围
+            const sStr = document.getElementById('startTime').value;
+            const eStr = document.getElementById('endTime').value;
+            const sTime = sStr ? new Date(sStr).getTime() : null;
+            const eTime = eStr ? new Date(eStr).getTime() : null;
+            
+            // 筛选日志
+            const rows = document.querySelectorAll('.timestamp');
+            rows.forEach(r => {
+                let show = true;
+                if (re && !re.test(r.textContent)) {
+                    show = false;
+                }
+                
+                const ts = parseInt(r.getAttribute('data-timestamp') || 0, 10) || 0;
+                if (show && ts > 0) {
+                    if (sTime && ts < sTime) show = false;
+                    if (eTime && ts > eTime) show = false;
+                }
+                
+                if (show && selectedMsgTypes.size > 0) {
+                    const mt = r.querySelector('.seg-msgtype');
+                    if (!mt || !selectedMsgTypes.has(mt.textContent.trim())) {
+                        show = false;
+                    }
+                }
+                
+                r.style.display = show ? 'flex' : 'none';
+            });
+        }
+
+        // 排序日志
+        function sortLogs(order = 'asc') {
+            const container = document.getElementById('log-container');
+            if (!container) return;
+            
+            const rows = Array.from(container.querySelectorAll('.timestamp')).filter(r => r.id.startsWith('ts_'));
+            rows.sort((a, b) => {
+                // 空值保护：转换失败时设为0
+                const ta = parseInt(a.getAttribute('data-timestamp') || '0', 10) || 0;
+                const tb = parseInt(b.getAttribute('data-timestamp') || '0', 10) || 0;
+                return order === 'desc' ? (tb - ta) : (ta - tb);
+            });
+            
+            const frag = document.createDocumentFragment();
+            for (const row of rows) {
+                frag.appendChild(row);
+                const logId = row.getAttribute('data-log-id');
+                const retries = logId ? document.getElementById(`retries_${logId}`) : null;
+                if (retries) frag.appendChild(retries);
+            }
+            
+            container.innerHTML = '';
+            container.appendChild(frag);
+        }
+
+        // 重置筛选
+        function clearFilter() {
+            document.getElementById('filterInput').value = '';
+            document.getElementById('startTime').value = '';
+            document.getElementById('endTime').value = '';
+            selectedMsgTypes.clear();
+            renderTags();
+            applyFilter();
+        }
+
+        // 渲染消息类型下拉列表
+        function renderDropdown(filterText) {
+            const dropdown = document.getElementById('msgTypeDropdown');
+            if (!dropdown || !reportData) return;
+            
+            dropdown.innerHTML = '';
+            const lower = (filterText || '').toLowerCase();
+            // 空值保护：确保message_types是数组
+            const allTypes = Array.isArray(reportData.message_types) ? reportData.message_types : [];
+            const filtered = allTypes.filter(mt => 
+                typeof mt === 'string' && 
+                mt.toLowerCase().includes(lower) && 
+                !selectedMsgTypes.has(mt)
+            );
+            
+            if (filtered.length === 0) {
+                dropdown.innerHTML = '<div class="msg-type-option" style="color:#9ca3af">无匹配项</div>';
+                return;
+            }
+            
+            for (const mt of filtered) {
+                const div = document.createElement('div');
+                div.className = 'msg-type-option';
+                div.textContent = mt;
+                div.onclick = () => addMsgType(mt);
+                dropdown.appendChild(div);
+            }
+        }
+
+        // 添加消息类型
+        function addMsgType(mt) {
+            selectedMsgTypes.add(mt);
+            renderTags();
+            document.getElementById('msgTypeInput').value = '';
+            document.getElementById('msgTypeDropdown').style.display = 'none';
+            applyFilter();
+        }
+
+        // 移除消息类型
+        function removeMsgType(mt) {
+            selectedMsgTypes.delete(mt);
+            renderTags();
+            applyFilter();
+        }
+
+        // 渲染消息类型标签
+        function renderTags() {
+            const container = document.getElementById('selectedTags');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            selectedMsgTypes.forEach(mt => {
+                const tag = document.createElement('div');
+                tag.className = 'tag';
+                
+                const mtText = document.createTextNode(mt);
+                tag.appendChild(mtText);
+                
+                const removeBtn = document.createElement('span');
+                removeBtn.className = 'tag-remove';
+                removeBtn.textContent = '×';
+                removeBtn.addEventListener('click', () => removeMsgType(mt));
+                tag.appendChild(removeBtn);
+                
+                container.appendChild(tag);
+            });
+        }
+
+        // 挂载到window，让内联事件能访问
+        window.highlightTransaction = function(gid) {
+            if (!gid) return;
+            document.querySelectorAll(`[data-trans-group="${gid}"]`).forEach(el => {
+                el.classList.add('trans-highlight');
+            });
+        }
+
+        // 挂载到window，让内联事件能访问
+        window.clearHighlight = function() {
+            document.querySelectorAll('.trans-highlight').forEach(el => {
+                el.classList.remove('trans-highlight');
+            });
+        }
+
+        // 导出纯净版报告
+        async function exportPureReport() {
+            if (!reportData || !reportId) {
+                showError('缺少报告数据或报告ID');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/export-pure-report`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ report_id: reportId })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                // 下载报告
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${reportData && reportData.name ? reportData.name : '报告'}_pure.html`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                showError(`导出报告失败: ${error.message}`);
+            }
+        }
+    </script>
+    <style>
+        /* Reset & Layout Base */
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            color: #1f2937;
+            height: 100vh; /* 全屏高度 */
+            overflow: hidden; /* 禁止 Body 滚动，由内部容器接管 */
+            display: flex;
+        }
+
+        /* =========================================
+           Sidebar Styles (性能优化版)
+           不再使用 fixed，改为 flex item，避免重排
+        ========================================= */
+        #sidebar {
+            width: 60px; /* 默认折叠宽度 */
+            height: 100%;
+            background: #ffffff;
+            border-right: 1px solid #e5e7eb;
+            display: flex;
+            flex-direction: column;
+            transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 50;
+            flex-shrink: 0; /* 防止被挤压 */
+            box-shadow: 2px 0 8px rgba(0,0,0,0.05);
+        }
+        
+        /* 展开状态类 */
+        #sidebar.expanded {
+            width: 320px;
+        }
+
+        /* Sidebar Header (Toggle Area) */
+        .sidebar-header {
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center; /* 折叠时居中 */
+            cursor: pointer;
+            border-bottom: 1px solid #f3f4f6;
+            background: #f9fafb;
+            transition: background 0.2s;
+        }
+        .sidebar-header:hover { background: #eff6ff; }
+        #sidebar.expanded .sidebar-header {
+            justify-content: flex-start;
+            padding-left: 16px;
+        }
+
+        /* Sidebar Icon & Text */
+        .icon-box {
+            position: relative;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+        .sb-title {
+            display: none;
+            font-weight: 700;
+            color: #111827;
+            margin-left: 8px;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+        #sidebar.expanded .sb-title { display: block; }
+
+        /* Badges */
+        .count-badge {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecdd3;
+            font-size: 10px;
+            font-weight: 700;
+            height: 18px;
+            min-width: 18px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+        }
+        .count-badge.zero { background: #f3f4f6; color: #9ca3af; border-color: #e5e7eb; }
+
+        /* Sidebar Content (Scrollable List) */
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            opacity: 0; /* 折叠时隐藏内容 */
+            pointer-events: none;
+            transition: opacity 0.1s;
+            padding: 12px;
+        }
+        #sidebar.expanded .sidebar-content {
+            opacity: 1;
+            pointer-events: auto;
+            transition: opacity 0.2s 0.1s; /* 延迟显示内容 */
+        }
+
+        /* Abnormal Item Card */
+        .abnormal-item {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-left: 4px solid #f43f5e; /* 红色左边框醒目 */
+            border-radius: 6px;
+            margin-bottom: 8px;
+            padding: 10px;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .abnormal-item:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            border-color: #fecdd3; /* hover border */
+        }
+        .ab-time { font-size: 12px; color: #6b7280; display: block; margin-bottom: 4px; }
+        .ab-detail-row {
+            font-size: 12px;
+            color: #374151;
+            font-family: 'JetBrains Mono', Consolas, monospace;
+            background: #fdf2f8;
+            padding: 2px 4px;
+            border-radius: 4px;
+            margin-top: 2px;
+            word-break: break-all;
+        }
+        .ab-empty { text-align: center; color: #9ca3af; padding: 20px; font-size: 13px; }
+
+        /* =========================================
+           Main Content Area
+        ========================================= */
+        #main-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0; /* Flexbox 溢出修复 */
+            height: 100%;
+        }
+
+        /* Filter Bar (Sticky inside main wrapper) */
+        #filterBar {
+            flex-shrink: 0;
+            background: #fff;
+            padding: 12px 20px;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: center;
+            z-index: 10;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+
+        /* Log Scroll Container (Independent Scroll) */
+        #log-container {
+            flex: 1;
+            overflow-y: auto; /* 只有这个区域滚动 */
+            padding: 20px;
+            scroll-behavior: smooth;
+        }
+
+        /* =========================================
+           Existing Log Styles (Preserved)
+        ========================================= */
+        .timestamp {
+            display: flex;
+            align-items: center;
+            padding: 6px 10px; /*稍微紧凑一点*/
+            margin: 2px 0;
+            background-color: #ffffff;
+            border-radius: 6px;
+            font-size: 14px;
+            border: 1px solid transparent; /* 预留边框防抖动 */
+            flex-wrap: wrap;
+            gap: 4px 8px;
+        }
+        .timestamp:hover { background-color: #f9fafb; border-color: #e5e7eb; }
+        
+        /* Segment Styles */
+        .seg-fixed {
+            display: inline-block;
+            box-sizing: border-box;
+            padding: 2px 6px;
+            margin: 0 2px;
+            border-radius: 4px;
+            vertical-align: middle;
+            font-family: 'JetBrains Mono', Consolas, monospace;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        .seg-ts {
+            width: 160px;
+            font-weight: 500;
+        }
+        .seg-dir {
+            width: 70px;
+            text-align: center;
+            font-weight: 600;
+        }
+        .seg-node-sm {
+            width: 50px;
+            text-align: center;
+        }
+        .seg-msgtype-sm {
+            width: 110px;
+            text-align: center;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        .seg-pid {
+            width: 130px;
+            text-align: center;
+        }
+        .seg-free {
+            display: inline-block;
+            padding: 2px 6px;
+            margin: 0 2px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', Consolas, monospace;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        
+        /* Filter Components */
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #f9fafb;
+            padding: 4px 10px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        .filter-label {
+            font-size: 11px;
+            color: #6b7280;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .crystal-input {
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            outline: none;
+            color: #1f2937;
+        }
+        
+        /* Buttons */
+        .btn {
+            padding: 6px 16px;
+            border-radius: 6px;
+            border: 1px solid #d1d5db;
+            background: white;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .btn-primary {
+            background: #2563eb;
+            color: white;
+            border: none;
+        }
+        .btn-primary:hover {
+            background: #1d4ed8;
+        }
+        .jump-btn {
+            height: 22px;
+            padding: 0 10px;
+            border-radius: 11px;
+            font-size: 11px;
+            background: #eff6ff;
+            color: #2563eb;
+            border: 1px solid #bfdbfe;
+            margin-left: auto;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+        }
+        .jump-btn:hover {
+            background: #2563eb;
+            color: white;
+        }
+
+        /* Dropdown & Tags */
+        .msg-type-container {
+            position: relative;
+        }
+        .msg-type-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 280px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+            z-index: 100;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+            padding: 4px;
+            border-radius: 8px;
+        }
+        .msg-type-option {
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 12px;
+            border-radius: 4px;
+        }
+        .msg-type-option:hover {
+            background: #eff6ff;
+            color: #1d4ed8;
+        }
+        .selected-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        .tag {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1e40af;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .tag-remove {
+            cursor: pointer;
+            opacity: 0.6;
+        }
+        .tag-remove:hover {
+            opacity: 1;
+        }
+
+        /* Highlighting */
+        .flash-highlight {
+            animation: flash-bg 2s ease-out forwards;
+            border: 1px solid #ef4444 !important;
+        }
+        @keyframes flash-bg {
+            0% { background: #fee2e2; }
+            100% { background: #fff; }
+        }
+        .trans-highlight {
+            background-color: #f0f9ff !important;
+            border-left: 3px solid #3b82f6 !important;
+        }
+
+        /* Tree Structure */
+        .badge-req {
+            padding: 1px 4px;
+            background: #dbeafe;
+            color: #1e40af;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-right: 6px;
+            border: 1px solid #bfdbfe;
+        }
+        .badge-resp {
+            padding: 1px 4px;
+            background: #dcfce7;
+            color: #166534;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-right: 6px;
+            border: 1px solid #bbf7d0;
+        }
+        .tree-connector {
+            width: 20px;
+            text-align: right;
+            color: #9ca3af;
+            margin-right: 4px;
+            font-family: monospace;
+            font-weight: bold;
+        }
+        .resp-container {
+            display: flex;
+            align-items: center;
+        }
+        .tag-abnormal {
+            background: #fef2f2;
+            border: 1px solid #fecdd3;
+            color: #b91c1c;
+            font-size: 11px;
+            padding: 0 4px;
+            border-radius: 3px;
+            margin-left: 4px;
+        }
+        
+        /* 导出按钮 */
+        .export-btn {
+            background: #10b981;
+            color: white;
+            border: none;
+        }
+        .export-btn:hover {
+            background: #059669;
+        }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <div class="sidebar-header" title="点击展开/收起">
+            <div class="icon-box">
+                ⚠️
+                <div id="sidebarBadge" class="count-badge">0</div>
+            </div>
+            <span class="sb-title">异常报错列表</span>
+        </div>
+        <div id="sidebarContent" class="sidebar-content">
+        </div>
+    </div>
+
+    <div id="main-wrapper">
+        <div id="filterBar">
+            <div class="filter-group" style="flex: 1; min-width: 200px;">
+                <span class="filter-label">🔍 搜索</span>
+                <input id="filterInput" class="crystal-input" style="width: 100%;" type="text" placeholder="正则支持..." />
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">🕒 时间</span>
+                <input id="startTime" class="crystal-input" type="datetime-local" step="1" style="width:170px;" lang="zh-CN" />
+                <span style="color:#ccc">-</span>
+                <input id="endTime" class="crystal-input" type="datetime-local" step="1" style="width:170px;" lang="zh-CN" />
+            </div>
+            <div class="filter-group msg-type-container">
+                <span class="filter-label">🏷️ 报文</span>
+                <div class="selected-tags" id="selectedTags"></div>
+                <input id="msgTypeInput" class="crystal-input" style="width: 100px;" placeholder="选择类型..." />
+                <div id="msgTypeDropdown" class="msg-type-dropdown"></div>
+            </div>
+            <div class="filter-group" style="gap: 6px;">
+                <span class="filter-label">排序</span>
+                <button class="btn" id="sort-asc-btn">时间正序</button>
+                <button class="btn" id="sort-desc-btn">时间逆序</button>
+            </div>
+            <button class="btn btn-primary" id="apply-filter-btn">筛选</button>
+            <button class="btn" id="clear-filter-btn">重置</button>
+            <button class="btn export-btn" id="export-btn">导出纯净版报告</button>
+        </div>
+
+        <div id="log-container">
+            <div style="text-align: center; padding: 40px; color: #6b7280;">
+                <h2>加载中...</h2>
+                <p>正在加载报告数据，请稍候...</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

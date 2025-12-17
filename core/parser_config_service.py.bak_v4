@@ -113,9 +113,6 @@ class ParserConfigService:
                         esc = f_cfg.get("Escapes")
                         if isinstance(esc, dict):
                             new_field["Escapes"] = deepcopy(esc)
-                        esc_tags = f_cfg.get("EscapeTags")
-                        if isinstance(esc_tags, dict):
-                            new_field["EscapeTags"] = deepcopy(esc_tags)
                         tgt_fields[field] = new_field
                         continue
                     tgt_field = tgt_fields[field]
@@ -125,12 +122,6 @@ class ParserConfigService:
                         for k, v in src_esc.items():
                             if k not in tgt_esc:
                                 tgt_esc[k] = v
-                    src_esc_tags = (f_cfg.get("EscapeTags") or {})
-                    if isinstance(src_esc_tags, dict) and src_esc_tags:
-                        tgt_esc_tags = tgt_field.setdefault("EscapeTags", {})
-                        for k, v in src_esc_tags.items():
-                            if k not in tgt_esc_tags:
-                                tgt_esc_tags[k] = deepcopy(v)
         return result
 
     def _build_config_tree(self, config: Dict[str, Any], factory: str, system: str) -> List[Dict[str, Any]]:
@@ -164,13 +155,11 @@ class ParserConfigService:
                         "version": version,
                         "start": field_config.get("Start", 0),
                         "length": field_config.get("Length", -1),
-                        "order": field_config.get("Order"),
                         "has_escapes": bool(field_config.get("Escapes")),
                         "children": [],
                     }
 
                     escapes = field_config.get("Escapes", {})
-                    escape_tags = field_config.get("EscapeTags", {})
                     for escape_key, escape_value in escapes.items():
                         escape_node = {
                             "type": "escape",
@@ -180,7 +169,6 @@ class ParserConfigService:
                             "parent": message_type,
                             "version": version,
                             "field": field,
-                            "tags": escape_tags.get(escape_key, {}),
                         }
                         field_node["children"].append(escape_node)
 

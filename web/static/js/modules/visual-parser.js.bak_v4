@@ -1,0 +1,560 @@
+/**
+ * Visual Parser Builder Module (V2)
+ * 
+ * Features:
+ * - Literal Mode (No space trimming except leading)
+ * - Hierarchy Generation (Type/Version roles)
+ * - Edit Mode Support
+ */
+
+import { showMessage } from '../core/messages.js';
+import { api } from '../core/api.js';
+
+export class VisualParserBuilder {
+    constructor() {
+        this.state = {
+            rawMessage: '',
+            segments: [], // { id, name, start, length, role: 'none'|'type'|'version', value: '' }
+            selection: { start: -1, end: -1 },
+            isDragging: false,
+            activeSegmentId: null,
+            mode: 'literal' // 'literal' only for now as per user request
+        };
+        this.container = null;
+        this.init();
+    }
+
+    init() {
+        this.injectHTML();
+        this.bindEvents();
+    }
+
+    injectHTML() {
+        const html = `
+        <div id="visual-parser-modal" class="visual-parser-modal">
+            <div class="visual-parser-container">
+                <div class="vp-header">
+                    <h3><i class="fas fa-magic"></i> 可视化解析构建器</h3>
+                    <button class="vp-close-btn" id="vp-close">&times;</button>
+                </div>
+                <div class="vp-body">
+                    <div class="vp-left-panel">
+                        <div class="vp-section">
+                            <div class="vp-section-title">1. 样本录入 (自动去除开头空格)</div>
+                            <textarea id="vp-raw-input" class="vp-raw-input" placeholder="请在此粘贴报文样本..."></textarea>
+                            <div class="vp-controls">
+                                <button id="vp-parse-btn" class="vp-btn vp-btn-primary"><i class="fas fa-sync"></i> 刷新视图</button>
+                                <span class="vp-radio-label" style="margin-left:auto; color:#6b7280;">
+                                    <i class="fas fa-info-circle"></i> 当前模式：原样模式 (空格/换行均占位)
+                                </span>
+                            </div>
+                        </div>
+                        <div class="vp-section" style="flex: 1; display: flex; flex-direction: column;">
+                            <div class="vp-section-title">2. 划词分段 (鼠标拖拽选择)</div>
+                            <div class="vp-viewer-container">
+                                <div id="vp-viewer" class="vp-viewer"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="vp-right-panel">
+                        <div class="vp-section-title">3. 字段属性配置</div>
+                        <div id="vp-editor-container">
+                            <div class="message-empty" style="padding: 20px 0;">请在左侧划词选择区域</div>
+                        </div>
+                        <div class="vp-section-title" style="margin-top: 20px;">已定义字段列表</div>
+                        <div id="vp-segment-list" class="vp-segment-list"></div>
+                    </div>
+                </div>
+                <div class="vp-footer">
+                    <button id="vp-clear-btn" class="vp-btn vp-btn-danger" style="margin-right:auto;">清空所有字段</button>
+                    <button id="vp-cancel-btn" class="vp-btn vp-btn-secondary">关闭</button>
+                    <button id="vp-save-continue-btn" class="vp-btn vp-btn-secondary" style="border:1px solid #00f3ff; color:#00f3ff;">保存并继续</button>
+                    <button id="vp-save-btn" class="vp-btn vp-btn-primary"><i class="fas fa-save"></i> 保存并关闭</button>
+                </div>
+            </div>
+        </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', html);
+        this.container = document.getElementById('visual-parser-modal');
+    }
+
+    bindEvents() {
+        // Modal controls
+        document.getElementById('vp-close').addEventListener('click', () => this.hide());
+        document.getElementById('vp-cancel-btn').addEventListener('click', () => this.hide());
+        document.getElementById('vp-clear-btn').addEventListener('click', () => this.clearSegments());
+
+        document.getElementById('vp-save-btn').addEventListener('click', () => this.saveConfig(true));
+        document.getElementById('vp-save-continue-btn').addEventListener('click', () => this.saveConfig(false));
+
+        // Input controls
+        document.getElementById('vp-parse-btn').addEventListener('click', () => this.parseRawInput());
+
+        // Viewer interaction
+        const viewer = document.getElementById('vp-viewer');
+        viewer.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+        viewer.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+        document.addEventListener('mouseup', () => this.handleMouseUp());
+    }
+
+    show(initialConfig = null) {
+        this.container.style.display = 'block';
+        this.reset();
+
+        // If editing existing config, we might want to pre-fill logic here
+        // For now, we focus on the "New" flow as primary
+    }
+
+    hide() {
+        this.container.style.display = 'none';
+        this.reset();
+    }
+
+    reset() {
+        this.state = {
+            rawMessage: '',
+            segments: [],
+            selection: { start: -1, end: -1 },
+            isDragging: false,
+            activeSegmentId: null
+        };
+        document.getElementById('vp-raw-input').value = '';
+        this.renderViewer();
+        this.renderEditor();
+        this.renderSegmentList();
+    }
+
+    parseRawInput() {
+        let input = document.getElementById('vp-raw-input').value;
+        if (!input) return;
+
+        // User Requirement: Only trim leading spaces
+        input = input.replace(/^\s+/, '');
+
+        // Update input box to reflect trimmed content
+        document.getElementById('vp-raw-input').value = input;
+
+        this.state.rawMessage = input;
+        // Keep existing segments if possible, but warn if out of bounds? 
+        // For simplicity, we might clear segments if content changes drastically, 
+        // but to support "Edit" flow, we should try to keep them.
+        // Here we keep them.
+
+        this.renderViewer();
+    }
+
+    renderViewer() {
+        const viewer = document.getElementById('vp-viewer');
+        viewer.innerHTML = '';
+
+        const chars = this.state.rawMessage.split('');
+        chars.forEach((char, idx) => {
+            const span = document.createElement('span');
+            span.className = 'vp-char';
+            span.textContent = char;
+            span.dataset.index = idx;
+
+            // Check if part of a segment
+            const segment = this.state.segments.find(s => idx >= s.start && idx < (s.start + s.length));
+            if (segment) {
+                span.classList.add('defined');
+                if (segment.id === this.state.activeSegmentId) {
+                    span.classList.add('active-edit');
+                }
+                span.title = `${segment.name} (${segment.start}, ${segment.length})`;
+                // Click to edit existing
+                span.onclick = (e) => {
+                    e.stopPropagation();
+                    this.activateSegment(segment.id);
+                };
+            }
+
+            // Handle Newlines
+            if (char === '\n') {
+                span.classList.add('newline');
+                // span.textContent = '↵'; // Removed per user request
+            }
+
+            viewer.appendChild(span);
+        });
+    }
+
+    handleMouseDown(e) {
+        if (!e.target.classList.contains('vp-char')) return;
+        // If clicking an existing segment, logic is handled by onclick above
+        // But if we want to allow re-selection or new selection:
+
+        this.state.isDragging = true;
+        const index = parseInt(e.target.dataset.index);
+        this.state.selection.start = index;
+        this.state.selection.end = index;
+        this.updateSelectionVisuals();
+
+        // Deactivate current segment editing when starting new selection
+        this.state.activeSegmentId = null;
+        this.renderEditor();
+        this.renderViewer(); // refresh active state
+    }
+
+    handleMouseMove(e) {
+        if (!this.state.isDragging) return;
+        if (!e.target.classList.contains('vp-char')) return;
+        const index = parseInt(e.target.dataset.index);
+        this.state.selection.end = index;
+        this.updateSelectionVisuals();
+    }
+
+    handleMouseUp() {
+        if (!this.state.isDragging) return;
+        this.state.isDragging = false;
+
+        const start = Math.min(this.state.selection.start, this.state.selection.end);
+        const end = Math.max(this.state.selection.start, this.state.selection.end);
+        const length = end - start + 1;
+
+        if (length > 0) {
+            // Check overlap
+            const overlap = this.state.segments.some(s =>
+                (start >= s.start && start < s.start + s.length) ||
+                (end >= s.start && end < s.start + s.length) ||
+                (start <= s.start && end >= s.start + s.length)
+            );
+
+            if (overlap) {
+                showMessage('warning', '选区与已有字段重叠，请重新选择');
+            } else {
+                this.addSegment(start, length);
+            }
+        }
+
+        this.state.selection = { start: -1, end: -1 };
+        this.updateSelectionVisuals();
+    }
+
+    updateSelectionVisuals() {
+        const start = Math.min(this.state.selection.start, this.state.selection.end);
+        const end = Math.max(this.state.selection.start, this.state.selection.end);
+
+        const chars = document.querySelectorAll('.vp-char');
+        chars.forEach((el, idx) => {
+            if (this.state.selection.start !== -1 && idx >= start && idx <= end) {
+                el.classList.add('selected');
+            } else {
+                el.classList.remove('selected');
+            }
+        });
+    }
+
+    addSegment(start, length) {
+        const id = Date.now().toString();
+        // Extract value
+        const value = this.state.rawMessage.substr(start, length);
+
+        const newSegment = {
+            id,
+            name: `Field_${this.state.segments.length + 1}`,
+            start,
+            length,
+            role: 'none', // none, type, version
+            value
+        };
+
+        this.state.segments.push(newSegment);
+        this.activateSegment(id);
+        this.renderViewer();
+        this.renderSegmentList();
+    }
+
+    activateSegment(id) {
+        this.state.activeSegmentId = id;
+        this.renderEditor();
+        this.renderViewer(); // Update active highlight
+        this.renderSegmentList(); // Update active card
+    }
+
+    removeSegment(id) {
+        const idx = this.state.segments.findIndex(s => s.id === id);
+        if (idx !== -1) {
+            this.state.segments.splice(idx, 1);
+            if (this.state.activeSegmentId === id) {
+                this.state.activeSegmentId = null;
+                this.renderEditor();
+            }
+            this.renderViewer();
+            this.renderSegmentList();
+        }
+    }
+
+    renderEditor() {
+        const container = document.getElementById('vp-editor-container');
+        if (!this.state.activeSegmentId) {
+            container.innerHTML = '<div class="message-empty" style="padding: 20px 0;">请在左侧划词选择区域或点击已有字段</div>';
+            return;
+        }
+
+        const segment = this.state.segments.find(s => s.id === this.state.activeSegmentId);
+        if (!segment) return;
+
+        container.innerHTML = `
+            <div class="vp-segment-card active" style="border:none; padding:0;">
+                ${segment.role !== 'version' ? `
+                <div class="vp-form-group">
+                    <label>字段名称</label>
+                    <input type="text" class="vp-form-control" id="edit-seg-name" value="${segment.name}">
+                </div>
+                ` : ''}
+                <div class="vp-form-group">
+                    <label>字段内容预览</label>
+                    <input type="text" class="vp-form-control" value="${segment.value}" disabled style="opacity:0.7">
+                </div>
+                <div class="vp-form-group">
+                    <label>特殊身份标记 (用于生成层级)</label>
+                    <div style="display:flex; gap:10px; margin-top:5px;">
+                        <label class="vp-radio-label">
+                            <input type="radio" name="seg-role" value="none" ${segment.role === 'none' ? 'checked' : ''}> 普通字段
+                        </label>
+                        <label class="vp-radio-label">
+                            <input type="radio" name="seg-role" value="type" ${segment.role === 'type' ? 'checked' : ''}> 报文类型
+                        </label>
+                        <label class="vp-radio-label">
+                            <input type="radio" name="seg-role" value="version" ${segment.role === 'version' ? 'checked' : ''}> 版本号
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Type Description Input (Only for Type) -->
+                <div class="vp-form-group" id="group-type-desc" style="display: ${segment.role === 'type' ? 'block' : 'none'};">
+                    <label>报文类型描述 (Description)</label>
+                    <input type="text" class="vp-form-control" id="edit-seg-desc" value="${segment.description || ''}" placeholder="例如：登录请求">
+                </div>
+
+                <!-- Escapes Input (Only for Normal Fields) - Visual Editor -->
+                <div class="vp-form-group" id="group-escapes" style="display: ${segment.role === 'none' ? 'block' : 'none'};">
+                    <label>转义映射</label>
+                    <div id="escape-list" style="margin-top:8px;"></div>
+                    <button type="button" class="vp-btn vp-btn-secondary" id="btn-add-escape" style="margin-top:8px; padding:4px 12px;">+ 添加转义</button>
+                </div>
+
+                <div style="margin-top:15px; text-align:right;">
+                    <button class="vp-btn vp-btn-danger" id="btn-delete-seg">删除此字段</button>
+                </div>
+            </div>
+        `;
+
+        // Bind inputs
+        if (segment.role !== 'version') {
+            document.getElementById('edit-seg-name').addEventListener('input', (e) => {
+                segment.name = e.target.value;
+                this.renderSegmentList();
+            });
+        }
+
+        if (segment.role === 'type') {
+            document.getElementById('edit-seg-desc').addEventListener('input', (e) => {
+                segment.description = e.target.value;
+            });
+        }
+
+        // Render escape list if normal field
+        if (segment.role === 'none') {
+            this.renderEscapeList(segment);
+            document.getElementById('btn-add-escape').addEventListener('click', () => {
+                if (!segment.escapes) segment.escapes = {};
+                const key = prompt('输入转义的原始值（Key）:');
+                if (key && key.trim()) {
+                    const value = prompt('输入转义后的显示值（Value）:');
+                    if (value !== null) {
+                        segment.escapes[key.trim()] = value.trim();
+                        this.renderEscapeList(segment);
+                    }
+                }
+            });
+        }
+
+        document.querySelectorAll('input[name="seg-role"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                segment.role = e.target.value;
+                this.renderEditor(); // Re-render entire editor when role changes
+                this.renderSegmentList();
+            });
+        });
+
+        document.getElementById('btn-delete-seg').addEventListener('click', () => {
+            this.removeSegment(segment.id);
+        });
+    }
+
+    renderEscapeList(segment) {
+        const container = document.getElementById('escape-list');
+        if (!container) return;
+
+        container.innerHTML = '';
+        if (!segment.escapes || Object.keys(segment.escapes).length === 0) {
+            container.innerHTML = '<div style="color:#6b7280; font-size:12px; padding:8px 0;">暂无转义映射</div>';
+            return;
+        }
+
+        Object.entries(segment.escapes).forEach(([key, value]) => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex; gap:8px; margin-bottom:6px; align-items:center;';
+            row.innerHTML = `
+                <input type="text" class="vp-form-control" value="${key}" disabled style="flex:1; opacity:0.8; font-size:12px;">
+                <span style="color:#6b7280;">=></span>
+                <input type="text" class="vp-form-control" value="${value}" disabled style="flex:1; opacity:0.8; font-size:12px;">
+                <button class="vp-btn vp-btn-danger" style="padding:2px 6px; font-size:11px;">删除</button>
+            `;
+            container.appendChild(row);
+
+            // Bind delete button
+            row.querySelector('button').addEventListener('click', () => {
+                delete segment.escapes[key];
+                this.renderEscapeList(segment);
+            });
+        });
+    }
+
+    renderSegmentList() {
+        const list = document.getElementById('vp-segment-list');
+        list.innerHTML = '';
+
+        // Sort by start position
+        const sorted = [...this.state.segments].sort((a, b) => a.start - b.start);
+
+        sorted.forEach(seg => {
+            const isActive = seg.id === this.state.activeSegmentId;
+            const div = document.createElement('div');
+            div.className = `vp-segment-card ${isActive ? 'active' : ''}`;
+            div.onclick = () => this.activateSegment(seg.id);
+
+            let roleBadge = '';
+            if (seg.role === 'type') roleBadge = '<span class="vp-role-badge type">TYPE</span>';
+            if (seg.role === 'version') roleBadge = '<span class="vp-role-badge version">VER</span>';
+
+            div.innerHTML = `
+                <div class="vp-segment-header">
+                    <span style="font-weight:bold; color:#e8eef7;">${seg.name}</span>
+                    ${roleBadge}
+                </div>
+                <div class="vp-segment-range">
+                    Start: ${seg.start} | Len: ${seg.length} | Val: "${seg.value}"
+                </div>
+            `;
+            list.appendChild(div);
+        });
+    }
+
+    async saveConfig(closeAfterSave = true) {
+        // 1. Validation
+        const typeSeg = this.state.segments.find(s => s.role === 'type');
+        const verSeg = this.state.segments.find(s => s.role === 'version');
+
+        if (!typeSeg) {
+            showMessage('error', '必须指定一个字段为"报文类型"');
+            return;
+        }
+
+        const factory = document.getElementById('parser-factory-select').value;
+        const system = document.getElementById('parser-system-select').value;
+
+        if (!factory || !system) {
+            showMessage('error', '请先在主界面选择厂区和系统');
+            return;
+        }
+
+        // 2. Extract keys and description
+        const typeKey = typeSeg.value;
+        const verKey = verSeg ? verSeg.value : 'Default';
+        const typeDesc = typeSeg.description || typeKey;
+
+        // 3. Fetch existing config to merge
+        let fullConfig = {};
+        try {
+            fullConfig = await api.fetchParserConfig(factory, system);
+        } catch (err) {
+            // New config, start fresh
+            fullConfig = {};
+        }
+
+        // 4. Check for duplicates
+        if (fullConfig[typeKey] && fullConfig[typeKey].Versions && fullConfig[typeKey].Versions[verKey]) {
+            showMessage('error', `配置已存在！\n报文类型: ${typeKey}\n版本号: ${verKey}\n请使用不同的版本号或删除现有配置后再试。`);
+            return;
+        }
+
+        // 5. Build correct hierarchy structure
+        if (!fullConfig[typeKey]) {
+            fullConfig[typeKey] = {
+                Description: typeDesc,
+                Versions: {}
+            };
+        } else {
+            // Update description if provided
+            if (typeSeg.description) {
+                fullConfig[typeKey].Description = typeSeg.description;
+            }
+        }
+
+        if (!fullConfig[typeKey].Versions) fullConfig[typeKey].Versions = {};
+
+        // 6. Build Fields object from normal segments ONLY (exclude type/version)
+        const fields = {};
+        this.state.segments
+            .filter(seg => seg.role === 'none') // Only include normal fields
+            .forEach(seg => {
+                fields[seg.name] = {
+                    Start: seg.start,
+                    Length: seg.length,
+                    Escapes: seg.escapes || {}
+                };
+            });
+
+        fullConfig[typeKey].Versions[verKey] = { Fields: fields };
+
+        // 7. Save
+        try {
+            await api.saveParserConfig({ factory, system, config: fullConfig });
+            showMessage('success', `配置已保存！\n报文类型: ${typeKey}\n版本号: ${verKey}`);
+
+            // Force refresh the parser config tree
+            this.refreshParserConfigUI();
+
+            if (closeAfterSave) {
+                this.hide();
+            } else {
+                this.clearSegments();
+            }
+        } catch (err) {
+            showMessage('error', `保存失败: ${err.message}`);
+        }
+    }
+
+    refreshParserConfigUI() {
+        // Dynamically import parser-config module and call refreshTree
+        import('./parser-config.js').then(module => {
+            if (module.refreshTree && typeof module.refreshTree === 'function') {
+                module.refreshTree();
+            }
+        }).catch(err => {
+            console.warn('Could not refresh parser config:', err);
+        });
+    }
+
+    hide() {
+        this.container.style.display = 'none';
+        this.reset();
+        // Refresh UI when closing
+        this.refreshParserConfigUI();
+    }
+
+    clearSegments() {
+        this.state.segments = [];
+        this.state.activeSegmentId = null;
+        this.state.selection = { start: -1, end: -1 };
+        this.renderViewer();
+        this.renderEditor();
+        this.renderSegmentList();
+    }
+}
+
+// Auto-init
+window.visualParserBuilder = new VisualParserBuilder();

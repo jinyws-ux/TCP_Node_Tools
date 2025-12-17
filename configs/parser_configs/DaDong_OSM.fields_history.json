@@ -1,0 +1,26 @@
+[
+  {
+    "name": "新字段",
+    "start": 0,
+    "length": -1,
+    "usageCount": 1,
+    "lastUsed": "2025-12-08T15:08:56.657900Z",
+    "escapes": {}
+  },
+  {
+    "name": "IGEF",
+    "start": 50,
+    "length": 10,
+    "usageCount": 1,
+    "lastUsed": "2025-12-08T15:09:13.383674Z",
+    "escapes": {}
+  },
+  {
+    "name": "IGEF",
+    "start": 125,
+    "length": 10,
+    "usageCount": 1,
+    "lastUsed": "2025-12-08T15:11:15.102696Z",
+    "escapes": {}
+  }
+]

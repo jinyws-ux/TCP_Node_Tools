@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <title>{{ report_data.name }} - 纯净版日志分析报告</title>
+    <meta charset="utf-8">
+    <style>
+        /* Reset & Layout Base */
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            color: #1f2937;
+            line-height: 1.6;
+        }
+
+        /* Report Container */
+        .report-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+            overflow: hidden;
+        }
+
+        /* Header */
+        .report-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .report-title {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .report-meta {
+            margin-top: 10px;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .report-meta span {
+            margin: 0 15px;
+        }
+
+        /* Content Sections */
+        .report-section {
+            padding: 20px 30px;
+        }
+        .section-title {
+            margin: 0 0 20px 0;
+            font-size: 20px;
+            font-weight: 600;
+            color: #1f2937;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 10px;
+        }
+
+        /* Abnormal Items */
+        .abnormal-section {
+            background: #fef2f2;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .abnormal-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        .abnormal-item {
+            background: white;
+            border: 1px solid #fecdd3;
+            border-left: 4px solid #f43f5e;
+            border-radius: 8px;
+            padding: 15px;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .abnormal-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+        .abnormal-item-time {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 8px;
+        }
+        .abnormal-item-msg {
+            font-weight: 600;
+            color: #b91c1c;
+            margin-bottom: 8px;
+        }
+        .abnormal-item-details {
+            font-size: 12px;
+            color: #374151;
+            font-family: 'JetBrains Mono', Consolas, monospace;
+            background: #fdf2f8;
+            padding: 8px;
+            border-radius: 4px;
+        }
+
+        /* Log Entries */
+        .log-section {
+            background: #ffffff;
+        }
+        .log-container {
+            max-height: 800px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+        }
+        .log-entry {
+            display: flex;
+            align-items: center;
+            padding: 10px 15px;
+            margin: 0;
+            background: white;
+            border-bottom: 1px solid #f3f4f6;
+            font-size: 14px;
+            flex-wrap: wrap;
+            gap: 6px 10px;
+        }
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        .log-entry:hover {
+            background: #f9fafb;
+        }
+
+        /* Log Segments */
+        .seg-fixed {
+            display: inline-block;
+            box-sizing: border-box;
+            padding: 4px 8px;
+            border-radius: 6px;
+            vertical-align: middle;
+            font-family: 'JetBrains Mono', Consolas, monospace;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        .seg-ts {
+            width: 180px;
+            background: #e3f2fd;
+            color: #0c4a6e;
+        }
+        .seg-dir {
+            width: 80px;
+            text-align: center;
+        }
+        .seg-dir.output {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .seg-dir.input {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .seg-node-sm {
+            width: 60px;
+            text-align: center;
+            background: #f3f4f6;
+        }
+        .seg-msgtype-sm {
+            width: 120px;
+            text-align: center;
+            background: #fff7ed;
+            color: #9a3412;
+        }
+        .seg-free {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', Consolas, monospace;
+            font-size: 13px;
+            white-space: nowrap;
+            background: #f3f4f6;
+        }
+
+        /* Transaction Groups */
+        .transaction-group {
+            margin-bottom: 15px;
+        }
+        .transaction-main {
+            position: relative;
+            padding-left: 20px;
+        }
+        .transaction-main::before {
+            content: '📦';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        .transaction-retry {
+            margin-left: 40px;
+            border-left: 2px solid #e5e7eb;
+            padding-left: 20px;
+            margin-top: 5px;
+        }
+        .transaction-retry::before {
+            content: '🔄';
+            margin-right: 8px;
+            color: #6b7280;
+        }
+        .transaction-response {
+            margin-left: 40px;
+            border-left: 2px solid #d1fae5;
+            padding-left: 20px;
+            margin-top: 5px;
+        }
+        .transaction-response::before {
+            content: '📨';
+            margin-right: 8px;
+            color: #065f46;
+        }
+
+        /* Footer */
+        .report-footer {
+            background: #f9fafb;
+            padding: 20px 30px;
+            text-align: center;
+            border-top: 1px solid #e5e7eb;
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        /* Tag for abnormal entries */
+        .tag-abnormal {
+            background: #fef2f2;
+            border: 1px solid #fecdd3;
+            color: #b91c1c;
+            font-size: 11px;
+            padding: 0 6px;
+            border-radius: 3px;
+            margin-left: 8px;
+        }
+
+        /* Utility Classes */
+        .mb-0 { margin-bottom: 0; }
+        .mt-0 { margin-top: 0; }
+        .text-center { text-align: center; }
+        .text-sm { font-size: 12px; }
+        .font-mono { font-family: 'JetBrains Mono', Consolas, monospace; }
+        .bg-green { background: #d1fae5; color: #065f46; }
+        .bg-red { background: #fee2e2; color: #991b1b; }
+        .bg-blue { background: #dbeafe; color: #1e40af; }
+        .bg-yellow { background: #fef3c7; color: #92400e; }
+        .bg-purple { background: #f3e8ff; color: #7c3aed; }
+    </style>
+</head>
+<body>
+    <div class="report-container">
+        <!-- Header -->
+        <div class="report-header">
+            <h1 class="report-title">{{ report_data.name }}</h1>
+            <div class="report-meta">
+                <span>🏭 厂区: {{ report_data.factory }}</span>
+                <span>🔧 系统: {{ report_data.system }}</span>
+                <span>📅 生成时间: {{ report_data.generated_at }}</span>
+                <span>📝 日志条目数: {{ report_data.log_entries|length }}</span>
+                <span>⚠️ 异常项数: {{ report_data.abnormal_items|length }}</span>
+            </div>
+        </div>
+
+        <!-- Abnormal Items Section -->
+        {% if report_data.abnormal_items %}
+        <div class="report-section abnormal-section">
+            <h2 class="section-title">⚠️ 异常报错列表</h2>
+            <div class="abnormal-list">
+                {% for item in report_data.abnormal_items %}
+                <div class="abnormal-item">
+                    <div class="abnormal-item-time">{{ item.time }}</div>
+                    <div class="abnormal-item-msg">{{ item.msgType }}</div>
+                    <div class="abnormal-item-details">
+                        {% for detail in item.details %}
+                        {{ detail }}<br>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Log Entries Section -->
+        <div class="report-section log-section">
+            <h2 class="section-title">📋 日志条目</h2>
+            <div class="log-container">
+                {% for entry in report_data.log_entries %}
+                <div class="log-entry">
+                    {% for segment in entry.segments %}
+                        {% if segment.kind == 'ts' %}
+                            <span class="seg-fixed seg-ts">{{ segment.text }}</span>
+                        {% elif segment.kind == 'dir' %}
+                            <span class="seg-fixed seg-dir {{ segment.text|lower }}">{{ segment.text }}</span>
+                        {% elif segment.kind == 'node' %}
+                            <span class="seg-fixed seg-node-sm">{{ segment.text }}</span>
+                        {% elif segment.kind == 'msg_type' %}
+                            <span class="seg-fixed seg-msgtype-sm">{{ segment.text }}</span>
+                        {% elif segment.kind == 'ver' %}
+                            <span class="seg-fixed bg-yellow">{{ segment.text }}</span>
+                        {% elif segment.kind == 'pid' %}
+                            <span class="seg-fixed bg-blue">{{ segment.text }}</span>
+                        {% elif segment.kind == 'field' %}
+                            <span class="seg-free">{{ segment.text }}</span>
+                        {% else %}
+                            <span class="seg-free">{{ segment.text }}</span>
+                        {% endif %}
+                    {% endfor %}
+                    {% if entry.escape_hits %}
+                        <span class="tag-abnormal">异常</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="report-footer">
+            <p class="mb-0">纯净版日志分析报告 - TCP LogTool</p>
+            <p class="mt-0 text-sm">本报告由系统自动生成，包含原始日志数据和异常分析结果。</p>
+        </div>
+    </div>
+</body>
+</html>

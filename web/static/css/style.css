@@ -65,6 +65,20 @@ body::before {
   padding: 32px 24px 72px;
 }
 
+/* ======================= Tab Content ======================= */
+.tab-content {
+    display: none;
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 28px;
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+}
+
+.tab-content.active {
+    display: block;
+}
+
 /* ======================= Header ======================= */
 header {
   background: var(--card);
@@ -653,9 +667,18 @@ button:focus-visible {
   border: 1px solid var(--line);
 }
 
-#btn-download-logs {
-  margin-top: 22px;
-  width: 100%;
+.action-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.action-row .btn {
+  flex: 0 0 auto;
+}
+.action-row #btn-download-logs {
+  margin-top: 0;
+  width: auto;
 }
 
 table {
@@ -738,6 +761,24 @@ tbody tr:hover {
   font-size: 0.78rem;
   background: rgba(251, 191, 36, 0.12);
   color: #a16207;
+}
+
+.escape-tag-badge{
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  width: fit-content;
+}
+
+.escape-tag-badge.abnormal {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
 }
 
 /* ======================= Hero + Panel Enhancements ======================= */
@@ -980,7 +1021,7 @@ tbody tr:hover {
 
 .server-config-group.expanded .factory-systems {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
 .config-list-section .config-list,
@@ -1836,14 +1877,13 @@ pre.json-code {
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(2px);
   display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
+  z-index: 9000;
 }
 
 .modal-content {
+  position: absolute;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
   width: 90%;
   max-width: 520px;
   background: rgba(255, 255, 255, 0.96);
@@ -1851,6 +1891,17 @@ pre.json-code {
   border: 1px solid rgba(15, 23, 42, 0.12);
   box-shadow: 0 25px 60px rgba(15, 23, 42, 0.25);
   overflow: hidden;
+}
+
+.modal-overlay .btn {
+  transition: none;
+}
+.modal-overlay .btn:hover {
+  transform: none;
+  box-shadow: none;
+}
+.modal-overlay .btn:active {
+  transform: none;
 }
 
 .modal-header,

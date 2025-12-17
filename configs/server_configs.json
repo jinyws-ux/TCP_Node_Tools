@@ -1,0 +1,30 @@
+[
+  {
+    "id": "1",
+    "factory": "DaDong",
+    "system": "OSM",
+    "server": {
+      "alias": "apipso71",
+      "hostname": "lpvshe0ipso13",
+      "username": "vifrk490",
+      "password": "OSM2024@linux",
+      "realtime_path": "/apipso71/km/log",
+      "archive_path": "/nfs/apipso71/ips_log_archive/apipso71/km_log"
+    },
+    "created_time": 1763999197.444874
+  },
+  {
+    "id": "2",
+    "factory": "TieXi",
+    "system": "OSM",
+    "server": {
+      "alias": "1",
+      "hostname": "1",
+      "username": "1",
+      "password": "OSM2024@linux",
+      "realtime_path": "/1/km/log",
+      "archive_path": "/nfs/1/ips_log_archive/1/km_log"
+    },
+    "created_time": 1764003874.5333662
+  }
+]

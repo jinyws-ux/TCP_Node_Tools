@@ -1,0 +1,717 @@
+# core/report_generator.py
+import logging
+import os
+from datetime import datetime
+from typing import List, Dict, Any
+import html
+
+
+class ReportGenerator:
+    def __init__(self, output_dir: str):
+        self.output_dir = output_dir
+        self.logger = logging.getLogger(__name__)
+        os.makedirs(output_dir, exist_ok=True)
+
+    def _get_timestamp(self) -> str:
+        """获取当前时间戳"""
+        return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    def generate_html_logs(self, log_entries: List[Dict[str, Any]], output_path: str) -> str:
+        """生成HTML格式的日志报告 - 修复参数问题"""
+        try:
+
+            # filename = os.path.basename(output_path)
+            # analysis_info = self._parse_filename_info(filename)
+
+            # 确保输出目录存在
+            output_dir = os.path.dirname(output_path)
+            os.makedirs(output_dir, exist_ok=True)
+
+            self.logger.info(f"生成HTML报告，输出路径: {output_path}，日志条目数: {len(log_entries)}")
+
+            # 收集所有出现的报文类型
+            all_msg_types = set()
+            for entry in log_entries:
+                for seg in entry.get('segments', []):
+                    if seg.get('kind') == 'msg_type':
+                        mt = seg.get('text', '').strip()
+                        if mt:
+                            all_msg_types.add(mt)
+            sorted_msg_types = sorted(list(all_msg_types))
+
+            # 使用流式写入提高大文件处理效率
+            with open(output_path, 'w', encoding='utf-8') as f:
+                # 写入HTML头部
+                f.write(f"""<!DOCTYPE html>
+            <html>
+            <head>
+                <title>日志分析报告</title>
+                <script>
+                    const ALL_MESSAGE_TYPES = {sorted_msg_types};
+                </script>
+                <style>
+                    body {{
+                        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                        margin: 20px;
+                        background-color: #f0f2f5;
+                        color: #1f2937;
+                    }}
+                    .timestamp {{
+                        display: flex;
+                        align-items: center;
+                        padding: 8px 12px;
+                        margin: 4px 0;
+                        background-color: #ffffff;
+                        border-radius: 8px;
+                        cursor: text;
+                        font-size: 14px;
+                        scroll-margin-top: 140px;
+                        transition: all 0.2s;
+                        border: 1px solid transparent;
+                        flex-wrap: wrap;
+                        gap: 4px 8px;
+                    }}
+                    .timestamp:hover {{
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                        border-color: #e5e7eb;
+                    }}
+                    .seg-fixed {{ display: inline-block; box-sizing: border-box; padding: 2px 8px; margin: 0 2px; border-radius: 6px; vertical-align: middle; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 13px; white-space: nowrap; }}
+                    .seg-ts {{ width: 170px; font-weight: 500; }}
+                    .seg-dir {{ width: 80px; text-align: center; font-weight: 600; }}
+                    .seg-node {{ width: 60px; text-align: center; }}
+                    .seg-msgtype {{ width: 160px; text-align: center; font-weight: 600; letter-spacing: 0.5px; }}
+                    .seg-ver {{ width: 60px; text-align: center; opacity: 0.8; }}
+                    .seg-node-sm {{ width: 50px; text-align: center; }}
+                    .seg-msgtype-sm {{ width: 120px; text-align: center; }}
+                    .seg-ver-sm {{ width: 50px; text-align: center; }}
+                    .seg-pid {{ width: 140px; text-align: center; }}
+                    .seg-free {{ display: inline-block; padding: 2px 8px; margin: 0 2px; border-radius: 6px; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 13px; white-space: nowrap; }}
+                    
+                    .log-entry {{
+                        margin: 10px 0;
+                        padding: 16px;
+                        background-color: white;
+                        border-radius: 8px;
+                        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+                        scroll-margin-top: 140px;
+                        border: 1px solid #e5e7eb;
+                    }}
+                    .log-entry pre {{
+                        white-space: pre-wrap;
+                        word-wrap: break-word;
+                        font-family: 'JetBrains Mono', Consolas, monospace;
+                        font-size: 13px;
+                        line-height: 1.5;
+                        margin: 0;
+                        padding: 0;
+                        color: #374151;
+                    }}
+                    .back-link {{
+                        display: inline-block;
+                        margin-top: 8px;
+                        text-align: right;
+                        color: #3b82f6;
+                        text-decoration: none;
+                        font-size: 12px;
+                        font-weight: 500;
+                    }}
+                    .back-link:hover {{ text-decoration: underline; }}
+
+                    /* Filter Bar Styles */
+                    #filterBar {{
+                        position: sticky;
+                        top: 10px;
+                        background: rgba(255, 255, 255, 0.95);
+                        backdrop-filter: blur(12px);
+                        padding: 12px 20px;
+                        margin-bottom: 24px;
+                        border-radius: 16px;
+                        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 16px;
+                        align-items: center;
+                        z-index: 100;
+                        border: 1px solid rgba(255, 255, 255, 0.6);
+                    }}
+                    
+                    .filter-group {{
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                        background: #f9fafb;
+                        padding: 6px 12px;
+                        border-radius: 10px;
+                        border: 1px solid #e5e7eb;
+                        transition: all 0.2s;
+                    }}
+                    .filter-group:focus-within {{
+                        background: #fff;
+                        border-color: #bfdbfe;
+                        box-shadow: 0 0 0 3px rgba(191, 219, 254, 0.3);
+                    }}
+                    
+                    @keyframes flash-animation {{
+                        0% {{ background-color: #fee2e2; box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.6); transform: scale(1.01); z-index: 10; }}
+                        20% {{ background-color: #fee2e2; box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.6); transform: scale(1.01); z-index: 10; }}
+                        100% {{ background-color: #ffffff; box-shadow: none; transform: scale(1); z-index: 1; }}
+                    }}
+                    .flash-highlight {{
+                        animation: flash-animation 3s ease-out forwards;
+                        position: relative;
+                        border-color: #dc2626 !important;
+                    }}
+                    
+                    .filter-label {{
+                        font-size: 12px;
+                        color: #6b7280;
+                        font-weight: 600;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                    }}
+                    
+                    .crystal-input {{
+                        height: 32px;
+                        padding: 0 8px;
+                        border: none;
+                        background: transparent;
+                        font-size: 13px;
+                        outline: none;
+                        color: #1f2937;
+                        font-family: inherit;
+                    }}
+                    .crystal-input::placeholder {{ color: #9ca3af; }}
+                    
+                    /* Message Type Multi-select */
+                    .msg-type-container {{
+                        position: relative;
+                        min-width: 240px;
+                    }}
+                    
+                    .msg-type-dropdown {{
+                        position: absolute;
+                        top: calc(100% + 8px);
+                        left: 0;
+                        width: 300px;
+                        background: rgba(255, 255, 255, 0.98);
+                        backdrop-filter: blur(16px);
+                        border: 1px solid #e5e7eb;
+                        border-radius: 12px;
+                        max-height: 320px;
+                        overflow-y: auto;
+                        display: none;
+                        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+                        z-index: 50;
+                        padding: 6px;
+                    }}
+                    
+                    .msg-type-option {{
+                        padding: 8px 12px;
+                        cursor: pointer;
+                        font-size: 13px;
+                        color: #374151;
+                        border-radius: 6px;
+                        transition: all 0.15s;
+                    }}
+                    
+                    .msg-type-option:hover {{
+                        background: #eff6ff;
+                        color: #1d4ed8;
+                    }}
+                    
+                    .selected-tags {{
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 6px;
+                        max-width: 400px;
+                    }}
+                    
+                    .tag {{
+                        background: #eff6ff;
+                        border: 1px solid #bfdbfe;
+                        color: #1e40af;
+                        padding: 2px 8px;
+                        border-radius: 6px;
+                        font-size: 12px;
+                        font-weight: 500;
+                        display: flex;
+                        align-items: center;
+                        gap: 6px;
+                        transition: all 0.2s;
+                    }}
+                    .tag:hover {{ background: #dbeafe; }}
+                    
+                    .tag-remove {{
+                        cursor: pointer;
+                        font-size: 14px;
+                        opacity: 0.6;
+                        line-height: 1;
+                    }}
+                    .tag-remove:hover {{ opacity: 1; color: #1e3a8a; }}
+
+                    .btn {{ 
+                        height: 36px; 
+                        padding: 0 20px; 
+                        border: 1px solid rgba(209, 213, 219, 0.8); 
+                        border-radius: 8px; 
+                        background: white; 
+                        cursor: pointer; 
+                        font-size: 13px; 
+                        font-weight: 600; 
+                        transition: all 0.2s;
+                        color: #4b5563;
+                        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                    }}
+                    .btn:hover {{ 
+                        transform: translateY(-1px); 
+                        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); 
+                        color: #111827;
+                    }}
+                    .btn:active {{ transform: translateY(0); }}
+                    
+                    .btn-primary {{ 
+                        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); 
+                        border: none; 
+                        color: white; 
+                        box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
+                    }}
+                    .btn-primary:hover {{ 
+                        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); 
+                        color: white;
+                        box-shadow: 0 6px 8px -1px rgba(37, 99, 235, 0.3);
+                    }}
+                    
+                    .jump-btn {{ 
+                        height: 24px; 
+                        padding: 0 12px; 
+                        border-radius: 9999px; 
+                        font-size: 12px;
+                        background: #eff6ff;
+                        color: #2563eb;
+                        border: 1px solid #bfdbfe;
+                        margin-left: auto;
+                    }}
+                    .jump-btn:hover {{
+                        background: #2563eb;
+                        color: white;
+                        border-color: #2563eb;
+                    }}
+
+                    .divider {{ height: 1px; background: linear-gradient(to right, transparent, #e5e7eb, transparent); margin: 40px 0 32px; border: none; }}
+                    .filter-error {{ color: #ef4444; font-size: 12px; padding: 2px 8px; font-weight: 500; }}
+                    .gap {{ height: 80vh; }}
+                    
+
+                    
+                    /* Tooltip styles */
+                    .seg-msgtype {{ position: relative; cursor: help; }}
+                    .seg-msgtype:hover::after {{
+                        content: attr(data-title);
+                        position: absolute;
+                        bottom: 100%;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        background-color: rgba(17, 24, 39, 0.9);
+                        color: #fff;
+                        padding: 6px 12px;
+                        border-radius: 6px;
+                        font-size: 12px;
+                        white-space: nowrap;
+                        z-index: 20;
+                        pointer-events: none;
+                        margin-bottom: 8px;
+                        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+                        backdrop-filter: blur(4px);
+                        border: 1px solid rgba(255,255,255,0.1);
+                        font-weight: 500;
+                    }}
+                </style>
+                <script>
+                    let selectedMsgTypes = new Set();
+                    
+                    function init() {{
+                        // Initialize Message Type Dropdown
+                        const input = document.getElementById('msgTypeInput');
+                        const dropdown = document.getElementById('msgTypeDropdown');
+                        
+                        input.addEventListener('focus', () => {{
+                            renderDropdown(input.value);
+                            dropdown.style.display = 'block';
+                        }});
+                        
+                        input.addEventListener('input', (e) => {{
+                            renderDropdown(e.target.value);
+                            dropdown.style.display = 'block';
+                        }});
+                        
+                        document.addEventListener('click', (e) => {{
+                            if (!e.target.closest('.msg-type-container')) {{
+                                dropdown.style.display = 'none';
+                            }}
+                        }});
+                        
+                        // Listen for hash changes to trigger highlight
+                        window.addEventListener('hashchange', () => {{
+                            var id = (location.hash || '').replace('#','');
+                            flashTargetById(id);
+                        }});
+
+                        // Initial render for hash changes
+                        var id = (location.hash || '').replace('#','');
+                        flashTargetById(id);
+                    }}
+                    
+                    function renderDropdown(filterText) {{
+                        const dropdown = document.getElementById('msgTypeDropdown');
+                        dropdown.innerHTML = '';
+                        
+                        const lowerFilter = filterText.toLowerCase();
+                        const filtered = ALL_MESSAGE_TYPES.filter(mt => 
+                            mt.toLowerCase().includes(lowerFilter) && !selectedMsgTypes.has(mt)
+                        );
+                        
+                        if (filtered.length === 0) {{
+                            const div = document.createElement('div');
+                            div.className = 'msg-type-option';
+                            div.style.color = '#9ca3af';
+                            div.style.cursor = 'default';
+                            div.textContent = '无匹配项';
+                            dropdown.appendChild(div);
+                            return;
+                        }}
+                        
+                        filtered.forEach(mt => {{
+                            const div = document.createElement('div');
+                            div.className = 'msg-type-option';
+                            div.textContent = mt;
+                            div.onclick = () => addMsgType(mt);
+                            dropdown.appendChild(div);
+                        }});
+                    }}
+                    
+                    function addMsgType(mt) {{
+                        selectedMsgTypes.add(mt);
+                        renderTags();
+                        document.getElementById('msgTypeInput').value = '';
+                        document.getElementById('msgTypeDropdown').style.display = 'none';
+                        applyFilter();
+                    }}
+                    
+                    function removeMsgType(mt) {{
+                        selectedMsgTypes.delete(mt);
+                        renderTags();
+                        applyFilter();
+                    }}
+                    
+                    function renderTags() {{
+                        const container = document.getElementById('selectedTags');
+                        container.innerHTML = '';
+                        selectedMsgTypes.forEach(mt => {{
+                            const tag = document.createElement('div');
+                            tag.className = 'tag';
+                            tag.innerHTML = `
+                                ${{mt}}
+                                <span class="tag-remove" onclick="removeMsgType('${{mt}}')">×</span>
+                            `;
+                            container.appendChild(tag);
+                        }});
+                    }}
+
+                    function applyFilter() {{
+                        // 1. Text Filter
+                        var qRaw = document.getElementById('filterInput').value.trim();
+                        var errBox = document.getElementById('filterError');
+                        if (errBox) errBox.textContent = '';
+                        
+                        var re = null;
+                        if (qRaw) {{
+                            if (qRaw.startsWith('/') && qRaw.lastIndexOf('/') > 0) {{
+                                var last = qRaw.lastIndexOf('/');
+                                var body = qRaw.slice(1, last);
+                                var flags = qRaw.slice(last + 1) || 'i';
+                                try {{ re = new RegExp(body, flags); }} catch (e) {{ re = null; }}
+                            }} else {{
+                                try {{ re = new RegExp(qRaw, 'i'); }} catch (e) {{ re = null; }}
+                            }}
+                            if (!re && errBox) errBox.textContent = '正则表达式无效';
+                        }}
+                        
+                        // 2. Time Filter
+                        var startTimeStr = document.getElementById('startTime').value.trim();
+                        var endTimeStr = document.getElementById('endTime').value.trim();
+                        var startTime = startTimeStr ? parseTime(startTimeStr) : null;
+                        var endTime = endTimeStr ? parseTime(endTimeStr) : null;
+                        
+                        // 3. Message Type Filter
+                        // selectedMsgTypes Set is already up to date
+                        
+                        var rows = document.querySelectorAll('.timestamp');
+                        for (var i = 0; i < rows.length; i++) {{
+                            var r = rows[i];
+                            var id = r.getAttribute('data-id');
+                            var raw = document.getElementById(id);
+                            
+                            var show = true;
+                            
+                            // Check Text
+                            if (re) {{
+                                var text = (r.textContent || '');
+                                var pre = raw ? raw.querySelector('pre') : null;
+                                var rawText = pre ? (pre.textContent || '') : '';
+                                if (!re.test(text) && !re.test(rawText)) show = false;
+                            }}
+                            
+                            // Check Time
+                            if (show && (startTime || endTime)) {{
+                                var tsSpan = r.querySelector('.seg-ts');
+                                if (tsSpan) {{
+                                    var rowTime = parseTime(tsSpan.textContent.trim());
+                                    if (rowTime) {{
+                                        if (startTime && rowTime < startTime) show = false;
+                                        if (endTime && rowTime > endTime) show = false;
+                                    }}
+                                }}
+                            }}
+                            
+                            // Check Message Type
+                            if (show && selectedMsgTypes.size > 0) {{
+                                var mtSpan = r.querySelector('.seg-msgtype');
+                                if (!mtSpan) {{
+                                    // If no message type span, usually hide unless we want to show non-typed rows?
+                                    // Let's assume we hide if filter is active
+                                    show = false;
+                                }} else {{
+                                    var mt = mtSpan.textContent.trim();
+                                    if (!selectedMsgTypes.has(mt)) show = false;
+                                }}
+                            }}
+                            
+                            r.style.display = show ? '' : 'none';
+                            if (raw) raw.style.display = show ? '' : 'none';
+                        }}
+                    }}
+                    
+                    function parseTime(str) {{
+                        // Format: dd.mm.yy HH:MM:SS.mmm
+                        // Or just HH:MM:SS.mmm (assume today/current log date? No, simple comparison string might fail)
+                        // Let's try to parse standard format
+                        // If input is HH:MM:SS, we might need to be careful.
+                        // For simplicity, let's assume standard string comparison if format matches, 
+                        // or convert to Date if full date provided.
+                        // Given the log format "dd.mm.yy HH:MM:SS.mmm", string comparison works for same year/month.
+                        // But "01.01.25" < "31.12.24" is FALSE in string compare.
+                        // So we should convert to comparable number.
+                        
+                        // Try parsing "dd.mm.yy HH:MM:SS.mmm"
+                        var parts = str.split(' ');
+                        if (parts.length === 2) {{
+                            var dParts = parts[0].split('.');
+                            var tParts = parts[1].split(':');
+                            if (dParts.length === 3 && tParts.length >= 3) {{
+                                // 20yy-mm-ddTHH:MM:SS.mmm
+                                var yy = parseInt(dParts[2], 10) + 2000;
+                                var mm = parseInt(dParts[1], 10) - 1;
+                                var dd = parseInt(dParts[0], 10);
+                                var H = parseInt(tParts[0], 10);
+                                var M = parseInt(tParts[1], 10);
+                                var S = parseFloat(tParts[2]);
+                                var SS = Math.floor(S);
+                                var MS = Math.round((S - SS) * 1000);
+                                return new Date(yy, mm, dd, H, M, SS, MS).getTime();
+                            }}
+                        }}
+                        // If user inputs just HH:MM:SS, it's hard to compare with full date.
+                        // Let's assume user inputs full format for now, or we implement smarter parsing later.
+                        // Fallback: try Date.parse (unlikely to work with dd.mm.yy)
+                        return null;
+                    }}
+                    
+                    function clearFilter() {{
+                        document.getElementById('filterInput').value = '';
+                        document.getElementById('startTime').value = '';
+                        document.getElementById('endTime').value = '';
+                        selectedMsgTypes.clear();
+                        renderTags();
+                        applyFilter();
+                    }}
+                    
+                    function filterKey(e) {{ if (e.key === 'Enter') applyFilter(); }}
+                    
+                    function flashTargetById(id) {{
+                        if (!id) return;
+                        // Clear previous highlights
+                        var all = document.querySelectorAll('.flash-highlight');
+                        for(var i=0; i<all.length; i++) {{
+                            all[i].classList.remove('flash-highlight');
+                        }}
+                        
+                        var el = document.getElementById(id);
+                        if (!el) return;
+                        el.scrollIntoView({{behavior: 'smooth', block: 'center'}});
+                        void el.offsetWidth;
+                        el.classList.add('flash-highlight');
+                    }}
+                    
+                    function showContext(targetId) {{
+                        clearFilter();
+                        setTimeout(() => {{
+                            flashTargetById(targetId);
+                        }}, 50);
+                    }}
+
+                    window.onload = init;
+                </script>
+            </head>
+            <body>
+                <div id="filterBar">
+                    <div class="filter-group" style="flex: 1; min-width: 200px;">
+                        <span class="filter-label">内容搜索</span>
+                        <input id="filterInput" class="crystal-input" style="width: 100%;" type="text" placeholder="支持正则，如 (?=.*INPUT)(?=.*OKAY)" onkeydown="filterKey(event)" />
+                    </div>
+                    
+                    <div class="filter-group">
+                        <span class="filter-label">时间范围</span>
+                        <input id="startTime" class="crystal-input" style="width: 140px;" type="text" placeholder="dd.mm.yy HH:MM:SS" />
+                        <span style="color:#9ca3af">-</span>
+                        <input id="endTime" class="crystal-input" style="width: 140px;" type="text" placeholder="dd.mm.yy HH:MM:SS" />
+                    </div>
+                    
+                    <div class="filter-group msg-type-container">
+                        <span class="filter-label">报文类型</span>
+                        <div class="selected-tags" id="selectedTags"></div>
+                        <input id="msgTypeInput" class="crystal-input" style="width: 120px;" type="text" placeholder="选择或输入..." />
+                        <div id="msgTypeDropdown" class="msg-type-dropdown"></div>
+                    </div>
+                    
+                    <div style="display:flex; gap:8px; margin-left:auto;">
+                        <button class="btn btn-primary" onclick="applyFilter()">筛选</button>
+                        <button class="btn" onclick="clearFilter()">重置</button>
+                    </div>
+                    <span id="filterError" class="filter-error"></span>
+                </div>
+                
+                <div id="timestamps">\n""")
+
+                # 写入时间戳索引（模块化片段，仅影响可点击行）
+                for index, entry in enumerate(log_entries):
+                    log_id = f"log_{index}"
+                    segs = entry.get('segments') or []
+                    palette = ['#e3f2fd', '#e8f5e9', '#fff3e0', '#ede7f6', '#e0f7fa']
+                    parts = []
+                    block_map = {'ts': '', 'dir': '', 'node': '', 'msg_type': '', 'ver': '', 'pid': '', 'pid_msg1': '', 'pid_msg2': ''}
+                    for s in segs:
+                        k = s.get('kind')
+                        if k in block_map and not block_map[k]:
+                            block_map[k] = s.get('text', '')
+                    nbsp = '&nbsp;'
+                    has_dir = bool(block_map['dir'])
+                    if has_dir:
+                        ts_text = block_map['ts'] or nbsp
+                        dir_text = block_map['dir'] or nbsp
+                        node_text = block_map['node'] or nbsp
+                        msgtype_text = block_map['msg_type'] or nbsp
+                        ver_text = block_map['ver'] or nbsp
+                        parts.append(f'<span class="seg-fixed seg-ts" style="background:#e3f2fd;color:#1b1f23;">{ts_text}</span>')
+                        dlow = str(block_map['dir']).lower()
+                        if dlow.startswith('input'):
+                            parts.append(f'<span class="seg-fixed seg-dir" style="background:#d1fae5;color:#1b1f23;">{dir_text}</span>')
+                        elif dlow.startswith('output'):
+                            parts.append(f'<span class="seg-fixed seg-dir" style="background:#fee2e2;color:#1b1f23;">{dir_text}</span>')
+                        else:
+                            parts.append(f'<span class="seg-fixed seg-dir" style="background:#ede7f6;color:#1b1f23;">{dir_text}</span>')
+                        parts.append(f'<span class="seg-fixed seg-node-sm" style="background:#e8f5e9;color:#1b1f23;">{node_text}</span>')
+                        parts.append(':')
+                        
+                        # Find description for tooltip
+                        msg_desc = ""
+                        for s in segs:
+                            if s.get('kind') == 'msg_type':
+                                msg_desc = s.get('description', '')
+                                break
+                        
+                        if msg_desc:
+                            parts.append(f'<span class="seg-fixed seg-msgtype-sm seg-msgtype" data-title="{html.escape(msg_desc)}" style="background:#fff3e0;color:#1b1f23;">{msgtype_text}</span>')
+                        else:
+                            parts.append(f'<span class="seg-fixed seg-msgtype-sm" style="background:#fff3e0;color:#1b1f23;">{msgtype_text}</span>')
+                            
+                        parts.append(f'<span class="seg-fixed seg-ver-sm" style="background:#e0f7fa;color:#1b1f23;">{ver_text}</span>')
+                    else:
+                        ts_text = block_map['ts'] or nbsp
+                        pid_text = (block_map['pid'] or '').strip()
+                        node_text = (block_map['node'] or '').strip()
+                        parts.append(f'<span class="seg-fixed seg-ts" style="background:#e3f2fd;color:#1b1f23;">{ts_text}</span>')
+                        if pid_text:
+                            parts.append(f'<span class="seg-fixed seg-pid" style="background:#fde68a;color:#1b1f23;">{pid_text}</span>')
+                        if node_text:
+                            parts.append(f'<span class="seg-fixed seg-node-sm" style="background:#e8f5e9;color:#1b1f23;">{node_text}</span>')
+                        msg1 = (block_map['pid_msg1'] or '').strip()
+                        msg2 = (block_map['pid_msg2'] or '').strip()
+                        if msg1:
+                            parts.append(f'<span class="seg-free" style="background:#e3f2fd;color:#1b1f23;">{msg1}</span>')
+                        if msg2:
+                            parts.append(f'<span class="seg-free" style="background:#e8f5e9;color:#1b1f23;">{msg2}</span>')
+                    if has_dir:
+                        for s in segs:
+                            if s.get('kind') != 'field':
+                                continue
+                            idx = int(s.get('idx', 0))
+                            bg = palette[idx % len(palette)]
+                            text = s.get('text', '')
+                            parts.append(f'<span class="seg-free" style="background:{bg};color:#1b1f23;">{text}</span>')
+                    line_html = ''.join(parts)
+                    f.write(f"""        <div class="timestamp" id="ts_{index}" data-id="{log_id}">
+                                <span class="index-number">{index + 1}.</span>
+                                {line_html}
+                                <a class="btn btn-primary jump-btn" href="#{log_id}" title="查看原文">查看原文</a>
+                            </div>\n""")
+
+                f.write("    </div>\n")
+                f.write("    <hr class=\"divider\">\n")
+                f.write("    <div class=\"gap\"></div>\n")
+
+                # 写入日志条目（保持原始日志原文，不做模块化）
+                for index, entry in enumerate(log_entries):
+                    log_id = f"log_{index}"
+                    raw_text = f"{entry['original_line1']}\n{entry['original_line2']}"
+                    f.write(f"""    <div class="log-entry" id="{log_id}">
+        <pre>{html.escape(raw_text)}</pre>
+        <div style="text-align: right; margin-top: 5px;">
+            <button class="btn btn-secondary btn-sm" onclick="showContext('ts_{index}')" style="margin-right: 10px;">查看上下文</button>
+            <a href="#ts_{index}" class="back-link">返回索引</a>
+        </div>
+    </div>\n""")
+
+                # 写入HTML尾部
+                f.write("</body>\n</html>")
+
+            self.logger.info(f"HTML报告生成完成: {output_path}")
+            return output_path
+
+        except Exception as e:
+            self.logger.error(f"生成HTML报告失败: {str(e)}")
+            return None
+
+    def _parse_filename_info(self, filename: str) -> Dict[str, str]:
+        """从文件名中解析分析信息"""
+        try:
+            # 移除扩展名
+            name_without_ext = os.path.splitext(filename)[0]
+            parts = name_without_ext.split('_')
+
+            info = {
+                'title': filename.replace('_', ' '),
+                'filename': filename
+            }
+
+            if len(parts) >= 4:
+                info['type'] = parts[0]  # 单节点/多节点
+                info['factory'] = parts[1]
+                info['system'] = parts[2]
+                info['scope'] = parts[3]  # 节点信息
+                info['timestamp'] = parts[4] if len(parts) > 4 else '未知'
+
+            return info
+
+        except Exception as e:
+            self.logger.error(f"解析文件名信息失败: {str(e)}")
+            return {'title': filename}

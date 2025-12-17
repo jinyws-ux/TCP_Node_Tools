@@ -1,0 +1,524 @@
+{
+  "IPSRDATA": {
+    "Description": "IPS Vehicle DATA",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "Data": {
+            "Start": 128,
+            "Length": -1,
+            "Escapes": {}
+          },
+          "SeqNo": {
+            "Start": 122,
+            "Length": 6,
+            "Escapes": {}
+          },
+          "VIN_NO": {
+            "Start": 115,
+            "Length": 7,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "IPS_DATA": {
+    "Description": "IPS Download",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "Data": {
+            "Start": 129,
+            "Length": -1,
+            "Escapes": {}
+          },
+          "DataType": {
+            "Start": 86,
+            "Length": 8,
+            "Escapes": {}
+          },
+          "VIN_NO": {
+            "Start": 115,
+            "Length": 7,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "IPS_DA_R": {
+    "Description": "IPS Download Reply",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "RetCode": {
+            "Start": 82,
+            "Length": 4,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "PLABRU_A": {
+    "Description": "Order Request",
+    "Versions": {
+      "0003": {
+        "Fields": {
+          "PPE": {
+            "Start": 50,
+            "Length": 3,
+            "Escapes": {}
+          },
+          "SEQ": {
+            "Start": 53,
+            "Length": 14,
+            "Escapes": {}
+          }
+        }
+      },
+      "0102": {
+        "Fields": {
+          "PPE": {
+            "Start": 50,
+            "Length": 3,
+            "Escapes": {}
+          },
+          "SEQ": {
+            "Start": 53,
+            "Length": 14,
+            "Escapes": {}
+          }
+        }
+      },
+      "0103": {
+        "Fields": {
+          "PPE": {
+            "Start": 50,
+            "Length": 3,
+            "Escapes": {}
+          },
+          "SEQ": {
+            "Start": 53,
+            "Length": 14,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "PLABRU_R": {
+    "Description": "Order Request Reply",
+    "Versions": {
+      "0003": {
+        "Fields": {
+          "BodyVariant": {
+            "Start": 88,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "HoleCode": {
+            "Start": 164,
+            "Length": 6,
+            "Escapes": {}
+          },
+          "IGEF": {
+            "Start": 170,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "PPE": {
+            "Start": 50,
+            "Length": 3,
+            "Escapes": {}
+          }
+        }
+      },
+      "0103": {
+        "Fields": {
+          "BodyVariant": {
+            "Start": 198,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "HoleCode": {
+            "Start": 254,
+            "Length": 6,
+            "Escapes": {}
+          },
+          "IGEF": {
+            "Start": 260,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "PPE": {
+            "Start": 50,
+            "Length": 3,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "PLANFDAT": {
+    "Description": "BS Data Request",
+    "Versions": {
+      "0002": {
+        "Fields": {
+          "IGEF_HoleCode": {
+            "Start": 50,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "SeqNo": {
+            "Start": 60,
+            "Length": 7,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "PLANFD_R": {
+    "Description": "BS Data Request Reply",
+    "Versions": {
+      "0002": {
+        "Fields": {
+          "IGEF": {
+            "Start": 50,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "RetData": {
+            "Start": 67,
+            "Length": -1,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "PLAUSLAG": {
+    "Description": "Exist Store",
+    "Versions": {
+      "0101": {
+        "Fields": {
+          "IGEF": {
+            "Start": 77,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "Store": {
+            "Start": 67,
+            "Length": 8,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "PLAUSL_R": {
+    "Description": "Exist Store Reply",
+    "Versions": {
+      "0101": {
+        "Fields": {
+          "IGEF": {
+            "Start": 50,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "RetCode": {
+            "Start": 67,
+            "Length": 4,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "PLBTERZG": {
+    "Description": "Part Creation",
+    "Versions": {
+      "0002": {
+        "Fields": {
+          "BodyVariant": {
+            "Start": 111,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "IGEF": {
+            "Start": 125,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "PPE_ZP": {
+            "Start": 94,
+            "Length": 8,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "PLBTER_R": {
+    "Description": "Part Creation Reply",
+    "Versions": {
+      "0002": {
+        "Fields": {
+          "IGEF": {
+            "Start": 71,
+            "Length": 8,
+            "Escapes": {}
+          },
+          "RetCode": {
+            "Start": 67,
+            "Length": 4,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "PLEINLAG": {
+    "Description": "EnterStore",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "IGEF": {
+            "Start": 50,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "Lane": {
+            "Start": 110,
+            "Length": 4,
+            "Escapes": {}
+          },
+          "Store": {
+            "Start": 67,
+            "Length": 8,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "PLEINL_R": {
+    "Description": "EnterStore Reply",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "IGEF": {
+            "Start": 50,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "RetCode": {
+            "Start": 67,
+            "Length": 4,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "PLUMBUCH": {
+    "Description": "PPE Change",
+    "Versions": {
+      "0002": {
+        "Fields": {
+          "IGEF": {
+            "Start": 50,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "PPE_ZP": {
+            "Start": 103,
+            "Length": -1,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "PLUMBU_R": {
+    "Description": "PPE Change Reply",
+    "Versions": {
+      "0002": {
+        "Fields": {
+          "IGEF": {
+            "Start": 50,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "RetCode": {
+            "Start": 67,
+            "Length": 4,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "PLZIEL_A": {
+    "Description": "RequestLane",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "IGEF": {
+            "Start": 50,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "Store": {
+            "Start": 67,
+            "Length": 8,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "PLZIEL_R": {
+    "Description": "RequestLane Reply",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "IGEF": {
+            "Start": 50,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "Lane": {
+            "Start": 98,
+            "Length": 4,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "PLZPUNKT": {
+    "Description": "SetCP",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "IGEF": {
+            "Start": 70,
+            "Length": 10,
+            "Escapes": {}
+          },
+          "PPE_ZP": {
+            "Start": 50,
+            "Length": 8,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "SEQ_REQU": {
+    "Description": "Sequence Request",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "Amount": {
+            "Start": 108,
+            "Length": 4,
+            "Escapes": {}
+          },
+          "BaseCP": {
+            "Start": 86,
+            "Length": 8,
+            "Escapes": {}
+          },
+          "SeqNo": {
+            "Start": 112,
+            "Length": 6,
+            "Escapes": {}
+          },
+          "VIN_NO": {
+            "Start": 99,
+            "Length": 7,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "SPS_DATA": {
+    "Description": "UploadData",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "Data": {
+            "Start": 108,
+            "Length": -1,
+            "Escapes": {}
+          },
+          "DataType": {
+            "Start": 86,
+            "Length": 8,
+            "Escapes": {}
+          },
+          "VIN_NO": {
+            "Start": 99,
+            "Length": 7,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "SPS_DA_R": {
+    "Description": "UploadData Reply",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "RetCode": {
+            "Start": 82,
+            "Length": 4,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "TRIG_PNT": {
+    "Description": "SetCP",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "CP": {
+            "Start": 86,
+            "Length": 8,
+            "Escapes": {}
+          },
+          "VIN_NO": {
+            "Start": 99,
+            "Length": 7,
+            "Escapes": {}
+          }
+        }
+      }
+    }
+  },
+  "TRIG_P_R": {
+    "Description": "SetCP Reply",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "RetCode": {
+            "Start": 82,
+            "Length": 4,
+            "Escapes": {
+              "DIDT": "重复置点",
+              "OKAY": "置点成功"
+            }
+          }
+        }
+      }
+    }
+  }
+}

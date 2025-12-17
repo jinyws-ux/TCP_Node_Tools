@@ -4,11 +4,16 @@ import { showMessage } from '../core/messages.js';
 import { setButtonLoading } from '../core/ui.js';
 import { formatFileSize, escapeHtml } from '../core/utils.js';
 
+// 导入报告管理功能
+import reportsModule from './reports.js';
+
 let inited = false;
 let selectedDownloadedLogs = new Set();
+let renderToken = 0;
+let renderedPaths = new Set();
 
 // 简化选择器
-const $  = (sel, scope = document) => scope.querySelector(sel);
+const $ = (sel, scope = document) => scope.querySelector(sel);
 const $$ = (sel, scope = document) => Array.from(scope.querySelectorAll(sel));
 
 function bind(id, ev, fn) {
@@ -165,7 +170,9 @@ function addLogRow(log) {
   // 下载时间
   const tdTime = document.createElement('td');
   const downloadTime = log.download_time || log.timestamp || '';
-  tdTime.textContent = downloadTime ? new Date(downloadTime).toLocaleString() : '';
+  tdTime.textContent = downloadTime
+    ? new Date(downloadTime).toLocaleString('zh-CN', { hour12: false })
+    : '';
   tr.appendChild(tdTime);
 
   // 大小
@@ -204,12 +211,13 @@ function addLogRow(log) {
   tbody.appendChild(tr);
 }
 
-function displayDownloadedLogs(logs) {
+function displayDownloadedLogs(logs, autoSelectPaths = []) {
   const tbody = $('#logs-body');
   const empty = $('#no-logs-message');
   if (!tbody) return;
 
   tbody.innerHTML = '';
+  renderedPaths.clear();
   if (!Array.isArray(logs) || logs.length === 0) {
     if (empty) empty.style.display = 'block';
     return;
@@ -226,10 +234,30 @@ function displayDownloadedLogs(logs) {
     }
     return log;
   });
-
+  const myToken = ++renderToken;
   Promise.all(checks).then((enriched) => {
-    enriched.forEach(addLogRow);
+    if (myToken !== renderToken) return;
+    enriched.forEach((log) => {
+      const p = log.path;
+      if (!p || renderedPaths.has(p)) return;
+      renderedPaths.add(p);
+      addLogRow(log);
+    });
+
+    // 自动勾选刚下载的文件
+    if (autoSelectPaths && autoSelectPaths.length > 0) {
+      selectedDownloadedLogs.clear();
+      autoSelectPaths.forEach(path => {
+        const chk = $(`.log-select[data-path="${path}"]`);
+        if (chk) {
+          chk.checked = true;
+          selectedDownloadedLogs.add(path);
+        }
+      });
+    }
+
     updateSelectAllIndicator();
+    updateAnalyzeButton();
   });
 }
 
@@ -237,7 +265,7 @@ function displayDownloadedLogs(logs) {
 
 async function loadDownloadedLogs(arg) {
   const options = (typeof Event !== 'undefined' && arg instanceof Event) ? {} : (arg || {});
-  const { silent = false, skipButton = false } = options;
+  const { silent = false, skipButton = false, autoSelectPaths = [] } = options; // 添加 autoSelectPaths 参数
   const btnId = 'refresh-logs-btn';
   if (!skipButton) setButtonLoading(btnId, true);
   try {
@@ -246,7 +274,7 @@ async function loadDownloadedLogs(arg) {
 
     if (data.success) {
       const logs = data.logs || [];
-      displayDownloadedLogs(logs);
+      displayDownloadedLogs(logs, autoSelectPaths); // 传递 autoSelectPaths
       if (!silent) {
         showMessage('success', `已加载 ${logs.length} 个日志文件`, 'analyze-messages');
       }
@@ -307,15 +335,177 @@ async function viewLogContent(logPath) {
     return;
   }
   try {
-    const res = await api.openInEditor(logPath);
+    showMessage('info', '正在加载日志内容...', 'analyze-messages');
+    const res = await api.getLogContent(logPath);
     if (res.success) {
-      showMessage('success', '如果没自动打开日志，请自己选择文本编辑器', 'analyze-messages');
+      showLogContentModal(res);
+      showMessage('success', '日志内容加载成功', 'analyze-messages');
     } else {
-      showMessage('error', '打开日志失败: ' + (res.error || ''), 'analyze-messages');
+      showMessage('error', '获取日志内容失败: ' + (res.error || ''), 'analyze-messages');
     }
   } catch (e) {
-    showMessage('error', '打开日志失败: ' + e.message, 'analyze-messages');
+    showMessage('error', '获取日志内容失败: ' + e.message, 'analyze-messages');
   }
+}
+
+// 显示日志内容模态框
+function showLogContentModal(data) {
+  // 检查是否已经存在模态框，如果不存在则创建
+  let modal = document.getElementById('log-content-modal');
+  if (!modal) {
+    modal = createLogContentModal();
+    document.body.appendChild(modal);
+  }
+  
+  // 更新模态框内容
+  const content = document.getElementById('log-content-text');
+  const title = document.getElementById('log-content-title');
+  const size = document.getElementById('log-content-size');
+  
+  if (content) {
+    content.textContent = data.content;
+  }
+  
+  if (title) {
+    title.textContent = data.file_name;
+  }
+  
+  if (size) {
+    size.textContent = formatFileSize(data.file_size);
+  }
+  
+  // 显示模态框
+  modal.style.display = 'block';
+  
+  // 添加关闭事件
+  const closeBtn = modal.querySelector('.close-btn');
+  const overlay = modal.querySelector('.modal-overlay');
+  
+  closeBtn?.addEventListener('click', () => {
+    modal.style.display = 'none';
+  });
+  
+  overlay?.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      modal.style.display = 'none';
+    }
+  });
+  
+  // 添加快捷键关闭
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.style.display === 'block') {
+      modal.style.display = 'none';
+    }
+  });
+}
+
+// 创建日志内容模态框
+function createLogContentModal() {
+  const modal = document.createElement('div');
+  modal.id = 'log-content-modal';
+  modal.style.cssText = `
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+    font-family: var(--font);
+  `;
+  
+  modal.innerHTML = `
+    <div class="modal-overlay" style="
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+    "></div>
+    <div class="modal-content" style="
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 90%;
+      max-width: 1200px;
+      height: 80%;
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      border: 1px solid var(--line);
+    ">
+      <div class="modal-header" style="
+        padding: 16px 24px;
+        background: rgba(255, 255, 255, 0.95);
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      ">
+        <div>
+          <h3 id="log-content-title" style="
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text);
+          "></h3>
+          <p id="log-content-size" style="
+            margin: 4px 0 0 0;
+            font-size: 14px;
+            color: var(--muted);
+          "></p>
+        </div>
+        <button class="close-btn" style="
+          background: none;
+          border: none;
+          font-size: 24px;
+          cursor: pointer;
+          color: var(--muted);
+          padding: 0;
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 50%;
+          transition: all 0.2s;
+        ">×</button>
+      </div>
+      <div class="modal-body" style="
+        padding: 24px;
+        height: calc(100% - 60px);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      ">
+        <div class="log-content-container" style="
+          flex: 1;
+          overflow: auto;
+          background: #0d1117;
+          border-radius: 8px;
+          padding: 16px;
+          font-family: 'Courier New', Courier, monospace;
+          font-size: 14px;
+          line-height: 1.5;
+          color: #c9d1d9;
+        ">
+          <pre id="log-content-text" style="
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+          "></pre>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  return modal;
 }
 
 async function deleteLog(logId, logPath) {
@@ -459,6 +649,9 @@ export function init() {
   bind('analyze-logs-btn', 'click', analyzeLogs);
   bind('refresh-logs-btn', 'click', loadDownloadedLogs);
   bind('open-reports-dir-btn', 'click', openReportsDirectory);
+
+  // 初始化报告管理功能
+  reportsModule.init();
 
   // 首次进入时加载数据
   loadDownloadedLogs();

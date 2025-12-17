@@ -6,10 +6,8 @@
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
     <title>日志分析系统</title>
     <link href="/static/css/style.css" rel="stylesheet">
-    <link href="/static/css/visual-parser.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
     <script type="module" src="/static/js/app.js"></script>
-    <script type="module" src="/static/js/modules/visual-parser.js"></script>
     <!--    <script defer src="/static/js/main-simple.js"></script>-->
 </head>
 
@@ -260,51 +258,6 @@
                     <div class="message-empty">尚未运行分析</div>
                 </div>
             </div>
-            
-            <!-- 报告列表 -->
-            <div class="reports-section">
-                <h2><i class="fas fa-file-alt"></i> 生成的报告</h2>
-                <div id="reports-messages" class="message-container" data-label="报告管理">
-                    <div class="message-empty"></div>
-                </div>
-                <div class="reports-controls">
-                    <div class="reports-controls-left">
-                        <div class="form-group">
-                            <label for="reports-search">搜索报告</label>
-                            <input type="text" id="reports-search" placeholder="输入报告名称或关键词搜索">
-                        </div>
-                    </div>
-                    <div class="reports-controls-right">
-                        <button class="btn btn-primary" id="refresh-reports-btn">
-                            <i class="fas fa-sync"></i> 刷新列表
-                        </button>
-                    </div>
-                </div>
-                <div class="table-container">
-                    <h3>生成的报告</h3>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>报告名称</th>
-                                <th>生成时间</th>
-                                <th>日志数量</th>
-                                <th>异常数量</th>
-                                <th>操作</th>
-                            </tr>
-                        </thead>
-                        <tbody id="reports-list-body">
-                            <tr>
-                                <td colspan="5" class="message-empty">暂无报告</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    <div class="empty-state" id="no-reports-message" style="display: none;">
-                        <i class="fas fa-file-alt"></i>
-                        <p>暂无生成的报告</p>
-                        <p>请先使用"日志分析"功能生成报告</p>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <!-- 服务器配置标签页 -->
@@ -324,8 +277,7 @@
                                 <option value="DaDong">DaDong</option>
                                 <option value="TieXi">TieXi</option>
                                 <option value="Lyida">Lydia</option>
-                                <option value="GEN5">GEN5</option>
-                                <option value="GEN6">GEN6</option>
+                                <option value="PT">PowerTrain</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -498,8 +450,6 @@
                                     </div>
                                     <button class="btn btn-primary btn-sm" data-action="open-add-message-type"><i
                                             class="fas fa-plus"></i> 新增类型</button>
-                                    <button class="btn btn-info btn-sm" id="open-visual-parser-btn"
-                                        style="margin-left: 5px;"><i class="fas fa-magic"></i> 可视化添加</button>
                                 </div>
                                 <div id="left-nav-tree" class="parser-nav-tree">
                                     <div class="parser-tree-placeholder">
@@ -702,12 +652,6 @@
                                 <label for="escape-target">转义后值</label>
                                 <input type="text" id="escape-target" class="form-control" placeholder="请输入转义后值"
                                     required>
-                            </div>
-                            <div class="form-group">
-                                <label>标签</label>
-                                <label class="checkbox-item" style="margin-top: 6px;"><input
-                                    type="checkbox" id="escape-tag-abnormal">标记为异常报错</label>
-                                <p class="form-hint">勾选后，后续报告可突出该转义对应的异常状态。</p>
                             </div>
                         </form>
                     </div>

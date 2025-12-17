@@ -103,7 +103,7 @@ class ParserConfigManager:
             )
             return False
 
-    def add_message_type(self, factory: str, system: str, msg_type: str, description: str, response_type: str = "", trans_id_pos: str = "") -> bool:
+    def add_message_type(self, factory: str, system: str, msg_type: str, description: str) -> bool:
         """添加报文类型"""
         try:
             config = self.load_config(factory, system) or {}
@@ -111,16 +111,10 @@ class ParserConfigManager:
             if msg_type not in config:
                 config[msg_type] = {
                     "Description": description,
-                    "ResponseType": response_type,
-                    "TransIdPosition": trans_id_pos,
                     "Versions": {}
                 }
             else:
                 config[msg_type]["Description"] = description
-                if response_type:
-                    config[msg_type]["ResponseType"] = response_type
-                if trans_id_pos:
-                    config[msg_type]["TransIdPosition"] = trans_id_pos
 
             return self.save_config(factory, system, config)
         except Exception as e:

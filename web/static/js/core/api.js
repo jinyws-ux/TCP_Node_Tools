@@ -8,7 +8,7 @@ async function get(url) {
 async function post(url, body) {
   const res = await fetch(url, {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body || {})
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -30,9 +30,6 @@ export const api = {
   searchLogs: (payload) => post('/api/logs/search', payload),
   searchLogsByTemplate: (payload) => post('/api/logs/search_strict', payload),
   downloadLogs: (payload) => post('/api/logs/download', payload),
-  webMode: (payload) => post('/api/web-mode', payload),
-  showClient: () => post('/api/show-client', {}),
-  exitBackend: () => post('/api/exit', {}),
 
   /* -------- 分析页 -------- */
   getDownloadedLogs: () => get('/api/downloaded-logs'),
@@ -40,9 +37,11 @@ export const api = {
   checkReport: (log_path) => post('/api/check-report', { log_path }),
   openInBrowser: (url) => post('/api/open-in-browser', { url }),
   openInEditor: (file_path) => post('/api/open-in-editor', { file_path }),
+  getLogContent: (file_path) => post('/api/get-log-content', { file_path }),
   deleteLog: (id, path) => post('/api/delete-log', { id, path }),
   analyze: (logs, config) => post('/api/analyze', { logs, config }),
   getParserConfigs: () => get(`/api/parser-configs?_=${Date.now()}`),
+  exitBackend: () => post('/api/exit', {}),
 
   /* -------- 服务器配置页 -------- */
   async getServerConfigs() {
@@ -53,6 +52,19 @@ export const api = {
   saveServerConfig: ({ factory, system, server }) => post('/api/save-config', { factory, system, server }),
   updateServerConfig: ({ id, factory, system, server }) => post('/api/update-config', { id, factory, system, server }),
   deleteServerConfig: (id) => post('/api/delete-config', { id }),
+  async testServerConfig(id) {
+    const res = await fetch('/api/test-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    let data = null;
+    try {
+      data = await res.json();
+    } catch (_) { }
+    if (res.ok) return data;
+    return data || { success: false, error: `HTTP ${res.status}` };
+  },
 
   /* -------- 解析配置 -------- */
   async fetchParserConfig(factory, system) {
@@ -72,4 +84,19 @@ export const api = {
   },
   saveParserConfig: ({ factory, system, config }) => post('/api/save-parser-config', { factory, system, config }),
   updateParserConfig: ({ factory, system, updates }) => post('/api/update-parser-config', { factory, system, updates }),
+  async fetchFieldHistory(factory, system) {
+    const data = await get(`/api/parser-field-history?factory=${encodeURIComponent(factory)}&system=${encodeURIComponent(system)}`);
+    const res = ensureSuccess(data, '加载历史字段失败');
+    return res.items || [];
+  },
+
+  /* -------- 报告管理 -------- */
+  async getReportsList() {
+    const data = await get('/api/reports-list');
+    return ensureSuccess(data, '获取报告列表失败');
+  },
+  async deleteReport(reportId) {
+    const data = await post('/api/delete-report', { report_id: reportId });
+    return ensureSuccess(data, '删除报告失败');
+  },
 };

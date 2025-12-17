@@ -95,9 +95,11 @@ class ServerConfigService:
         hostname = (server.get("hostname") or "").strip()
         username = (server.get("username") or "").strip()
         password = (server.get("password") or "").strip()
+        realtime_path = (server.get("realtime_path") or "").strip()
+        archive_path = (server.get("archive_path") or "").strip()
 
-        if not all([factory, system, alias, hostname, username, password]):
-            raise ValueError("请完整填写厂区/系统以及服务器信息")
+        if not all([factory, system, alias, hostname, username, password, realtime_path, archive_path]):
+            raise ValueError("请完整填写厂区/系统以及服务器信息（含日志路径与归档路径）")
 
         return (
             factory,
@@ -107,6 +109,8 @@ class ServerConfigService:
                 "hostname": hostname,
                 "username": username,
                 "password": password,
+                "realtime_path": realtime_path,
+                "archive_path": archive_path,
             },
         )
 
@@ -121,6 +125,8 @@ class ServerConfigService:
                 "hostname": server.get("hostname"),
                 "username": server.get("username"),
                 "password": server.get("password"),
+                "realtime_path": server.get("realtime_path"),
+                "archive_path": server.get("archive_path"),
             },
             "created_time": config.get("created_time"),
             "updated_time": config.get("updated_time"),

@@ -141,8 +141,14 @@ function buildConfigCard(cfg) {
   btnDelete.dataset.act = 'delete';
   btnDelete.dataset.id = cfg.id;
   btnDelete.innerHTML = '<i class="fas fa-trash"></i> 删除';
+  const btnTest = document.createElement('button');
+  btnTest.className = 'btn btn-sm btn-secondary';
+  btnTest.dataset.act = 'test';
+  btnTest.dataset.id = cfg.id;
+  btnTest.innerHTML = '<i class="fas fa-vial"></i> 测试';
   actions.appendChild(btnEdit);
   actions.appendChild(btnDelete);
+  actions.appendChild(btnTest);
   item.appendChild(actions);
 
   return item;
@@ -208,10 +214,12 @@ function collectFormPayload() {
     hostname: $('#server-hostname')?.value?.trim(),
     username: $('#server-username')?.value?.trim(),
     password: $('#server-password')?.value?.trim(),
+    realtime_path: $('#server-realtime-path')?.value?.trim(),
+    archive_path: $('#server-archive-path')?.value?.trim(),
   };
 
-  if (!factory || !system || !server.alias || !server.hostname || !server.username || !server.password) {
-    throw new Error('请完整填写厂区、系统与服务器信息');
+  if (!factory || !system || !server.alias || !server.hostname || !server.username || !server.password || !server.realtime_path || !server.archive_path) {
+    throw new Error('请完整填写厂区、系统与服务器信息（含日志路径与归档路径）');
   }
   return { factory, system, server };
 }
@@ -223,6 +231,8 @@ function fillForm(cfg) {
   $('#server-hostname') && ($('#server-hostname').value = cfg?.server?.hostname || '');
   $('#server-username') && ($('#server-username').value = cfg?.server?.username || '');
   $('#server-password') && ($('#server-password').value = cfg?.server?.password || '');
+  $('#server-realtime-path') && ($('#server-realtime-path').value = cfg?.server?.realtime_path || '');
+  $('#server-archive-path') && ($('#server-archive-path').value = cfg?.server?.archive_path || '');
 }
 
 function setEditMode(isEditing) {
@@ -339,6 +349,40 @@ async function handleDelete(id) {
   }
 }
 
+async function handleTest(id) {
+  if (!id) return;
+  try {
+    const btn = document.querySelector(`button[data-act="test"][data-id="${id}"]`);
+    setButtonLoading(btn, true, { text: '测试中...' });
+    const res = await api.testServerConfig(id);
+    setButtonLoading(btn, false);
+
+    if (!res) {
+      showMessage('error', '测试接口返回为空', 'server-config-messages');
+      return;
+    }
+
+    const parts = [];
+    parts.push(res.connect_ok ? '连接：OK' : '连接：失败');
+    parts.push(res.realtime_ok ? '实时路径：OK' : '实时路径：失败');
+    parts.push(res.archive_ok ? '归档路径：OK' : '归档路径：失败');
+
+    if (res.success) {
+      showMessage('success', '测试通过。' + parts.join('，'), 'server-config-messages');
+      return;
+    }
+
+    const errors = [];
+    if (res.errors?.connect) errors.push('连接错误：' + res.errors.connect);
+    if (res.errors?.realtime) errors.push('实时路径错误：' + res.errors.realtime);
+    if (res.errors?.archive) errors.push('归档路径错误：' + res.errors.archive);
+    const msg = (errors.length ? errors.join('；') + '。' : '') + parts.join('，');
+    showMessage('error', msg || '测试失败', 'server-config-messages');
+  } catch (e) {
+    showMessage('error', '测试失败：' + (e?.message || e), 'server-config-messages');
+  }
+}
+
 function bindListEvents() {
   const container = document.getElementById('server-configs-container');
   if (!container) return;
@@ -368,6 +412,9 @@ function bindListEvents() {
     if (act === 'delete') {
       handleDelete(id);
     }
+    if (act === 'test') {
+      handleTest(id);
+    }
   });
 }
 
@@ -386,10 +433,23 @@ function bindPasswordToggle() {
 function bindFormEvents() {
   const saveBtn = document.getElementById('save-config-btn');
   const cancelBtn = document.getElementById('cancel-edit-btn');
+  const genBtn = document.getElementById('gen-default-paths-btn');
   if (saveBtn) saveBtn.addEventListener('click', handleSave);
   if (cancelBtn) cancelBtn.addEventListener('click', () => {
     resetForm();
     renderList();
+  });
+  if (genBtn) genBtn.addEventListener('click', () => {
+    const alias = $('#server-alias')?.value?.trim();
+    if (!alias) {
+      showMessage('error', '请先填写服务器别名', 'server-config-messages');
+      return;
+    }
+    const realtime = `/${alias}/km/log`;
+    const archive = `/nfs/${alias}/ips_log_archive/${alias}/km_log`;
+    $('#server-realtime-path') && ($('#server-realtime-path').value = realtime);
+    $('#server-archive-path') && ($('#server-archive-path').value = archive);
+    showMessage('success', '已生成默认路径', 'server-config-messages');
   });
 }
 
