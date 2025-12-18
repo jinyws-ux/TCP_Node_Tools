@@ -8,7 +8,7 @@ from time import perf_counter
 from typing import Any, Dict, List, Optional, Tuple
 
 from .log_parser import LogParser
-from .report_generator import ReportGenerator
+
 from .log_metadata_store import LogMetadataStore
 from .log_matcher import LogMatcher
 
@@ -41,8 +41,8 @@ class LogAnalyzer:
         stats: List[Dict[str, Any]] = []
         opts = {
             'generate_html': False,
-            'generate_original_log': True,
-            'generate_sorted_log': True,
+            'generate_original_log': False,
+            'generate_sorted_log': False,
         }
         if options:
             opts.update(options)
@@ -66,7 +66,6 @@ class LogAnalyzer:
             # 修改报告生成目录，使其与报告管理API的查询目录一致
             report_output_dir = os.path.join(self.output_dir, 'html_logs')
             os.makedirs(report_output_dir, exist_ok=True)
-            report_generator = ReportGenerator(report_output_dir)
 
             stage_start = perf_counter()
             all_log_lines, _ = self._read_log_files(log_paths)
@@ -179,10 +178,11 @@ class LogAnalyzer:
                     'system': system,
                     'nodes': [self._extract_node_from_path(p) for p in log_paths],
                     'log_entries': [convert_to_dict(item) for item in matched_entries],
-                    'abnormal_items': abnormal_items,
+                    'abnormal_items': convert_to_dict(abnormal_items),
                     'message_types': sorted_msg_types,
                     'stats': stats,
-                    'generated_at': datetime.now().isoformat()
+                    'generated_at': datetime.now().isoformat(),
+                    'related_logs': log_paths  # 添加关联的日志路径
                 }
                 
                 # 保存报告数据到文件系统（临时保存，后续会由AnalysisService保存到报告数据存储）
@@ -191,18 +191,9 @@ class LogAnalyzer:
                     json.dump(report_data, f, ensure_ascii=False, indent=2)
                 
                 stage_start = perf_counter()
-                # 仍然生成HTML报告，但作为可选功能
-                generate_html = opts.get('generate_html', True)
-                if generate_html:
-                    report_filename = self._generate_smart_filename(factory, system, log_paths, timestamp)
-                    html_report_path = os.path.join(self.output_dir, 'html_logs', report_filename)
-                    generated_html_path = report_generator.generate_html_logs(matched_entries, html_report_path, raw_log_entries=log_entries)
-                    self._record_stage(stats, '生成HTML报告', stage_start, len(matched_entries), 1)
-
-                    if not generated_html_path or not os.path.exists(generated_html_path):
-                        self.logger.error("HTML报告生成失败")
-                        return {'success': False, 'error': 'HTML报告生成失败', 'stats': stats}
-                    html_report_path = generated_html_path
+                # 不再生成HTML报告，改为由前端展示报告数据
+                html_report_path = ''
+                self._record_stage(stats, '生成报告数据', stage_start, len(matched_entries), 1)
 
             original_log_path = ''
             sorted_log_path = ''

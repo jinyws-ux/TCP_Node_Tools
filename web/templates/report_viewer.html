@@ -3,8 +3,247 @@
 <head>
     <title>日志分析报告</title>
     <meta charset="utf-8">
+    <style>
+        /* ================= Reset & Layout ================= */
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; color: #1f2937; height: 100vh; overflow: hidden; display: flex; }
+
+        /* ================= Sidebar ================= */
+        #sidebar { width: 60px; height: 100%; background: #ffffff; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1); z-index: 50; flex-shrink: 0; box-shadow: 2px 0 8px rgba(0,0,0,0.05); }
+        #sidebar.expanded { width: 320px; }
+        .sidebar-header { height: 60px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-bottom: 1px solid #f3f4f6; background: #f9fafb; transition: background 0.2s; }
+        .sidebar-header:hover { background: #eff6ff; }
+        #sidebar.expanded .sidebar-header { justify-content: flex-start; padding-left: 16px; }
+        .icon-box { position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+        .sb-title { display: none; font-weight: 700; color: #111827; margin-left: 8px; white-space: nowrap; overflow: hidden; }
+        #sidebar.expanded .sb-title { display: block; }
+        .count-badge { position: absolute; top: 2px; right: 2px; background: #fee2e2; color: #991b1b; border: 1px solid #fecdd3; font-size: 10px; font-weight: 700; height: 18px; min-width: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+        .count-badge.zero { background: #f3f4f6; color: #9ca3af; border-color: #e5e7eb; }
+        .sidebar-content { flex: 1; overflow-y: auto; overflow-x: hidden; opacity: 0; pointer-events: none; transition: opacity 0.1s; padding: 12px; }
+        #sidebar.expanded .sidebar-content { opacity: 1; pointer-events: auto; transition: opacity 0.2s 0.1s; }
+        .abnormal-item { background: #fff; border: 1px solid #e5e7eb; border-left: 4px solid #f43f5e; border-radius: 6px; margin-bottom: 8px; padding: 10px; cursor: pointer; transition: transform 0.1s, box-shadow 0.1s; }
+        .abnormal-item:hover { transform: translateY(-1px); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border-color: #fecdd3; }
+        .ab-time { font-size: 12px; color: #6b7280; display: block; margin-bottom: 4px; }
+        .ab-detail-row { font-size: 12px; color: #374151; font-family: 'JetBrains Mono', Consolas, monospace; background: #fdf2f8; padding: 2px 4px; border-radius: 4px; margin-top: 2px; word-break: break-all; }
+        .ab-empty { text-align: center; color: #9ca3af; padding: 20px; font-size: 13px; }
+
+        /* ================= Main Area ================= */
+        #main-wrapper { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100%; position: relative; }
+
+        /* ================= Filter Bar ================= */
+        #filterBar { flex-shrink: 0; background: #fff; padding: 12px 20px; border-bottom: 1px solid #e5e7eb; display: flex; flex-direction: column; gap: 12px; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .filter-row-top { display: flex; align-items: center; gap: 12px; width: 100%; }
+        .search-container { flex: 1; display: flex; align-items: center; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0 10px; height: 36px; min-width: 200px; }
+        .search-container:focus-within { border-color: #3b82f6; background: #fff; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1); }
+        .crystal-input { border: none; background: transparent; font-size: 13px; outline: none; color: #1f2937; width: 100%; }
+        .filter-label { font-size: 12px; color: #6b7280; font-weight: 600; text-transform: uppercase; margin-right: 8px; white-space: nowrap; }
+        .time-group { display: flex; align-items: center; gap: 8px; background: #f9fafb; padding: 0 10px; border-radius: 8px; border: 1px solid #e5e7eb; height: 36px; flex-shrink: 0; }
+        .time-input { border: none; background: transparent; font-size: 12px; outline: none; color: #1f2937; width: 140px; font-family: inherit; }
+        
+        .filter-row-bottom { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+        .msg-type-container { flex: 1; display: flex; align-items: center; gap: 8px; position: relative; margin-right: 20px; min-width: 0; }
+        .msg-type-input { border: none; border-bottom: 1px solid #e5e7eb; padding: 4px; font-size: 12px; outline: none; width: 120px; transition: border-color 0.2s; }
+        .msg-type-input:focus { border-bottom-color: #3b82f6; }
+        .msg-type-dropdown { position: absolute; top: 100%; left: 0; width: 280px; background: white; border: 1px solid #e5e7eb; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); z-index: 100; max-height: 300px; overflow-y: auto; display: none; padding: 4px; border-radius: 8px; margin-top: 4px; }
+        .msg-type-option { padding: 6px 10px; cursor: pointer; font-size: 12px; border-radius: 4px; }
+        .msg-type-option:hover { background: #eff6ff; color: #1d4ed8; }
+        .selected-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+        .tag { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; padding: 2px 8px; border-radius: 4px; font-size: 11px; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+        .tag-remove { cursor: pointer; opacity: 0.6; }
+        .tag-remove:hover { opacity: 1; color: #ef4444; }
+        .tools-group { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+        /* Buttons */
+        .btn { padding: 0 14px; height: 36px; border-radius: 6px; border: 1px solid #d1d5db; background: white; cursor: pointer; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s; color: #374151; white-space: nowrap; }
+        .btn:hover { background: #f9fafb; border-color: #9ca3af; }
+        .btn-primary { background: #2563eb; color: white; border: 1px solid #2563eb; }
+        .btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
+        .export-btn { background: #10b981; color: white; border: 1px solid #10b981; }
+        .export-btn:hover { background: #059669; border-color: #059669; }
+        .sort-group { display: flex; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden; }
+        .sort-btn { border: none; background: #fff; padding: 0 12px; height: 34px; cursor: pointer; font-size: 12px; border-right: 1px solid #d1d5db; color: #4b5563; font-weight: 500; white-space: nowrap; }
+        .sort-btn:last-child { border-right: none; }
+        .sort-btn:hover { background: #f9fafb; }
+        .sort-btn.active { background: #eff6ff; color: #2563eb; font-weight: 700; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); }
+
+        /* Quick Analyze Panel */
+        #quickAnalyzePanel { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 10px 20px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); flex-shrink: 0; }
+        .qa-body { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+        .qa-select { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; outline: none; transition: all 0.15s ease; min-width: 150px; }
+        .qa-select:focus { border-color: #3b82f6; }
+        .qa-btn { height: 34px; padding: 0 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 600; }
+        .qa-btn:hover { background: #2563eb; }
+        .qa-btn:disabled { background: #93c5fd; cursor: not-allowed; }
+
+        /* ================= Log Container (Fix: Push Layout) ================= */
+        #log-container {
+            flex: 1; /* Take remaining space */
+            min-height: 0; /* Allow shrinking */
+            overflow-y: auto; /* Internal scroll */
+            padding: 20px;
+            scroll-behavior: smooth;
+            position: relative;
+        }
+
+        .timestamp { display: flex; align-items: center; padding: 6px 10px; margin: 2px 0; background-color: #ffffff; border-radius: 6px; font-size: 13px; border: 1px solid transparent; flex-wrap: wrap; gap: 6px; line-height: 1.5; }
+        .timestamp:hover { background-color: #f9fafb; border-color: #e5e7eb; }
+        .timestamp.selected { background-color: #eff6ff; border-color: #bfdbfe; }
+        
+        .seg-fixed { display: inline-block; padding: 1px 6px; margin: 0 2px; border-radius: 4px; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 12px; white-space: nowrap; cursor: default; }
+        .seg-ts { min-width: 150px; font-weight: 500; }
+        .seg-dir { min-width: 60px; text-align: center; font-weight: 600; }
+        .seg-node-sm { min-width: 40px; text-align: center; }
+        .seg-msgtype-sm { min-width: 100px; text-align: center; font-weight: 600; letter-spacing: 0.5px; }
+        .seg-pid { min-width: 100px; text-align: center; }
+        .seg-free { display: inline-block; padding: 1px 6px; margin: 0 2px; border-radius: 4px; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 12px; white-space: nowrap; cursor: default; }
+
+        .badge-req { padding: 1px 5px; background: #dbeafe; color: #1e40af; border-radius: 3px; font-size: 11px; font-weight: bold; border: 1px solid #bfdbfe; }
+        .badge-resp { padding: 1px 5px; background: #dcfce7; color: #166534; border-radius: 3px; font-size: 11px; font-weight: bold; border: 1px solid #bbf7d0; }
+        .tag-retry { background: #fee2e2; color: #991b1b; cursor: pointer; padding: 1px 6px; border-radius: 3px; font-size: 11px; border: 1px solid #fecdd3; margin-left: auto; }
+        .tag-retry:hover { background: #fecdd3; }
+        .tag-abnormal { background: #fef2f2; border: 1px solid #fecdd3; color: #b91c1c; font-size: 11px; padding: 0 4px; border-radius: 3px; margin-left: 6px; }
+        .tree-connector { width: 16px; text-align: right; color: #9ca3af; margin-right: 4px; font-family: monospace; font-weight: bold; }
+        .resp-container { display: flex; align-items: center; width: 100%; gap: 4px; }
+
+        .flash-highlight { animation: flash-bg 2s ease-out forwards; border: 1px solid #ef4444 !important; }
+        @keyframes flash-bg { 0% { background: #fee2e2; } 100% { background: #fff; } }
+        .trans-highlight { background-color: #f0f9ff !important; border-left: 3px solid #3b82f6 !important; }
+
+        /* ================= Original Text Window (Fix: Layout & Resize) ================= */
+        #original-text-container {
+            position: relative; /* Document flow, pushes content up */
+            z-index: 40;
+            height: 0; /* Hidden by default */
+            flex-shrink: 0; /* Do not shrink */
+            background: white;
+            border-top: 1px solid #e5e7eb;
+            box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            /* Transition only when not dragging, handled in JS potentially, or keep for smooth toggle */
+            transition: height 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+        #original-text-container.show { height: 350px; }
+        #original-text-container.collapsed { height: 40px !important; }
+
+        /* Resizer Handle */
+        #resizer-handle {
+            height: 6px;
+            background: #f3f4f6;
+            border-top: 1px solid #e5e7eb;
+            border-bottom: 1px solid #e5e7eb;
+            cursor: ns-resize;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #resizer-handle:hover { background: #e5e7eb; }
+        #resizer-handle::after { content: ''; width: 40px; height: 2px; background: #d1d5db; border-radius: 2px; }
+
+        #original-text-header { height: 40px; flex-shrink: 0; background: #f9fafb; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; cursor: pointer; user-select: none; }
+        .original-text-title { font-weight: 600; color: #1f2937; font-size: 13px; }
+        .original-text-controls { display: flex; gap: 8px; }
+        .win-btn { background: none; border: none; font-size: 14px; cursor: pointer; color: #6b7280; padding: 4px; border-radius: 4px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }
+        .win-btn:hover { background: #e5e7eb; color: #111827; }
+        #original-text-content { flex: 1; overflow: hidden; background: #fff; position: relative; }
+        #original-text-logs { width: 100%; height: 100%; overflow: auto; padding: 16px; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 12px; line-height: 1.5; color: #374151; }
+        
+        /* Raw Text Blocks */
+        .original-text-block { padding: 8px 12px; margin-bottom: 6px; border-radius: 4px; border-bottom: 1px dashed #f3f4f6; }
+        .original-text-block.selected { background-color: #dbeafe; border-left: 3px solid #3b82f6; padding-left: 8px; }
+        .raw-l1 { color: #111827; white-space: pre-wrap; word-break: break-all; font-weight: 500; }
+        .raw-l2 { color: #6b7280; margin-top: 4px; white-space: pre-wrap; word-break: break-all; font-size: 11px; }
+        
+        /* New: Highlighting match in raw text */
+        .raw-highlight { background-color: #fef08a; color: #854d0e; font-weight: bold; border-radius: 2px; box-shadow: 0 0 0 1px #eab308; }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <div class="sidebar-header" onclick="toggleSidebar()" title="点击展开/收起">
+            <div class="icon-box">⚠️<div id="sidebarBadge" class="count-badge">0</div></div>
+            <span class="sb-title">异常报错列表</span>
+        </div>
+        <div id="sidebarContent" class="sidebar-content"></div>
+    </div>
+
+    <div id="main-wrapper">
+        <div id="quickAnalyzePanel" class="simplified">
+            <div class="qa-body">
+                <select id="qaFactory" class="qa-select"><option value="">厂区</option></select>
+                <select id="qaSystem" class="qa-select"><option value="">系统</option></select>
+                <select id="qaTemplate" class="qa-select" style="min-width: 200px;"><option value="">区域</option></select>
+                <button id="qaRunBtn" class="qa-btn" type="button">下载并分析</button>
+            </div>
+        </div>
+        
+        <div id="filterBar">
+            <div class="filter-row-top">
+                <div class="search-container">
+                    <span class="filter-label">🔍 搜索</span>
+                    <input id="filterInput" class="crystal-input" type="text" placeholder="支持正则匹配..." onkeydown="if(event.key==='Enter') applyFilter()" />
+                </div>
+                <div class="time-group">
+                    <span class="filter-label">🕒</span>
+                    <input id="startTime" class="time-input" type="datetime-local" step="1" />
+                    <span style="color:#ccc; margin:0 4px">-</span>
+                    <input id="endTime" class="time-input" type="datetime-local" step="1" />
+                </div>
+                <button class="btn btn-primary" onclick="applyFilter()">筛选</button>
+            </div>
+
+            <div class="filter-row-bottom">
+                <div class="msg-type-container">
+                    <span class="filter-label">🏷️ 报文类型</span>
+                    <div class="selected-tags" id="selectedTags"></div>
+                    <input id="msgTypeInput" class="msg-type-input" placeholder="+ 添加..." />
+                    <div id="msgTypeDropdown" class="msg-type-dropdown"></div>
+                </div>
+
+                <div class="tools-group">
+                    <div class="sort-group">
+                        <button class="sort-btn active" id="sort-asc-btn" onclick="sortLogs('asc')">⬆ 时间正序</button>
+                        <button class="sort-btn" id="sort-desc-btn" onclick="sortLogs('desc')">⬇ 时间逆序</button>
+                    </div>
+                    <button class="btn" onclick="clearFilter()">重置</button>
+                    <button class="btn export-btn" onclick="exportPureReport()">导出报告</button>
+                    <button class="btn" onclick="toggleOriginalText()">📄 原文</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="log-container">
+            <div style="text-align: center; padding: 60px; color: #6b7280;">
+                <h2 style="margin:0 0 10px 0; font-weight:500;">加载中...</h2>
+                <p style="margin:0; font-size:14px;">正在获取报告数据</p>
+            </div>
+        </div>
+        
+        <div id="original-text-container">
+            <div id="resizer-handle" title="拖动调整高度"></div>
+            <div id="original-text-header" onclick="toggleOriginalTextCollapse()">
+                <div class="original-text-title">日志原文</div>
+                <div class="original-text-controls">
+                    <button id="toggle-original-text" class="win-btn">▼</button>
+                    <button class="win-btn" onclick="event.stopPropagation(); hideOriginalText();">×</button>
+                </div>
+            </div>
+            <div id="original-text-content">
+                <div id="original-text-logs"></div>
+            </div>
+        </div>
+    </div>
+
     <script>
-        // 兼容 URLSearchParams (适配IE/旧浏览器)
+        // --- 1. Global State ---
+        let selectedMsgTypes = new Set();
+        let reportData = null;
+        let reportId = null;
+        const quickState = { loading: false, factory: '', system: '', template: '', factories: [], systems: [], templates: [] };
+
+        // URLSearchParams Polyfill
         if (!window.URLSearchParams) {
             window.URLSearchParams = function(search) {
                 const params = {};
@@ -16,498 +255,489 @@
                 this.get = (k) => params[k] || null;
             };
         }
+        
+        const API_BASE = (() => {
+            try { return (new URLSearchParams(window.location.search).get('api_base') || '').replace(/\/$/, '') || window.location.origin; } catch (_) { return window.location.origin; }
+        })();
 
-        // 报告数据将通过API动态加载
-        var reportData = null;
-        var selectedMsgTypes = new Set();
-        var reportId = null; // 全局报告ID变量
-        var API_BASE = function() {
-            try {
-                var params = new URLSearchParams(window.location.search || '');
-                var queryBase = (params.get('api_base') || '').trim();
-                if (queryBase) return queryBase.replace(/\/$/, '');
-            } catch (_) {}
-            // 始终使用当前页面的origin，确保指向服务器端
-            return window.location.origin;
-        }();
-
-        // 页面加载完成后初始化
-        window.addEventListener('DOMContentLoaded', function() {
-            // 从URL路径中获取报告ID
-            var pathParts = window.location.pathname.split('/').filter(function(item) {
-                return Boolean(item);
-            }); // 过滤空字符串
-            reportId = pathParts[pathParts.length - 1];
-            
-            // 如果URL路径中没有报告ID，尝试从URL查询参数获取
-            if (!reportId || reportId === '') {
-                var params = new URLSearchParams(window.location.search || '');
-                reportId = params.get('report_id') || params.get('id');
+        // --- 2. Initialization ---
+        window.addEventListener('DOMContentLoaded', () => {
+            const parts = window.location.pathname.split('/').filter(Boolean);
+            reportId = parts[parts.length - 1] || new URLSearchParams(window.location.search).get('report_id');
+            if (!reportId || reportId === '' || reportId === 'undefined' || reportId === 'null') { 
+                showError('缺少报告ID'); 
+                return; 
             }
-            
-            // 确保reportId是有效的，不是undefined或null
-            if (!reportId || reportId === '' || reportId === 'undefined' || reportId === 'null') {
-                showError('缺少报告ID');
-                return;
-            }
-            
-            // 加载报告数据
-            loadReportData(reportId).then(function() {
-                // 初始化页面
+            loadReportData(reportId).then(() => {
                 initPage();
-            }).catch(function(error) {
-                showError('初始化页面失败: ' + error.message);
-            });
+                initQuickAnalyze(); 
+                initResizer(); // 启动拖拽
+            }).catch(e => showError(e.message));
         });
 
-        // 加载报告数据
-        async function loadReportData(reportIdParam) {
-            try {
-                const response = await fetch(`${API_BASE}/api/report-details/${encodeURIComponent(reportIdParam)}`);
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-                const data = await response.json();
-                if (!data.success) {
-                    throw new Error(data.error || '加载报告数据失败');
-                }
-                reportData = data.report_data;
-                // 确保reportData有name属性
-                document.title = `${reportData?.name || '日志分析报告'} - 日志分析报告`;
-            } catch (error) {
-                showError(`加载报告数据失败: ${error.message}`);
-                throw error; // 重新抛出错误，让外层catch捕获
-            }
-        }
-
-        // 显示错误信息
-        function showError(message) {
-            var container = document.getElementById('log-container');
-            if (container) {
-                container.innerHTML = '<div style="padding: 20px; text-align: center; color: red;">' + message + '</div>';
-            }
-        }
-
-        // 初始化页面
         function initPage() {
-            try {
-                if (!reportData) {
-                    showError('报告数据未加载成功');
-                    return;
-                }
-                
-                // 清空加载提示
-                document.getElementById('log-container').innerHTML = '';
-                
-                // 渲染异常导航
-                renderAbnormalNav();
-                
-                // 渲染日志内容
-                renderLogEntries();
-                
-                // 绑定事件
-                bindEvents();
-            } catch (error) {
-                showError('初始化页面失败: ' + error.message);
-            }
+            if (!reportData) return;
+            document.getElementById('log-container').innerHTML = '';
+            renderAbnormalNav();
+            renderLogEntries();
+            renderOriginalText();
+            bindEvents();
         }
 
-        // 绑定事件
-        function bindEvents() {
-            try {
-                // 侧边栏切换
-                const sidebarHeader = document.querySelector('.sidebar-header');
-                if (sidebarHeader) {
-                    sidebarHeader.addEventListener('click', toggleSidebar);
-                }
-                
-                // 筛选按钮
-                const applyFilterBtn = document.getElementById('apply-filter-btn');
-                if (applyFilterBtn) {
-                    applyFilterBtn.addEventListener('click', applyFilter);
-                }
-                
-                // 重置按钮
-                const clearFilterBtn = document.getElementById('clear-filter-btn');
-                if (clearFilterBtn) {
-                    clearFilterBtn.addEventListener('click', clearFilter);
-                }
-                
-                // 排序按钮
-                const sortAscBtn = document.getElementById('sort-asc-btn');
-                const sortDescBtn = document.getElementById('sort-desc-btn');
-                if (sortAscBtn) {
-                    sortAscBtn.addEventListener('click', () => sortLogs('asc'));
-                }
-                if (sortDescBtn) {
-                    sortDescBtn.addEventListener('click', () => sortLogs('desc'));
-                }
-                
-                // 导出按钮
-                const exportBtn = document.getElementById('export-btn');
-                if (exportBtn) {
-                    exportBtn.addEventListener('click', exportPureReport);
-                }
-                
-                // 搜索框Enter键事件
-                const filterInput = document.getElementById('filterInput');
-                if (filterInput) {
-                    filterInput.addEventListener('keydown', (event) => {
-                        if (event.key === 'Enter') {
-                            applyFilter();
-                        }
-                    });
-                }
-                
-                // 消息类型输入
-                const msgTypeInput = document.getElementById('msgTypeInput');
-                const msgTypeDropdown = document.getElementById('msgTypeDropdown');
-                if (msgTypeInput && msgTypeDropdown) {
-                    msgTypeInput.addEventListener('focus', () => {
-                        renderDropdown(msgTypeInput.value);
-                        msgTypeDropdown.style.display = 'block';
-                    });
-                    msgTypeInput.addEventListener('input', (e) => {
-                        renderDropdown(e.target.value);
-                        msgTypeDropdown.style.display = 'block';
-                    });
-                    document.addEventListener('click', (e) => {
-                        if (!e.target.closest('.msg-type-container')) {
-                            msgTypeDropdown.style.display = 'none';
-                        }
-                    });
-                }
-            } catch (error) {
-                console.error('绑定事件失败:', error);
-            }
-        }
-
-        // 渲染异常导航
-        function renderAbnormalNav() {
-            try {
-                if (!reportData) return;
-                
-                const list = document.getElementById('sidebarContent');
-                const badge = document.getElementById('sidebarBadge');
-                // 空值保护：确保abnormal_items是数组
-                const abnormalItems = Array.isArray(reportData.abnormal_items) ? reportData.abnormal_items : [];
-                
-                // 设置徽章
-                const count = abnormalItems.length;
-                if (badge) {
-                    badge.textContent = count;
-                    badge.classList.toggle('zero', count === 0); // 简化class操作
-                }
-                
-                // 渲染列表
-                if (!list) return;
-                
-                if (count === 0) {
-                    list.innerHTML = '<div class="ab-empty">🎉 无异常报错</div>';
-                    return;
-                }
-                
-                let html = '';
-                for (const item of abnormalItems) {
-                    if (item) {
-                        const detailsHtml = Array.isArray(item.details) ? item.details.map(detail => `<div class="ab-detail-row">${detail}</div>`).join('') : '';
-                        html += `
-                            <div class="abnormal-item" data-anchor="${item.anchor || ''}">
-                                <span class="ab-time">${item.time || ''}</span>
-                                <div style="font-weight:600; font-size:13px; margin-bottom:4px;">${item.msgType || '未知报文'}</div>
-                                ${detailsHtml}
-                            </div>
-                        `;
-                    }
-                }
-                list.innerHTML = html;
-                
-                // 绑定点击事件
-                const abnormalItemsList = list.querySelectorAll('.abnormal-item');
-                abnormalItemsList.forEach(item => {
-                    item.addEventListener('click', () => {
-                        const anchor = item.getAttribute('data-anchor');
-                        scrollToLog(anchor);
-                    });
-                });
-            } catch (error) {
-                console.error('渲染异常导航失败:', error);
-            }
-        }
-
-        // 渲染日志条目
+        // --- 3. Rendering ---
         function renderLogEntries() {
-            try {
-                if (!reportData) return;
-                
-                const container = document.getElementById('log-container');
-                if (!container) return;
-                
-                const logEntries = Array.isArray(reportData.log_entries) ? reportData.log_entries : [];
-                let html = '';
-                
-                for (let index = 0; index < logEntries.length; index++) {
-                    const item = logEntries[index];
-                    if (item) {
-                        html += renderLogEntry(item, index);
-                    }
-                }
-                
-                container.innerHTML = html;
-            } catch (error) {
-                console.error('渲染日志条目失败:', error);
-            }
-        }
-
-        // 渲染单个日志条目
-        function renderLogEntry(entry, index) {
-            try {
-                if (!entry) return '';
-                
-                const segments = entry.segments || [];
-                const isTransaction = entry.requests && entry.response;
-                let mainEntry = entry;
+            const container = document.getElementById('log-container');
+            const entries = reportData.log_entries || [];
+            let html = '';
+            
+            entries.forEach((item, index) => {
+                const isTrans = item.requests && item.response;
+                let main = item;
                 let retryCount = 0;
-                let hasResponse = false;
-                
-                if (isTransaction && Array.isArray(entry.requests)) {
-                    mainEntry = entry.latest_request || entry;
-                    retryCount = entry.requests.length - 1;
-                    hasResponse = entry.response !== null && entry.response !== undefined;
+                let hasResp = false;
+                if (isTrans && Array.isArray(item.requests)) {
+                    main = item.latest_request || item;
+                    retryCount = item.requests.length - 1;
+                    hasResp = !!item.response;
                 }
+
+                const logId = `log_${index}`; 
+                const transId = isTrans ? `trans_${index}` : '';
+                const ts = getTimestamp(isTrans ? item.requests[0] : item); 
+                const rawTarget = `raw_log_${index}_main`;
+
+                // Main Row
+                html += `<div class="timestamp" id="ts_${index}" data-log-id="${logId}" data-target-raw="${rawTarget}" data-orig-idx="${index}" data-timestamp="${ts}" ${isTrans ? `data-trans-group="${transId}" onmouseover="highlightTransaction('${transId}')" onmouseout="clearHighlight()"` : ''}>`;
+                if(isTrans) html += `<span class="badge-req">发送</span>`;
+                html += renderLineContent(main);
                 
-                const logId = `log_${index}`;
-                const transGroupId = isTransaction ? `trans_${index}` : '';
-                const transAttr = isTransaction ? `data-trans-group="${transGroupId}" onmouseover="highlightTransaction('${transGroupId}')" onmouseout="clearHighlight()"` : '';
-                
-                // 渲染日志条目内容
-                const lineHtml = renderLineContent(mainEntry);
-                
-                let html = `
-                    <div class="timestamp" id="ts_${index}" data-log-id="${logId}" data-timestamp="${entry.timestamp || 0}" ${transAttr}>
-                        ${lineHtml}
-                    </div>
-                `;
-                
-                // 渲染重试行
-                if (isTransaction && Array.isArray(entry.requests) && retryCount > 0) {
+                if(isTrans && !hasResp) html += ` <span style="font-size:11px;color:#9ca3af;background:#f3f4f6;padding:1px 4px;border-radius:3px;margin-left:6px">[无回复]</span>`;
+                // Retry button (Right aligned)
+                if(retryCount > 0) {
+                    html += `<span class="tag-retry" onclick="toggleRetries('${logId}')">◀ 重试 x${retryCount}</span>`;
+                }
+                html += `</div>`;
+
+                // Retry Rows (Hidden)
+                if(isTrans && retryCount > 0) {
                     html += `<div id="retries_${logId}" style="display:none; margin-left: 20px; border-left: 2px solid #e5e7eb; padding-left: 8px;">`;
-                    for (const req of entry.requests.slice(0, -1)) {
-                        if (req) {
-                            const reqHtml = renderLineContent(req);
-                            html += `
-                                <div class="timestamp" style="border:none; padding: 2px 0;">
+                    item.requests.slice(0, -1).forEach((req, rIdx) => {
+                        const subRawTarget = `raw_log_${index}_req_${rIdx}`;
+                        html += `<div class="timestamp" data-target-raw="${subRawTarget}" style="border:none; padding:2px 0;">
                                     <span style="color:#9ca3af; margin-right:8px; font-size:12px;">├─ 重试</span>
-                                    ${reqHtml}
-                                </div>
-                            `;
-                        }
-                    }
+                                    ${renderLineContent(req)}
+                                 </div>`;
+                    });
                     html += `</div>`;
                 }
-                
-                // 渲染回复行
-                if (isTransaction && hasResponse && entry.response) {
-                    const respHtml = renderLineContent(entry.response);
-                    html += `
-                        <div class="timestamp" id="ts_${index}_resp" data-timestamp="${entry.timestamp || 0}" ${transAttr} style="border-top:none; margin-top:-1px;">
-                            <div class="resp-container">
-                                <span class="tree-connector">└──</span>
-                                <span class="badge-resp">回复</span>
-                                ${respHtml}
-                            </div>
-                        </div>
-                    `;
+
+                // Response Row
+                if(isTrans && hasResp) {
+                    const respRawTarget = `raw_log_${index}_resp`;
+                    html += `<div class="timestamp" id="ts_${index}_resp" data-target-raw="${respRawTarget}" data-timestamp="${ts}" ${isTrans ? `data-trans-group="${transId}" onmouseover="highlightTransaction('${transId}')" onmouseout="clearHighlight()"` : ''} style="border-top:none; margin-top:-1px;">
+                                <div class="resp-container">
+                                    <span class="tree-connector">└──</span><span class="badge-resp">回复</span>
+                                    ${renderLineContent(item.response)}
+                                </div>
+                             </div>`;
                 }
-                
-                return html;
-            } catch (error) {
-                console.error('渲染单个日志条目失败:', error);
-                return '';
-            }
+            });
+            container.innerHTML = html;
         }
 
-        // 渲染日志行内容
         function renderLineContent(entry) {
-            try {
-                if (!entry) return '';
-                
-                const segments = entry.segments || [];
-                const blockMap = {'ts': '', 'dir': '', 'node': '', 'msg_type': '', 'ver': '', 'pid': ''};
-                
-                // 解析段信息
-                for (const s of segments) {
-                    if (s && typeof s === 'object') {
-                        const k = s.kind;
-                        if (k && k in blockMap && !blockMap[k]) {
-                            blockMap[k] = s.text || '';
-                        }
-                    }
+            if(!entry) return '';
+            const segs = entry.segments || [];
+            let html = '';
+            let ts = '';
+            
+            segs.forEach(s => { if(s.kind === 'ts') ts = s.text; });
+            if(!ts && entry.timestamp) ts = entry.timestamp;
+
+            segs.forEach(s => {
+                const txt = htmlEscape(s.text || '');
+                if(s.kind === 'ts') html += `<span class="seg-fixed seg-ts" style="background:#e3f2fd;color:#0c4a6e;">${txt}</span>`;
+                else if(s.kind === 'dir') html += `<span class="seg-fixed seg-dir" style="background:${txt.toLowerCase().includes('output')?'#fee2e2':'#d1fae5'};color:#1b1f23;">${txt}</span>`;
+                else if(s.kind === 'msg_type') html += `<span class="seg-fixed seg-msgtype-sm" style="background:#fff7ed;color:#9a3412;">${txt}</span>`;
+                else if(s.kind === 'node') html += `<span class="seg-fixed seg-node-sm" style="background:#f3f4f6;">${txt}</span>`;
+                else if(s.kind === 'field') html += `<span class="seg-free" style="background:#f0fdf4;color:#374151;">${txt}</span>`;
+                else html += `<span class="seg-free" style="background:#f3f4f6;">${txt}</span>`;
+            });
+
+            if(entry.escape_hits && entry.escape_hits.length > 0) html += ` <span class="tag-abnormal">异常报错</span>`;
+            return html;
+        }
+
+        function renderOriginalText() {
+            const container = document.getElementById('original-text-logs');
+            if (!container || !reportData) return;
+            let html = '';
+            const entries = reportData.log_entries || [];
+            
+            entries.forEach((item, index) => {
+                let main = item;
+                if(item.requests && item.response) main = item.latest_request || item;
+                html += buildRawBlock(`raw_log_${index}_main`, main);
+
+                if (item.requests && item.requests.length > 1) {
+                    item.requests.slice(0, -1).forEach((req, rIdx) => {
+                        html += buildRawBlock(`raw_log_${index}_req_${rIdx}`, req);
+                    });
                 }
-                
-                // 处理时间戳
-                let tsDisplay = blockMap['ts'] || '&nbsp;';
-                const tsVal = entry.timestamp;
-                if (tsVal) {
-                    if (typeof tsVal === 'string') {
-                        tsDisplay = tsVal;
-                    } else if (tsVal instanceof Date) {
-                        tsDisplay = tsVal.toISOString().replace('T', ' ').substring(0, 23);
-                    } else {
-                        tsDisplay = String(tsVal);
-                    }
+
+                if (item.response) {
+                    html += buildRawBlock(`raw_log_${index}_resp`, item.response);
                 }
+            });
+            container.innerHTML = html || '<div style="padding:20px;text-align:center;color:#ccc">无数据</div>';
+        }
+
+        function buildRawBlock(id, entry) {
+            if(!entry) return '';
+            let l1 = entry.original_line1;
+            let l2 = entry.original_line2;
+            if(l1 === undefined) l1 = (entry.segments||[]).map(s=>s.text).join('');
+            
+            return `<div class="original-text-block" id="${id}">
+                        <div class="raw-l1">${htmlEscape(l1||'')}</div>
+                        ${l2 ? `<div class="raw-l2">${htmlEscape(l2)}</div>` : ''}
+                    </div>`;
+        }
+
+        // --- 4. Interactions (Fixes) ---
+        function handleLogRowClick(e) {
+            const target = e.target.closest('.timestamp');
+            if (!target || e.target.classList.contains('tag-retry')) return;
+
+            document.querySelectorAll('.timestamp.selected').forEach(el => el.classList.remove('selected'));
+            document.querySelectorAll('.original-text-block.selected').forEach(el => el.classList.remove('selected'));
+            target.classList.add('selected');
+
+            const rawId = target.getAttribute('data-target-raw');
+            if(rawId) {
+                const rawEl = document.getElementById(rawId);
+                const win = document.getElementById('original-text-container');
                 
-                const parts = [];
-                const hasDir = Boolean(blockMap['dir']);
-                
-                // 渲染时间戳
-                parts.push(`<span class="seg-fixed seg-ts" style="background:#e3f2fd;color:#0c4a6e;">${tsDisplay}</span>`);
-                
-                if (hasDir) {
-                    const dlow = blockMap['dir'].toLowerCase();
-                    const bg_c = dlow.indexOf('output') !== -1 ? '#fee2e2' : '#d1fae5'; // Red/Green
-                    parts.push(`<span class="seg-fixed seg-dir" style="background:${bg_c};color:#1b1f23;">${blockMap['dir']}</span>`);
-                    parts.push(`<span class="seg-fixed seg-node-sm" style="background:#f3f4f6;">${blockMap['node']}</span>`);
-                    parts.push('<span style="color:#9ca3af;margin:0 2px;">:</span>');
-                    
-                    // 渲染消息类型
-                    let desc = '';
-                    for (const s of segments) {
-                        if (s && typeof s === 'object' && s.kind === 'msg_type') {
-                            desc = s.description || '';
-                            break;
-                        }
-                    }
-                    const titleAttr = desc ? `title="${htmlEscape(desc || '')}"` : '';
-                    parts.push(`<span class="seg-fixed seg-msgtype-sm seg-msgtype" ${titleAttr} style="background:#fff7ed;color:#9a3412;">${blockMap['msg_type']}</span>`);
-                } else {
-                    // 自由格式日志
-                    if (blockMap['pid']) {
-                        parts.push(`<span class="seg-fixed seg-pid" style="background:#fef3c7;">${blockMap['pid']}</span>`);
-                    }
-                    for (const s of segments) {
-                        if (s && typeof s === 'object' && !blockMap[s.kind] && s.kind !== 'field') {
-                            parts.push(`<span class="seg-free" style="background:#f3f4f6;">${s.text || ''}</span>`);
-                        }
-                    }
+                // Show window (push layout)
+                if (win) {
+                    if (win.clientHeight === 0) win.style.height = '350px';
+                    win.classList.add('show');
+                    win.classList.remove('collapsed');
+                    document.getElementById('toggle-original-text').textContent = '▼';
                 }
-                
-                // 渲染字段
-                if (hasDir) {
-                    const palette = ['#e0f2fe', '#f0fdf4', '#ffedd5', '#f3e8ff', '#ecfeff'];
-                    for (let idx = 0; idx < segments.length; idx++) {
-                        const s = segments[idx];
-                        if (s && typeof s === 'object' && s.kind === 'field') {
-                            const bg = palette[idx % palette.length];
-                            parts.push(`<span class="seg-free" style="background:${bg};color:#374151;">${s.text || ''}</span>`);
-                        }
-                    }
+
+                if (rawEl) {
+                    rawEl.classList.add('selected');
+                    rawEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
-                
-                // 添加异常标记
-                if (entry.escape_hits && Array.isArray(entry.escape_hits) && entry.escape_hits.length > 0) {
-                    parts.push(' <span class="tag-abnormal">异常报错</span>');
-                }
-                
-                return parts.join('');
-            } catch (error) {
-                console.error('渲染日志行内容失败:', error);
-                return '';
             }
         }
 
-        // HTML转义
+        function sortLogs(order) {
+            const container = document.getElementById('log-container');
+            if(!container) return;
+            
+            document.getElementById('sort-asc-btn').classList.toggle('active', order === 'asc');
+            document.getElementById('sort-desc-btn').classList.toggle('active', order === 'desc');
+
+            const rows = Array.from(container.querySelectorAll('.timestamp[id^="ts_"]')).filter(el => !el.id.endsWith('_resp'));
+            
+            const sortable = rows.map((row) => {
+                const logId = row.getAttribute('data-log-id');
+                const indexStr = logId.replace('log_', '');
+                return {
+                    main: row,
+                    retry: document.getElementById(`retries_${logId}`),
+                    resp: document.getElementById(`ts_${indexStr}_resp`),
+                    ts: parseFloat(row.getAttribute('data-timestamp')) || 0,
+                    origIdx: parseInt(row.getAttribute('data-orig-idx')) || 0
+                };
+            });
+
+            sortable.sort((a, b) => {
+                let diff = (order === 'asc') ? (a.ts - b.ts) : (b.ts - a.ts);
+                if(diff === 0) {
+                    return (order === 'asc') ? (a.origIdx - b.origIdx) : (b.origIdx - a.origIdx);
+                }
+                return diff;
+            });
+
+            const frag = document.createDocumentFragment();
+            sortable.forEach(grp => {
+                frag.appendChild(grp.main);
+                if(grp.retry) frag.appendChild(grp.retry);
+                if(grp.resp) frag.appendChild(grp.resp);
+            });
+            container.innerHTML = '';
+            container.appendChild(frag);
+        }
+
+        window.toggleRetries = function(logId) {
+            const el = document.getElementById(`retries_${logId}`);
+            if(el) el.style.display = (el.style.display === 'none' || el.style.display === '') ? 'block' : 'none';
+        };
+
+        // --- 5. Segment Highlighting Logic ---
+        function bindSegmentHighlight() {
+            const container = document.getElementById('log-container');
+            let currentRawHtml = null;
+            let currentRawEl = null;
+
+            container.addEventListener('mouseover', (e) => {
+                if (e.target.classList.contains('seg-fixed') || e.target.classList.contains('seg-free')) {
+                    const text = e.target.textContent.trim();
+                    if(!text) return;
+
+                    const row = e.target.closest('.timestamp');
+                    if (!row) return;
+                    const rawId = row.getAttribute('data-target-raw');
+                    const rawEl = document.getElementById(rawId);
+
+                    if(rawEl) {
+                        const l1 = rawEl.querySelector('.raw-l1');
+                        if(l1) {
+                            currentRawEl = l1;
+                            currentRawHtml = l1.innerHTML;
+                            const safeText = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            const re = new RegExp(`(${safeText})`, 'g');
+                            // Replace text content (roughly)
+                            l1.innerHTML = l1.innerText.replace(re, '<span class="raw-highlight">$1</span>');
+                        }
+                    }
+                }
+            });
+
+            container.addEventListener('mouseout', (e) => {
+                if(currentRawEl && currentRawHtml !== null) {
+                    currentRawEl.innerHTML = currentRawHtml;
+                    currentRawEl = null;
+                    currentRawHtml = null;
+                }
+            });
+        }
+
+        // --- 6. Resizer Logic ---
+        function initResizer() {
+            const resizer = document.getElementById('resizer-handle');
+            const container = document.getElementById('original-text-container');
+            const main = document.getElementById('main-wrapper');
+            
+            if (!resizer || !container) return;
+
+            let startY, startHeight;
+
+            resizer.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                startY = e.clientY;
+                startHeight = parseInt(window.getComputedStyle(container).height, 10);
+                container.style.transition = 'none'; // Disable transition during drag
+                document.documentElement.addEventListener('mousemove', doDrag, false);
+                document.documentElement.addEventListener('mouseup', stopDrag, false);
+            });
+
+            function doDrag(e) {
+                const newHeight = startHeight - (e.clientY - startY);
+                if (newHeight > 40 && newHeight < main.clientHeight - 100) {
+                    container.style.height = newHeight + 'px';
+                    container.classList.add('show');
+                    container.classList.remove('collapsed');
+                    document.getElementById('toggle-original-text').textContent = '▼';
+                }
+            }
+
+            function stopDrag() {
+                container.style.transition = 'height 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'; // Restore transition
+                document.documentElement.removeEventListener('mousemove', doDrag, false);
+                document.documentElement.removeEventListener('mouseup', stopDrag, false);
+            }
+        }
+
+        // --- 7. Quick Analyze ---
+        function initQuickAnalyze() {
+            const qaFactory = document.getElementById('qaFactory');
+            if (qaFactory) qaFactory.addEventListener('change', (e) => {
+                quickState.factory = e.target.value;
+                quickState.system = ''; 
+                quickState.template = '';
+                loadQaSystems(e.target.value);
+            });
+            const qaSystem = document.getElementById('qaSystem');
+            if (qaSystem) qaSystem.addEventListener('change', (e) => {
+                quickState.system = e.target.value;
+                quickState.template = '';
+                loadQaTemplates(quickState.factory, e.target.value);
+            });
+            const qaTemplate = document.getElementById('qaTemplate');
+            if (qaTemplate) qaTemplate.addEventListener('change', (e) => {
+                quickState.template = e.target.value;
+            });
+            const qaRunBtn = document.getElementById('qaRunBtn');
+            if (qaRunBtn) qaRunBtn.addEventListener('click', quickDownloadAndAnalyze);
+            
+            loadQaFactories();
+        }
+
+        async function quickDownloadAndAnalyze() {
+            if (quickState.loading) return;
+            const factory = quickState.factory;
+            const system = quickState.system;
+            const tpl = getSelectedTemplate();
+            if (!factory || !system) { showError('请先选择厂区与系统'); return; }
+            if (!tpl) { showError('请选择要分析的区域'); return; }
+
+            setQaLoading(true, '下载并分析中...');
+            try {
+                const container = document.getElementById('log-container');
+                container.innerHTML = '<div style="text-align: center; padding: 40px; color: #6b7280;"><h2>分析中...</h2><p>正在搜索、下载和分析日志，请稍候...</p></div>';
+
+                const searchRes = await fetch(`${API_BASE}/api/logs/search_strict`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ template_id: tpl.id || tpl.tid || tpl.template_id || '', include_realtime: true, include_archive: false })
+                });
+                const searchData = await searchRes.json();
+                if (!searchRes.ok || searchData?.success === false) throw new Error(searchData?.error || '搜索日志失败');
+                
+                const logs = Array.isArray(searchData?.logs) ? searchData.logs : [];
+                const files = logs.map(log => ({ name: log.name || '', remote_path: log.remote_path || log.path || '', path: log.remote_path || log.path || '', size: log.size || 0, mtime: log.mtime || log.timestamp || '', type: log.type || 'unknown', node: log.node || '' })).filter(f => f.path);
+                if (!files.length) throw new Error('未找到可下载的日志');
+
+                const downloadRes = await fetch(`${API_BASE}/api/logs/download`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ files, factory, system })
+                });
+                const downloadData = await downloadRes.json();
+                if (!downloadRes.ok || downloadData?.success === false) throw new Error(downloadData?.error || '下载日志失败');
+                
+                const downloadedLogs = Array.isArray(downloadData?.logs) ? downloadData.logs : [];
+                if (!downloadedLogs.length) throw new Error('下载的日志为空');
+
+                const analyzeRes = await fetch(`${API_BASE}/api/logs/analyze`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ logs: downloadedLogs.map(l => l.path), config_id: '', factory, system })
+                });
+                const analyzeData = await analyzeRes.json();
+                if (!analyzeRes.ok || analyzeData?.success === false) throw new Error(analyzeData?.error || '分析日志失败');
+                
+                const reportPath = analyzeData?.report_path || '';
+                if (!reportPath) throw new Error('生成报告失败，未返回报告路径');
+
+                const newReportId = reportPath.split(/[/\\]/).pop();
+                if (!newReportId) throw new Error('无法获取新生成的报告ID');
+
+                reportId = newReportId;
+                await loadReportData(newReportId);
+                initPage();
+                showMessage('success', '分析完成，报告已更新');
+            } catch (err) {
+                console.error('快速分析失败:', err);
+                showError('分析失败: ' + err.message);
+            } finally {
+                setQaLoading(false);
+            }
+        }
+
+        // --- 8. Helpers ---
+        function setQaLoading(loading, text = '处理中...') {
+            quickState.loading = !!loading;
+            const btn = document.getElementById('qaRunBtn');
+            if (btn) { btn.disabled = loading; btn.textContent = loading ? text : '下载并分析'; }
+        }
+        function renderQaSelect(selId, items, placeholder) {
+            const sel = document.getElementById(selId);
+            if (!sel) return;
+            sel.innerHTML = `<option value="">${placeholder || '请选择'}</option>`;
+            (items || []).forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item.id || item.value || item.name || '';
+                opt.textContent = item.name || item.label || opt.value || '';
+                sel.appendChild(opt);
+            });
+        }
+        async function loadQaFactories() {
+            try {
+                const res = await fetch(`${API_BASE}/api/factories`);
+                const data = await res.json();
+                quickState.factories = Array.isArray(data) ? data : [];
+                renderQaSelect('qaFactory', quickState.factories, '请选择厂区');
+            } catch (err) { console.error(err); }
+        }
+        async function loadQaSystems(factoryId) {
+            renderQaSelect('qaSystem', [], '请选择系统'); renderQaSelect('qaTemplate', [], '请选择区域');
+            if (!factoryId) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/systems?factory=${encodeURIComponent(factoryId)}`);
+                const data = await res.json();
+                quickState.systems = Array.isArray(data) ? data : [];
+                renderQaSelect('qaSystem', quickState.systems, '请选择系统');
+            } catch (err) { console.error(err); }
+        }
+        async function loadQaTemplates(factoryId, systemId) {
+            renderQaSelect('qaTemplate', [], '请选择区域');
+            if (!factoryId || !systemId) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/templates?factory=${encodeURIComponent(factoryId)}&system=${encodeURIComponent(systemId)}&page_size=200`);
+                const data = await res.json();
+                const items = data?.items || data?.data?.items || [];
+                quickState.templates = Array.isArray(items) ? items : [];
+                renderQaSelect('qaTemplate', quickState.templates, '请选择区域');
+            } catch (err) { console.error(err); }
+        }
+        function getSelectedTemplate() {
+            const tplId = quickState.template;
+            return tplId ? (quickState.templates || []).find(t => (t.id === tplId) || (t.tid === tplId)) : null;
+        }
+        function getTimestamp(entry) {
+            const ts = entry.timestamp;
+            if (ts instanceof Date) return ts.getTime();
+            if (typeof ts === 'string') return parseFloat(ts) || 0;
+            return ts || 0;
+        }
         function htmlEscape(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
-
-        // 切换侧边栏
-        function toggleSidebar() {
-            const sb = document.getElementById('sidebar');
-            sb.classList.toggle('expanded');
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('expanded'); }
+        function toggleOriginalText() { 
+            const c = document.getElementById('original-text-container'); 
+            const isShow = c.classList.contains('show');
+            if (isShow) { c.classList.remove('show'); c.style.height = '0'; }
+            else { c.classList.add('show'); c.classList.remove('collapsed'); c.style.height = '350px'; document.getElementById('toggle-original-text').textContent = '▼'; }
         }
-
-        // 滚动到指定日志
-        function scrollToLog(anchor) {
-            const target = document.getElementById(anchor);
-            if (target) {
-                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                target.classList.remove('flash-highlight');
-                void target.offsetWidth; // trigger reflow
-                target.classList.add('flash-highlight');
-            }
+        function toggleOriginalTextCollapse() {
+            const c = document.getElementById('original-text-container');
+            c.classList.toggle('collapsed');
+            document.getElementById('toggle-original-text').textContent = c.classList.contains('collapsed') ? '▶' : '▼';
         }
-
-        // 应用筛选
+        function hideOriginalText() { 
+            const c = document.getElementById('original-text-container');
+            c.classList.remove('show');
+            c.style.height = '0';
+        }
         function applyFilter() {
-            const qRaw = document.getElementById('filterInput').value.trim();
+            const q = document.getElementById('filterInput').value.trim();
             let re = null;
-            if (qRaw) {
-                try {
-                    re = new RegExp(qRaw.startsWith('/') ? qRaw.slice(1, qRaw.lastIndexOf('/')) : qRaw, 'i');
-                } catch (e) {}
-            }
-            
-            // 处理时间范围
-            const sStr = document.getElementById('startTime').value;
-            const eStr = document.getElementById('endTime').value;
-            const sTime = sStr ? new Date(sStr).getTime() : null;
-            const eTime = eStr ? new Date(eStr).getTime() : null;
-            
-            // 筛选日志
-            const rows = document.querySelectorAll('.timestamp');
-            rows.forEach(r => {
+            if (q) { try { re = new RegExp(q.startsWith('/') ? q.slice(1, q.lastIndexOf('/')) : q, 'i'); } catch(e){} }
+            const sTime = document.getElementById('startTime').value ? new Date(document.getElementById('startTime').value).getTime() : null;
+            const eTime = document.getElementById('endTime').value ? new Date(document.getElementById('endTime').value).getTime() : null;
+            document.querySelectorAll('.timestamp').forEach(r => {
                 let show = true;
-                if (re && !re.test(r.textContent)) {
-                    show = false;
-                }
-                
-                const ts = parseInt(r.getAttribute('data-timestamp') || 0, 10) || 0;
+                if (re && !re.test(r.innerText)) show = false;
+                const ts = parseInt(r.getAttribute('data-timestamp') || 0);
                 if (show && ts > 0) {
                     if (sTime && ts < sTime) show = false;
                     if (eTime && ts > eTime) show = false;
                 }
-                
                 if (show && selectedMsgTypes.size > 0) {
-                    const mt = r.querySelector('.seg-msgtype');
-                    if (!mt || !selectedMsgTypes.has(mt.textContent.trim())) {
-                        show = false;
-                    }
+                    const mt = r.querySelector('.seg-msgtype-sm');
+                    if (!mt || !selectedMsgTypes.has(mt.textContent.trim())) show = false;
                 }
-                
                 r.style.display = show ? 'flex' : 'none';
             });
         }
-
-        // 排序日志
-        function sortLogs(order = 'asc') {
-            const container = document.getElementById('log-container');
-            if (!container) return;
-            
-            const rows = Array.from(container.querySelectorAll('.timestamp')).filter(r => r.id.startsWith('ts_'));
-            rows.sort((a, b) => {
-                // 空值保护：转换失败时设为0
-                const ta = parseInt(a.getAttribute('data-timestamp') || '0', 10) || 0;
-                const tb = parseInt(b.getAttribute('data-timestamp') || '0', 10) || 0;
-                return order === 'desc' ? (tb - ta) : (ta - tb);
-            });
-            
-            const frag = document.createDocumentFragment();
-            for (const row of rows) {
-                frag.appendChild(row);
-                const logId = row.getAttribute('data-log-id');
-                const retries = logId ? document.getElementById(`retries_${logId}`) : null;
-                if (retries) frag.appendChild(retries);
-            }
-            
-            container.innerHTML = '';
-            container.appendChild(frag);
-        }
-
-        // 重置筛选
         function clearFilter() {
             document.getElementById('filterInput').value = '';
             document.getElementById('startTime').value = '';
@@ -516,584 +746,80 @@
             renderTags();
             applyFilter();
         }
-
-        // 渲染消息类型下拉列表
+        function renderAbnormalNav() { 
+            if (!reportData) return;
+            const list = document.getElementById('sidebarContent');
+            const badge = document.getElementById('sidebarBadge');
+            const abnormalItems = Array.isArray(reportData.abnormal_items) ? reportData.abnormal_items : [];
+            if (badge) { badge.textContent = abnormalItems.length; badge.classList.toggle('zero', abnormalItems.length === 0); }
+            if (!list) return;
+            if (abnormalItems.length === 0) { list.innerHTML = '<div class="ab-empty">🎉 无异常报错</div>'; return; }
+            let html = '';
+            for (const item of abnormalItems) {
+                const details = item.details ? item.details.map(d => `<div class="ab-detail-row">${d}</div>`).join('') : '';
+                html += `<div class="abnormal-item" onclick="scrollToLog('${item.anchor}')"><span class="ab-time">${item.time}</span><div style="font-weight:600;font-size:13px;margin-bottom:4px;">${item.msgType}</div>${details}</div>`;
+            }
+            list.innerHTML = html;
+        }
+        function scrollToLog(anchor) {
+            const target = document.getElementById(anchor);
+            if (target) { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); target.classList.remove('flash-highlight'); void target.offsetWidth; target.classList.add('flash-highlight'); }
+        }
+        function bindEvents() {
+            document.getElementById('log-container').addEventListener('click', handleLogRowClick);
+            const input = document.getElementById('msgTypeInput');
+            if (input) {
+                input.addEventListener('focus', () => { renderDropdown(input.value); document.getElementById('msgTypeDropdown').style.display = 'block'; });
+                input.addEventListener('input', (e) => { renderDropdown(e.target.value); document.getElementById('msgTypeDropdown').style.display = 'block'; });
+                document.addEventListener('click', (e) => { if (!e.target.closest('.msg-type-container')) document.getElementById('msgTypeDropdown').style.display = 'none'; });
+            }
+            bindSegmentHighlight(); // New Highlight Feature
+        }
+        function highlightTransaction(id) { document.querySelectorAll(`[data-trans-group="${id}"]`).forEach(e => e.classList.add('trans-highlight')); }
+        function clearHighlight() { document.querySelectorAll('.trans-highlight').forEach(e => e.classList.remove('trans-highlight')); }
+        async function loadReportData(id) {
+            const res = await fetch(`${API_BASE}/api/report-details/${encodeURIComponent(id)}`);
+            const json = await res.json();
+            if (json.success) { reportData = json.report_data; document.title = `${reportData.name} - 报告`; }
+            else throw new Error(json.error);
+        }
+        function showError(msg) { document.getElementById('log-container').innerHTML = `<div style="text-align:center;padding:20px;color:red">${msg}</div>`; }
+        function showMessage(type, message) {
+            var msgEl = document.createElement('div');
+            msgEl.style.cssText = `position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 6px; color: white; font-weight: 600; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,0.15); opacity: 0; transform: translateY(-20px); transition: all 0.3s ease;`;
+            if (type === 'success') msgEl.style.backgroundColor = '#10b981';
+            else if (type === 'error') msgEl.style.backgroundColor = '#ef4444';
+            else msgEl.style.backgroundColor = '#6b7280';
+            msgEl.textContent = message;
+            document.body.appendChild(msgEl);
+            setTimeout(() => { msgEl.style.opacity = '1'; msgEl.style.transform = 'translateY(0)'; }, 10);
+            setTimeout(() => { msgEl.style.opacity = '0'; msgEl.style.transform = 'translateY(-20px)'; setTimeout(() => { document.body.removeChild(msgEl); }, 300); }, 3000);
+        }
         function renderDropdown(filterText) {
-            const dropdown = document.getElementById('msgTypeDropdown');
-            if (!dropdown || !reportData) return;
-            
-            dropdown.innerHTML = '';
-            const lower = (filterText || '').toLowerCase();
-            // 空值保护：确保message_types是数组
-            const allTypes = Array.isArray(reportData.message_types) ? reportData.message_types : [];
-            const filtered = allTypes.filter(mt => 
-                typeof mt === 'string' && 
-                mt.toLowerCase().includes(lower) && 
-                !selectedMsgTypes.has(mt)
-            );
-            
-            if (filtered.length === 0) {
-                dropdown.innerHTML = '<div class="msg-type-option" style="color:#9ca3af">无匹配项</div>';
-                return;
-            }
-            
-            for (const mt of filtered) {
-                const div = document.createElement('div');
-                div.className = 'msg-type-option';
-                div.textContent = mt;
-                div.onclick = () => addMsgType(mt);
-                dropdown.appendChild(div);
-            }
+            const dd = document.getElementById('msgTypeDropdown'); dd.innerHTML = '';
+            const lower = filterText.toLowerCase();
+            const types = (reportData.message_types || []).filter(mt => mt.toLowerCase().includes(lower) && !selectedMsgTypes.has(mt));
+            if (types.length === 0) { dd.innerHTML = '<div class="msg-type-option" style="color:#999">无匹配</div>'; return; }
+            types.forEach(mt => { const d = document.createElement('div'); d.className = 'msg-type-option'; d.textContent = mt; d.onclick = () => addMsgType(mt); dd.appendChild(d); });
         }
-
-        // 添加消息类型
-        function addMsgType(mt) {
-            selectedMsgTypes.add(mt);
-            renderTags();
-            document.getElementById('msgTypeInput').value = '';
-            document.getElementById('msgTypeDropdown').style.display = 'none';
-            applyFilter();
-        }
-
-        // 移除消息类型
-        function removeMsgType(mt) {
-            selectedMsgTypes.delete(mt);
-            renderTags();
-            applyFilter();
-        }
-
-        // 渲染消息类型标签
+        function addMsgType(mt) { selectedMsgTypes.add(mt); renderTags(); document.getElementById('msgTypeInput').value=''; document.getElementById('msgTypeDropdown').style.display='none'; applyFilter(); }
+        function removeMsgType(mt) { selectedMsgTypes.delete(mt); renderTags(); applyFilter(); }
         function renderTags() {
-            const container = document.getElementById('selectedTags');
-            if (!container) return;
-            
-            container.innerHTML = '';
-            selectedMsgTypes.forEach(mt => {
-                const tag = document.createElement('div');
-                tag.className = 'tag';
-                
-                const mtText = document.createTextNode(mt);
-                tag.appendChild(mtText);
-                
-                const removeBtn = document.createElement('span');
-                removeBtn.className = 'tag-remove';
-                removeBtn.textContent = '×';
-                removeBtn.addEventListener('click', () => removeMsgType(mt));
-                tag.appendChild(removeBtn);
-                
-                container.appendChild(tag);
-            });
+            const c = document.getElementById('selectedTags'); c.innerHTML = '';
+            selectedMsgTypes.forEach(mt => { const t = document.createElement('div'); t.className = 'tag'; t.innerHTML = `${mt}<span class="tag-remove" onclick="removeMsgType('${mt}')">×</span>`; c.appendChild(t); });
         }
-
-        // 挂载到window，让内联事件能访问
-        window.highlightTransaction = function(gid) {
-            if (!gid) return;
-            document.querySelectorAll(`[data-trans-group="${gid}"]`).forEach(el => {
-                el.classList.add('trans-highlight');
-            });
-        }
-
-        // 挂载到window，让内联事件能访问
-        window.clearHighlight = function() {
-            document.querySelectorAll('.trans-highlight').forEach(el => {
-                el.classList.remove('trans-highlight');
-            });
-        }
-
-        // 导出纯净版报告
-        async function exportPureReport() {
-            if (!reportData || !reportId) {
-                showError('缺少报告数据或报告ID');
-                return;
-            }
-            
+        async function exportPureReport() { 
+            if (!reportData || !reportId) { showError('缺少报告数据或报告ID'); return; }
             try {
-                const response = await fetch(`${API_BASE}/api/export-pure-report`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ report_id: reportId })
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-                
-                // 下载报告
+                const response = await fetch(`${API_BASE}/api/export-pure-report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report_id: reportId }) });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const blob = await response.blob();
                 const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
+                const a = document.createElement('a'); a.href = url;
                 a.download = `${reportData && reportData.name ? reportData.name : '报告'}_pure.html`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            } catch (error) {
-                showError(`导出报告失败: ${error.message}`);
-            }
+                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+            } catch (error) { showError(`导出报告失败: ${error.message}`); }
         }
     </script>
-    <style>
-        /* Reset & Layout Base */
-        * { box-sizing: border-box; }
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f0f2f5;
-            color: #1f2937;
-            height: 100vh; /* 全屏高度 */
-            overflow: hidden; /* 禁止 Body 滚动，由内部容器接管 */
-            display: flex;
-        }
-
-        /* =========================================
-           Sidebar Styles (性能优化版)
-           不再使用 fixed，改为 flex item，避免重排
-        ========================================= */
-        #sidebar {
-            width: 60px; /* 默认折叠宽度 */
-            height: 100%;
-            background: #ffffff;
-            border-right: 1px solid #e5e7eb;
-            display: flex;
-            flex-direction: column;
-            transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            z-index: 50;
-            flex-shrink: 0; /* 防止被挤压 */
-            box-shadow: 2px 0 8px rgba(0,0,0,0.05);
-        }
-        
-        /* 展开状态类 */
-        #sidebar.expanded {
-            width: 320px;
-        }
-
-        /* Sidebar Header (Toggle Area) */
-        .sidebar-header {
-            height: 60px;
-            display: flex;
-            align-items: center;
-            justify-content: center; /* 折叠时居中 */
-            cursor: pointer;
-            border-bottom: 1px solid #f3f4f6;
-            background: #f9fafb;
-            transition: background 0.2s;
-        }
-        .sidebar-header:hover { background: #eff6ff; }
-        #sidebar.expanded .sidebar-header {
-            justify-content: flex-start;
-            padding-left: 16px;
-        }
-
-        /* Sidebar Icon & Text */
-        .icon-box {
-            position: relative;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-        }
-        .sb-title {
-            display: none;
-            font-weight: 700;
-            color: #111827;
-            margin-left: 8px;
-            white-space: nowrap;
-            overflow: hidden;
-        }
-        #sidebar.expanded .sb-title { display: block; }
-
-        /* Badges */
-        .count-badge {
-            position: absolute;
-            top: 2px;
-            right: 2px;
-            background: #fee2e2;
-            color: #991b1b;
-            border: 1px solid #fecdd3;
-            font-size: 10px;
-            font-weight: 700;
-            height: 18px;
-            min-width: 18px;
-            border-radius: 9px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 4px;
-        }
-        .count-badge.zero { background: #f3f4f6; color: #9ca3af; border-color: #e5e7eb; }
-
-        /* Sidebar Content (Scrollable List) */
-        .sidebar-content {
-            flex: 1;
-            overflow-y: auto;
-            overflow-x: hidden;
-            opacity: 0; /* 折叠时隐藏内容 */
-            pointer-events: none;
-            transition: opacity 0.1s;
-            padding: 12px;
-        }
-        #sidebar.expanded .sidebar-content {
-            opacity: 1;
-            pointer-events: auto;
-            transition: opacity 0.2s 0.1s; /* 延迟显示内容 */
-        }
-
-        /* Abnormal Item Card */
-        .abnormal-item {
-            background: #fff;
-            border: 1px solid #e5e7eb;
-            border-left: 4px solid #f43f5e; /* 红色左边框醒目 */
-            border-radius: 6px;
-            margin-bottom: 8px;
-            padding: 10px;
-            cursor: pointer;
-            transition: transform 0.1s, box-shadow 0.1s;
-        }
-        .abnormal-item:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-            border-color: #fecdd3; /* hover border */
-        }
-        .ab-time { font-size: 12px; color: #6b7280; display: block; margin-bottom: 4px; }
-        .ab-detail-row {
-            font-size: 12px;
-            color: #374151;
-            font-family: 'JetBrains Mono', Consolas, monospace;
-            background: #fdf2f8;
-            padding: 2px 4px;
-            border-radius: 4px;
-            margin-top: 2px;
-            word-break: break-all;
-        }
-        .ab-empty { text-align: center; color: #9ca3af; padding: 20px; font-size: 13px; }
-
-        /* =========================================
-           Main Content Area
-        ========================================= */
-        #main-wrapper {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            min-width: 0; /* Flexbox 溢出修复 */
-            height: 100%;
-        }
-
-        /* Filter Bar (Sticky inside main wrapper) */
-        #filterBar {
-            flex-shrink: 0;
-            background: #fff;
-            padding: 12px 20px;
-            border-bottom: 1px solid #e5e7eb;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 16px;
-            align-items: center;
-            z-index: 10;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-        }
-
-        /* Log Scroll Container (Independent Scroll) */
-        #log-container {
-            flex: 1;
-            overflow-y: auto; /* 只有这个区域滚动 */
-            padding: 20px;
-            scroll-behavior: smooth;
-        }
-
-        /* =========================================
-           Existing Log Styles (Preserved)
-        ========================================= */
-        .timestamp {
-            display: flex;
-            align-items: center;
-            padding: 6px 10px; /*稍微紧凑一点*/
-            margin: 2px 0;
-            background-color: #ffffff;
-            border-radius: 6px;
-            font-size: 14px;
-            border: 1px solid transparent; /* 预留边框防抖动 */
-            flex-wrap: wrap;
-            gap: 4px 8px;
-        }
-        .timestamp:hover { background-color: #f9fafb; border-color: #e5e7eb; }
-        
-        /* Segment Styles */
-        .seg-fixed {
-            display: inline-block;
-            box-sizing: border-box;
-            padding: 2px 6px;
-            margin: 0 2px;
-            border-radius: 4px;
-            vertical-align: middle;
-            font-family: 'JetBrains Mono', Consolas, monospace;
-            font-size: 12px;
-            white-space: nowrap;
-        }
-        .seg-ts {
-            width: 160px;
-            font-weight: 500;
-        }
-        .seg-dir {
-            width: 70px;
-            text-align: center;
-            font-weight: 600;
-        }
-        .seg-node-sm {
-            width: 50px;
-            text-align: center;
-        }
-        .seg-msgtype-sm {
-            width: 110px;
-            text-align: center;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-        }
-        .seg-pid {
-            width: 130px;
-            text-align: center;
-        }
-        .seg-free {
-            display: inline-block;
-            padding: 2px 6px;
-            margin: 0 2px;
-            border-radius: 4px;
-            font-family: 'JetBrains Mono', Consolas, monospace;
-            font-size: 12px;
-            white-space: nowrap;
-        }
-        
-        /* Filter Components */
-        .filter-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: #f9fafb;
-            padding: 4px 10px;
-            border-radius: 8px;
-            border: 1px solid #e5e7eb;
-        }
-        .filter-label {
-            font-size: 11px;
-            color: #6b7280;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-        .crystal-input {
-            border: none;
-            background: transparent;
-            font-size: 13px;
-            outline: none;
-            color: #1f2937;
-        }
-        
-        /* Buttons */
-        .btn {
-            padding: 6px 16px;
-            border-radius: 6px;
-            border: 1px solid #d1d5db;
-            background: white;
-            cursor: pointer;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        .btn-primary {
-            background: #2563eb;
-            color: white;
-            border: none;
-        }
-        .btn-primary:hover {
-            background: #1d4ed8;
-        }
-        .jump-btn {
-            height: 22px;
-            padding: 0 10px;
-            border-radius: 11px;
-            font-size: 11px;
-            background: #eff6ff;
-            color: #2563eb;
-            border: 1px solid #bfdbfe;
-            margin-left: auto;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-        }
-        .jump-btn:hover {
-            background: #2563eb;
-            color: white;
-        }
-
-        /* Dropdown & Tags */
-        .msg-type-container {
-            position: relative;
-        }
-        .msg-type-dropdown {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            width: 280px;
-            background: white;
-            border: 1px solid #e5e7eb;
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
-            z-index: 100;
-            max-height: 300px;
-            overflow-y: auto;
-            display: none;
-            padding: 4px;
-            border-radius: 8px;
-        }
-        .msg-type-option {
-            padding: 6px 10px;
-            cursor: pointer;
-            font-size: 12px;
-            border-radius: 4px;
-        }
-        .msg-type-option:hover {
-            background: #eff6ff;
-            color: #1d4ed8;
-        }
-        .selected-tags {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-        }
-        .tag {
-            background: #eff6ff;
-            border: 1px solid #bfdbfe;
-            color: #1e40af;
-            padding: 1px 6px;
-            border-radius: 4px;
-            font-size: 11px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .tag-remove {
-            cursor: pointer;
-            opacity: 0.6;
-        }
-        .tag-remove:hover {
-            opacity: 1;
-        }
-
-        /* Highlighting */
-        .flash-highlight {
-            animation: flash-bg 2s ease-out forwards;
-            border: 1px solid #ef4444 !important;
-        }
-        @keyframes flash-bg {
-            0% { background: #fee2e2; }
-            100% { background: #fff; }
-        }
-        .trans-highlight {
-            background-color: #f0f9ff !important;
-            border-left: 3px solid #3b82f6 !important;
-        }
-
-        /* Tree Structure */
-        .badge-req {
-            padding: 1px 4px;
-            background: #dbeafe;
-            color: #1e40af;
-            border-radius: 3px;
-            font-size: 10px;
-            font-weight: bold;
-            margin-right: 6px;
-            border: 1px solid #bfdbfe;
-        }
-        .badge-resp {
-            padding: 1px 4px;
-            background: #dcfce7;
-            color: #166534;
-            border-radius: 3px;
-            font-size: 10px;
-            font-weight: bold;
-            margin-right: 6px;
-            border: 1px solid #bbf7d0;
-        }
-        .tree-connector {
-            width: 20px;
-            text-align: right;
-            color: #9ca3af;
-            margin-right: 4px;
-            font-family: monospace;
-            font-weight: bold;
-        }
-        .resp-container {
-            display: flex;
-            align-items: center;
-        }
-        .tag-abnormal {
-            background: #fef2f2;
-            border: 1px solid #fecdd3;
-            color: #b91c1c;
-            font-size: 11px;
-            padding: 0 4px;
-            border-radius: 3px;
-            margin-left: 4px;
-        }
-        
-        /* 导出按钮 */
-        .export-btn {
-            background: #10b981;
-            color: white;
-            border: none;
-        }
-        .export-btn:hover {
-            background: #059669;
-        }
-    </style>
-</head>
-<body>
-    <div id="sidebar">
-        <div class="sidebar-header" title="点击展开/收起">
-            <div class="icon-box">
-                ⚠️
-                <div id="sidebarBadge" class="count-badge">0</div>
-            </div>
-            <span class="sb-title">异常报错列表</span>
-        </div>
-        <div id="sidebarContent" class="sidebar-content">
-        </div>
-    </div>
-
-    <div id="main-wrapper">
-        <div id="filterBar">
-            <div class="filter-group" style="flex: 1; min-width: 200px;">
-                <span class="filter-label">🔍 搜索</span>
-                <input id="filterInput" class="crystal-input" style="width: 100%;" type="text" placeholder="正则支持..." />
-            </div>
-            <div class="filter-group">
-                <span class="filter-label">🕒 时间</span>
-                <input id="startTime" class="crystal-input" type="datetime-local" step="1" style="width:170px;" lang="zh-CN" />
-                <span style="color:#ccc">-</span>
-                <input id="endTime" class="crystal-input" type="datetime-local" step="1" style="width:170px;" lang="zh-CN" />
-            </div>
-            <div class="filter-group msg-type-container">
-                <span class="filter-label">🏷️ 报文</span>
-                <div class="selected-tags" id="selectedTags"></div>
-                <input id="msgTypeInput" class="crystal-input" style="width: 100px;" placeholder="选择类型..." />
-                <div id="msgTypeDropdown" class="msg-type-dropdown"></div>
-            </div>
-            <div class="filter-group" style="gap: 6px;">
-                <span class="filter-label">排序</span>
-                <button class="btn" id="sort-asc-btn">时间正序</button>
-                <button class="btn" id="sort-desc-btn">时间逆序</button>
-            </div>
-            <button class="btn btn-primary" id="apply-filter-btn">筛选</button>
-            <button class="btn" id="clear-filter-btn">重置</button>
-            <button class="btn export-btn" id="export-btn">导出纯净版报告</button>
-        </div>
-
-        <div id="log-container">
-            <div style="text-align: center; padding: 40px; color: #6b7280;">
-                <h2>加载中...</h2>
-                <p>正在加载报告数据，请稍候...</p>
-            </div>
-        </div>
-    </div>
 </body>
 </html>

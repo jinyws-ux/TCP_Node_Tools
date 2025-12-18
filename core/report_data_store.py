@@ -55,6 +55,7 @@ class ReportDataStore:
                 'factory': report_data.get('factory', ''),
                 'system': report_data.get('system', ''),
                 'nodes': report_data.get('nodes', []),
+                'related_logs': report_data.get('related_logs', []),
                 'size': 0,  # 后续计算
                 'status': 'completed'
             }

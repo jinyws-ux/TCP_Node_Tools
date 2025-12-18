@@ -82,25 +82,82 @@ class LogMatcher:
                 trans_map[key] = Transaction(node_id, trans_id)
 
             transaction = trans_map[key]
+            entry_time = entry.get('timestamp')
 
             if is_request:
-                transaction.requests.append(entry)
+                # 确保请求按照时间顺序添加
+                if transaction.requests and entry_time:
+                    # 找到正确的插入位置，确保请求按时间升序排列
+                    inserted = False
+                    for i, req in enumerate(transaction.requests):
+                        req_time = req.get('timestamp')
+                        if req_time and entry_time < req_time:
+                            transaction.requests.insert(i, entry)
+                            inserted = True
+                            break
+                    if not inserted:
+                        transaction.requests.append(entry)
+                else:
+                    transaction.requests.append(entry)
                 # 标记该 entry 为已处理（属于某个事务）
-                # 注意：我们在 Pass 2 会用到这个标记来决定是否跳过
-                # 但为了 Pass 2 的顺序性，我们其实不需要在这里物理移除
-                # 只需要知道它属于哪个 Transaction 即可
                 entry['_transaction_ref'] = transaction
                 
             elif is_response:
-                # 如果已经有回复了怎么办？
-                # 策略：覆盖？或者忽略？通常一个事务只有一个回复。
-                # 如果日志里有重复回复，我们保留第一个，或者覆盖。这里选择保留第一个。
-                if transaction.response is None:
-                    transaction.response = entry
-                    entry['_transaction_ref'] = transaction
+                # 检查回复时间是否晚于所有请求时间
+                response_time = entry_time
+                valid_response = False  # 默认无效，只有验证通过才有效
+                
+                # 确保回复和请求都有有效的时间戳
+                if response_time and transaction.requests:
+                    # 检查是否晚于所有请求时间
+                    valid = True
+                    for req in transaction.requests:
+                        req_time = req.get('timestamp')
+                        if req_time:
+                            # 确保时间戳可以比较
+                            try:
+                                # 转换为统一的时间戳格式
+                                def get_timestamp_ms(ts):
+                                    if isinstance(ts, (int, float)):
+                                        return ts
+                                    elif isinstance(ts, str):
+                                        # 尝试转换字符串时间戳
+                                        return float(ts)
+                                    else:
+                                        # 尝试获取datetime对象的时间戳
+                                        return ts.timestamp() * 1000
+                                
+                                const_response_time = get_timestamp_ms(response_time)
+                                const_req_time = get_timestamp_ms(req_time)
+                                
+                                if const_response_time < const_req_time:
+                                    # 回复时间早于请求时间，无效回复
+                                    valid = False
+                                    break
+                            except (TypeError, ValueError):
+                                # 时间戳类型无效，跳过比较
+                                continue
+                    
+                    # 如果通过了所有时间比较，且至少有一个有效的请求时间
+                    if valid:
+                        # 检查是否至少有一个请求有有效的时间戳
+                        has_valid_req_time = any(req.get('timestamp') for req in transaction.requests)
+                        if has_valid_req_time:
+                            valid_response = True
+                
+                if valid_response:
+                    # 如果已经有回复了怎么办？
+                    # 策略：覆盖？或者忽略？通常一个事务只有一个回复。
+                    # 如果日志里有重复回复，我们保留第一个，或者覆盖。这里选择保留第一个。
+                    if transaction.response is None:
+                        transaction.response = entry
+                        entry['_transaction_ref'] = transaction
+                    else:
+                        # 这是一个重复的回复，或者 TRANSID 冲突？
+                        # 暂时作为普通日志处理，不归入事务（或者归入但不作为主回复）
+                        pass
                 else:
-                    # 这是一个重复的回复，或者 TRANSID 冲突？
-                    # 暂时作为普通日志处理，不归入事务（或者归入但不作为主回复）
+                    # 无效回复，作为普通日志处理
                     pass
 
         # Pass 2: Rendering / Flattening

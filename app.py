@@ -8,7 +8,6 @@ CORE_MODULES = [
     "core.log_parser",
     "core.parser_config_manager",
     "core.parser_config_service",
-    "core.report_generator",
     "core.report_mapping_store",
     "core.server_config_service",
     "core.template_manager",

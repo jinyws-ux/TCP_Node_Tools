@@ -260,51 +260,6 @@
                     <div class="message-empty">尚未运行分析</div>
                 </div>
             </div>
-            
-            <!-- 报告列表 -->
-            <div class="reports-section">
-                <h2><i class="fas fa-file-alt"></i> 生成的报告</h2>
-                <div id="reports-messages" class="message-container" data-label="报告管理">
-                    <div class="message-empty"></div>
-                </div>
-                <div class="reports-controls">
-                    <div class="reports-controls-left">
-                        <div class="form-group">
-                            <label for="reports-search">搜索报告</label>
-                            <input type="text" id="reports-search" placeholder="输入报告名称或关键词搜索">
-                        </div>
-                    </div>
-                    <div class="reports-controls-right">
-                        <button class="btn btn-primary" id="refresh-reports-btn">
-                            <i class="fas fa-sync"></i> 刷新列表
-                        </button>
-                    </div>
-                </div>
-                <div class="table-container">
-                    <h3>生成的报告</h3>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>报告名称</th>
-                                <th>生成时间</th>
-                                <th>日志数量</th>
-                                <th>异常数量</th>
-                                <th>操作</th>
-                            </tr>
-                        </thead>
-                        <tbody id="reports-list-body">
-                            <tr>
-                                <td colspan="5" class="message-empty">暂无报告</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    <div class="empty-state" id="no-reports-message" style="display: none;">
-                        <i class="fas fa-file-alt"></i>
-                        <p>暂无生成的报告</p>
-                        <p>请先使用"日志分析"功能生成报告</p>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <!-- 服务器配置标签页 -->
@@ -568,7 +523,7 @@
                 <div class="modal-content">
                     <div class="modal-header">
                         <h3><i class="fas fa-envelope"></i> 添加报文类型</h3>
-                        <button class="close-btn" onclick="hideAddMessageTypeModal()">×</button>
+                        <button class="close-btn" onclick="hideAddMessageTypeModal()">&times;</button>
                     </div>
                     <div class="modal-body">
                         <form id="add-message-type-form">
@@ -596,7 +551,7 @@
                 <div class="modal-content">
                     <div class="modal-header">
                         <h3><i class="fas fa-code-branch"></i> 添加版本</h3>
-                        <button class="close-btn" onclick="hideAddVersionModal()">×</button>
+                        <button class="close-btn" onclick="hideAddVersionModal()">&times;</button>
                     </div>
                     <div class="modal-body">
                         <form id="add-version-form">
@@ -625,7 +580,7 @@
                 <div class="modal-content">
                     <div class="modal-header">
                         <h3><i class="fas fa-tag"></i> 添加字段</h3>
-                        <button class="close-btn" onclick="hideAddFieldModal()">×</button>
+                        <button class="close-btn" onclick="hideAddFieldModal()">&times;</button>
                     </div>
                     <div class="modal-body">
                         <form id="add-field-form">
@@ -671,7 +626,7 @@
                 <div class="modal-content">
                     <div class="modal-header">
                         <h3><i class="fas fa-exchange-alt"></i> 添加转义</h3>
-                        <button class="close-btn" onclick="hideAddEscapeModal()">×</button>
+                        <button class="close-btn" onclick="hideAddEscapeModal()">&times;</button>
                     </div>
                     <div class="modal-body">
                         <form id="add-escape-form">
@@ -723,7 +678,7 @@
                 <div class="modal-content">
                     <div class="modal-header">
                         <h3 id="edit-modal-title">编辑配置项</h3>
-                        <button class="close-btn" onclick="hideEditConfigModal()">×</button>
+                        <button class="close-btn" onclick="hideEditConfigModal()">&times;</button>
                     </div>
                     <div class="modal-body">
                         <div id="edit-config-form"></div>
@@ -741,7 +696,7 @@
                 <div class="modal-content">
                     <div class="modal-header">
                         <h3><i class="fas fa-exclamation-triangle"></i> 删除确认</h3>
-                        <button class="close-btn" onclick="hideDeleteConfirmModal()">×</button>
+                        <button class="close-btn" onclick="hideDeleteConfirmModal()">&times;</button>
                     </div>
                     <div class="modal-body">
                         <p class="text-danger">警告：此操作将删除选中项及下属所有配置，且无法恢复！</p>

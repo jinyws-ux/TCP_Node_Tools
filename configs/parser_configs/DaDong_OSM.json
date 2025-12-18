@@ -5,22 +5,22 @@
       "0001": {
         "Fields": {
           "Data": {
-            "Start": 128,
-            "Length": -1,
             "Escapes": {},
-            "Order": 2
+            "Length": -1,
+            "Order": 2,
+            "Start": 128
           },
           "SeqNo": {
-            "Start": 122,
-            "Length": 6,
             "Escapes": {},
-            "Order": 1
+            "Length": 6,
+            "Order": 1,
+            "Start": 122
           },
           "VIN_NO": {
-            "Start": 115,
-            "Length": 7,
             "Escapes": {},
-            "Order": 3
+            "Length": 7,
+            "Order": 3,
+            "Start": 115
           }
         }
       }
@@ -32,19 +32,19 @@
       "0001": {
         "Fields": {
           "Data": {
-            "Start": 129,
+            "Escapes": {},
             "Length": -1,
-            "Escapes": {}
+            "Start": 129
           },
           "DataType": {
-            "Start": 86,
+            "Escapes": {},
             "Length": 8,
-            "Escapes": {}
+            "Start": 86
           },
           "VIN_NO": {
-            "Start": 115,
+            "Escapes": {},
             "Length": 7,
-            "Escapes": {}
+            "Start": 115
           }
         }
       }
@@ -56,9 +56,9 @@
       "0001": {
         "Fields": {
           "RetCode": {
-            "Start": 82,
+            "Escapes": {},
             "Length": 4,
-            "Escapes": {}
+            "Start": 82
           }
         }
       }
@@ -70,42 +70,42 @@
       "0003": {
         "Fields": {
           "PPE": {
-            "Start": 50,
+            "Escapes": {},
             "Length": 3,
-            "Escapes": {}
+            "Start": 50
           },
           "SEQ": {
-            "Start": 53,
+            "Escapes": {},
             "Length": 14,
-            "Escapes": {}
+            "Start": 53
           }
         }
       },
       "0102": {
         "Fields": {
           "PPE": {
-            "Start": 50,
+            "Escapes": {},
             "Length": 3,
-            "Escapes": {}
+            "Start": 50
           },
           "SEQ": {
-            "Start": 53,
+            "Escapes": {},
             "Length": 14,
-            "Escapes": {}
+            "Start": 53
           }
         }
       },
       "0103": {
         "Fields": {
           "PPE": {
-            "Start": 50,
+            "Escapes": {},
             "Length": 3,
-            "Escapes": {}
+            "Start": 50
           },
           "SEQ": {
-            "Start": 53,
+            "Escapes": {},
             "Length": 14,
-            "Escapes": {}
+            "Start": 53
           }
         }
       }
@@ -117,48 +117,48 @@
       "0003": {
         "Fields": {
           "BodyVariant": {
-            "Start": 88,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 88
           },
           "HoleCode": {
-            "Start": 164,
+            "Escapes": {},
             "Length": 6,
-            "Escapes": {}
+            "Start": 164
           },
           "IGEF": {
-            "Start": 170,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 170
           },
           "PPE": {
-            "Start": 50,
+            "Escapes": {},
             "Length": 3,
-            "Escapes": {}
+            "Start": 50
           }
         }
       },
       "0103": {
         "Fields": {
           "BodyVariant": {
-            "Start": 198,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 198
           },
           "HoleCode": {
-            "Start": 254,
+            "Escapes": {},
             "Length": 6,
-            "Escapes": {}
+            "Start": 254
           },
           "IGEF": {
-            "Start": 260,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 260
           },
           "PPE": {
-            "Start": 50,
+            "Escapes": {},
             "Length": 3,
-            "Escapes": {}
+            "Start": 50
           }
         }
       }
@@ -170,14 +170,14 @@
       "0002": {
         "Fields": {
           "IGEF_HoleCode": {
-            "Start": 50,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 50
           },
           "SeqNo": {
-            "Start": 60,
+            "Escapes": {},
             "Length": 7,
-            "Escapes": {}
+            "Start": 60
           }
         }
       }
@@ -189,14 +189,14 @@
       "0002": {
         "Fields": {
           "IGEF": {
-            "Start": 50,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 50
           },
           "RetData": {
-            "Start": 67,
+            "Escapes": {},
             "Length": -1,
-            "Escapes": {}
+            "Start": 67
           }
         }
       }
@@ -208,14 +208,14 @@
       "0101": {
         "Fields": {
           "IGEF": {
-            "Start": 77,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 77
           },
           "Store": {
-            "Start": 67,
+            "Escapes": {},
             "Length": 8,
-            "Escapes": {}
+            "Start": 67
           }
         }
       }
@@ -227,14 +227,14 @@
       "0101": {
         "Fields": {
           "IGEF": {
-            "Start": 50,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 50
           },
           "RetCode": {
-            "Start": 67,
+            "Escapes": {},
             "Length": 4,
-            "Escapes": {}
+            "Start": 67
           }
         }
       }
@@ -246,19 +246,19 @@
       "0002": {
         "Fields": {
           "BodyVariant": {
-            "Start": 111,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 111
           },
           "IGEF": {
-            "Start": 125,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 125
           },
           "PPE_ZP": {
-            "Start": 94,
+            "Escapes": {},
             "Length": 8,
-            "Escapes": {}
+            "Start": 94
           }
         }
       }
@@ -270,14 +270,14 @@
       "0002": {
         "Fields": {
           "IGEF": {
-            "Start": 71,
+            "Escapes": {},
             "Length": 8,
-            "Escapes": {}
+            "Start": 71
           },
           "RetCode": {
-            "Start": 67,
+            "Escapes": {},
             "Length": 4,
-            "Escapes": {}
+            "Start": 67
           }
         }
       }
@@ -289,19 +289,19 @@
       "0001": {
         "Fields": {
           "IGEF": {
-            "Start": 50,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 50
           },
           "Lane": {
-            "Start": 110,
+            "Escapes": {},
             "Length": 4,
-            "Escapes": {}
+            "Start": 110
           },
           "Store": {
-            "Start": 67,
+            "Escapes": {},
             "Length": 8,
-            "Escapes": {}
+            "Start": 67
           }
         }
       }
@@ -313,14 +313,14 @@
       "0001": {
         "Fields": {
           "IGEF": {
-            "Start": 50,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 50
           },
           "RetCode": {
-            "Start": 67,
+            "Escapes": {},
             "Length": 4,
-            "Escapes": {}
+            "Start": 67
           }
         }
       }
@@ -332,14 +332,14 @@
       "0002": {
         "Fields": {
           "IGEF": {
-            "Start": 50,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 50
           },
           "PPE_ZP": {
-            "Start": 103,
+            "Escapes": {},
             "Length": -1,
-            "Escapes": {}
+            "Start": 103
           }
         }
       }
@@ -351,14 +351,14 @@
       "0002": {
         "Fields": {
           "IGEF": {
-            "Start": 50,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 50
           },
           "RetCode": {
-            "Start": 67,
+            "Escapes": {},
             "Length": 4,
-            "Escapes": {}
+            "Start": 67
           }
         }
       }
@@ -370,14 +370,14 @@
       "0001": {
         "Fields": {
           "IGEF": {
-            "Start": 50,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 50
           },
           "Store": {
-            "Start": 67,
+            "Escapes": {},
             "Length": 8,
-            "Escapes": {}
+            "Start": 67
           }
         }
       }
@@ -389,14 +389,14 @@
       "0001": {
         "Fields": {
           "IGEF": {
-            "Start": 50,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 50
           },
           "Lane": {
-            "Start": 98,
+            "Escapes": {},
             "Length": 4,
-            "Escapes": {}
+            "Start": 98
           }
         }
       }
@@ -408,14 +408,14 @@
       "0001": {
         "Fields": {
           "IGEF": {
-            "Start": 70,
+            "Escapes": {},
             "Length": 10,
-            "Escapes": {}
+            "Start": 70
           },
           "PPE_ZP": {
-            "Start": 50,
+            "Escapes": {},
             "Length": 8,
-            "Escapes": {}
+            "Start": 50
           }
         }
       }
@@ -427,24 +427,24 @@
       "0001": {
         "Fields": {
           "Amount": {
-            "Start": 108,
+            "Escapes": {},
             "Length": 4,
-            "Escapes": {}
+            "Start": 108
           },
           "BaseCP": {
-            "Start": 86,
+            "Escapes": {},
             "Length": 8,
-            "Escapes": {}
+            "Start": 86
           },
           "SeqNo": {
-            "Start": 112,
+            "Escapes": {},
             "Length": 6,
-            "Escapes": {}
+            "Start": 112
           },
           "VIN_NO": {
-            "Start": 99,
+            "Escapes": {},
             "Length": 7,
-            "Escapes": {}
+            "Start": 99
           }
         }
       }
@@ -456,19 +456,19 @@
       "0001": {
         "Fields": {
           "Data": {
-            "Start": 108,
+            "Escapes": {},
             "Length": -1,
-            "Escapes": {}
+            "Start": 108
           },
           "DataType": {
-            "Start": 86,
+            "Escapes": {},
             "Length": 8,
-            "Escapes": {}
+            "Start": 86
           },
           "VIN_NO": {
-            "Start": 99,
+            "Escapes": {},
             "Length": 7,
-            "Escapes": {}
+            "Start": 99
           }
         }
       }
@@ -480,9 +480,29 @@
       "0001": {
         "Fields": {
           "RetCode": {
-            "Start": 82,
+            "Escapes": {},
             "Length": 4,
-            "Escapes": {}
+            "Start": 82
+          }
+        }
+      }
+    }
+  },
+  "TRIG_PNT": {
+    "Description": "SetCP",
+    "ResponseType": "TRIG_P_R",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "CP": {
+            "Escapes": {},
+            "Length": 8,
+            "Start": 86
+          },
+          "VIN_NO": {
+            "Escapes": {},
+            "Length": 7,
+            "Start": 99
           }
         }
       }
@@ -490,40 +510,25 @@
   },
   "TRIG_P_R": {
     "Description": "SetCP Reply",
+    "ResponseType": "",
     "Versions": {
       "0001": {
         "Fields": {
           "RetCode": {
-            "Start": 82,
-            "Length": 4,
             "Escapes": {
               "DIDT": "重复置点",
               "OKAY": "置点成功"
+            },
+            "Length": 4,
+            "Start": 82,
+            "EscapeTags": {
+              "DIDT": [
+                "abnormal_error"
+              ]
             }
           }
         }
       }
-    },
-    "ResponseType": ""
-  },
-  "TRIG_PNT": {
-    "Description": "SetCP",
-    "Versions": {
-      "0001": {
-        "Fields": {
-          "CP": {
-            "Start": 86,
-            "Length": 8,
-            "Escapes": {}
-          },
-          "VIN_NO": {
-            "Start": 99,
-            "Length": 7,
-            "Escapes": {}
-          }
-        }
-      }
-    },
-    "ResponseType": "TRIG_P_R"
+    }
   }
 }

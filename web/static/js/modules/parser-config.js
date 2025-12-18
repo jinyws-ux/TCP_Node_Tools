@@ -79,7 +79,8 @@ function setEscapeEntry(fieldRef, key, value, tags = []) {
 
 function collectEscapeTagsFromForm(scope = document) {
   const tags = [];
-  if (scope.querySelector('#escape-tag-abnormal')?.checked) tags.push(ESCAPE_TAGS.ABNORMAL);
+  // 修复ID不匹配问题：将#escape-tag-abnormal改为#escape-abnormal-input
+  if (scope.querySelector('#escape-abnormal-input')?.checked) tags.push(ESCAPE_TAGS.ABNORMAL);
   return tags;
 }
 
@@ -1295,7 +1296,7 @@ function showAddEscapeModal(mt, ver, fd) {
     const val = prompt('转义后值：', '');
     if (val == null) return;
     const markAbnormal = confirm('是否将此转义标记为”异常报错“？');
-    const tags = markAbnormal ? [ABNORMAL_ESCAPE_TAG] : [];
+    const tags = markAbnormal ? [ESCAPE_TAGS.ABNORMAL] : [];
     submitEscapeRaw(fallbackMt, fallbackVer, fallbackField, key, val, tags);
     return;
   }

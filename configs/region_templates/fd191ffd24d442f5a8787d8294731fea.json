@@ -1,0 +1,16 @@
+{
+  "id": "fd191ffd24d442f5a8787d8294731fea",
+  "name": "Test",
+  "factory": "DaDong",
+  "factory_name": "DaDong",
+  "system": "OSM",
+  "system_name": "OSM",
+  "factory_id": null,
+  "system_id": null,
+  "server_config_id": null,
+  "nodes": [
+    "100"
+  ],
+  "created_at": "2025-12-17T13:07:08",
+  "updated_at": "2025-12-17T13:07:08"
+}

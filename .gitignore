@@ -1,34 +1,73 @@
+# 忽略Python编译生成的文件
 __pycache__/
 core/__pycache__/
 web/__pycache__/
-*.bak
 *.pyc
 *.pyo
 *.pyd
 *.egg-info/
-dist/
-build/
+
+# 忽略虚拟环境目录
 .venv/
 venv/
 ENV/
 .env
+
+# 忽略IDE配置文件
 .vscode/
 .idea/
+
+# 忽略操作系统生成的文件
 .DS_Store
 Thumbs.db
+
+# 忽略日志文件
 *.log
 logs/
 log/
+
+# 忽略Trae IDE配置目录
+.trae/
+
+# 忽略文档文件
+*.md
+*.rst
+*.txt
+*.pdf
+*.docx
+# 但保留README.md
+!.gitignore
+!.gitattributes
+!README.md
+
+# 忽略下载和报告生成的文件
 downloads/
 html_logs/
 **/html_logs/**
-**/html_logs/*.html
-**/html_logs/*.json
 reports/
+
+# 忽略测试相关的文件
 .cache/
 .pytest_cache/
 .mypy_cache/
 .coverage
 coverage.xml
 htmlcov/
-.gitignore
+
+# 忽略构建和打包目录
+dist/
+build/
+
+# 忽略备份文件
+*.bak
+*.backup*
+* copy.*
+
+# 忽略其他临时文件
+.debug*
+*.swp
+*.swo
+*~
+
+# 确保.gitignore不会被忽略
+!.gitignore

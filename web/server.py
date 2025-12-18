@@ -764,10 +764,10 @@ def analyze_logs():
                 log_paths,
                 config_id,
                 options={
-                    'generate_html': _get_bool(data or {}, 'generate_html', default=True),
-                    'generate_original_log': _get_bool(data or {}, 'generate_original_log', default=True),
-                    'generate_sorted_log': _get_bool(data or {}, 'generate_sorted_log', default=True),
-                }
+                'generate_html': _get_bool(data or {}, 'generate_html', default=True),
+                'generate_original_log': _get_bool(data or {}, 'generate_original_log', default=False),
+                'generate_sorted_log': _get_bool(data or {}, 'generate_sorted_log', default=False),
+            }
             )
         except ValueError as exc:
             return jsonify({'success': False, 'error': str(exc)}), 400
@@ -1343,6 +1343,24 @@ def delete_report():
             return jsonify({'success': False, 'error': '删除报告失败'}), 500
     except Exception as e:
         logger.error(f"删除报告失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/log-reports', methods=['POST'])
+def get_log_reports():
+    """获取特定日志的报告列表"""
+    try:
+        data = request.json
+        log_path = data.get('log_path')
+        
+        if not log_path:
+            return jsonify({'success': False, 'error': '缺少日志路径'}), 400
+        
+        # 使用分析服务获取日志的报告列表
+        reports = analysis_service.get_log_reports(log_path)
+        return jsonify({'success': True, 'reports': reports})
+    except Exception as e:
+        logger.error(f"获取日志报告列表失败: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 

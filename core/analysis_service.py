@@ -68,13 +68,37 @@ class AnalysisService:
     def check_report(self, log_path: str) -> Dict[str, Any]:
         if not log_path:
             raise ValueError("缺少日志路径")
-        report_path = self.report_store.get(log_path)
-        has_report = bool(report_path and os.path.exists(report_path))
+        report_paths = self.report_store.get(log_path)
+        has_report = bool(report_paths and any(os.path.exists(p) for p in report_paths))
         return {
             "success": True,
-            "report_path": report_path,
+            "report_path": report_paths[0] if report_paths else "",
+            "report_paths": report_paths,
             "has_report": has_report,
         }
+
+    def get_log_reports(self, log_path: str) -> List[Dict[str, Any]]:
+        """获取特定日志的报告列表
+        
+        Args:
+            log_path: 日志路径
+            
+        Returns:
+            List[Dict[str, Any]]: 报告列表
+        """
+        if not log_path:
+            raise ValueError("缺少日志路径")
+        
+        # 获取所有报告
+        all_reports = self.report_data_store.list_reports()
+        
+        # 过滤出与当前日志关联的报告
+        log_reports = []
+        for report in all_reports:
+            if report.get("related_logs") and log_path in report["related_logs"]:
+                log_reports.append(report)
+        
+        return log_reports
 
     # -------- 报告数据管理 --------
     def save_report_data(self, report_data: Dict[str, Any]) -> str:
