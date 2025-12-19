@@ -3,410 +3,480 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ report_data.name }}</title>
+    <title>{{ report_data.name }} - 深度分析报告</title>
     <style>
         :root {
-            --primary: #3b82f6;
-            --bg-body: #f9fafb;
+            /* 现代配色 (Slate & Blue) */
+            --bg-body: #f8fafc;
             --bg-card: #ffffff;
-            --text-main: #111827;
-            --text-muted: #6b7280;
-            --border: #e5e7eb;
-            --code-bg: #f3f4f6;
-            --highlight: #fef3c7;
+            --text-main: #334155;
+            --text-dim: #94a3b8;
+            --border: #e2e8f0;
+            --primary: #3b82f6;
+            --primary-light: #eff6ff;
+            --danger: #ef4444;
+            --danger-bg: #fef2f2;
+            --success: #10b981;
+            
+            /* 代码块配色 (Dark) */
+            --code-bg: #1e293b;
+            --code-text: #e2e8f0;
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background-color: var(--bg-body);
-            color: var(--text-main);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 13px;
             line-height: 1.5;
+            color: var(--text-main);
+            background-color: var(--bg-body);
             margin: 0;
-            padding: 40px 20px;
+            padding: 20px;
         }
 
         .container {
-            max-width: 1000px; /* 限制宽度以保证阅读体验 */
+            max-width: 1400px;
             margin: 0 auto;
             background: var(--bg-card);
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-            overflow: hidden;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             border: 1px solid var(--border);
+            overflow: hidden;
+            position: relative;
+            min-height: 80vh;
         }
 
-        /* === 头部 === */
+        /* === 1. 头部区域 (美化版) === */
         .header {
-            padding: 30px 40px;
+            padding: 16px 24px;
             border-bottom: 1px solid var(--border);
             background: #fff;
-        }
-        .header h1 { margin: 0 0 10px 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
-        .meta-grid { display: flex; gap: 24px; font-size: 13px; color: var(--text-muted); flex-wrap: wrap; }
-        .meta-item strong { color: var(--text-main); font-weight: 600; margin-right: 4px; }
-
-        /* === 异常概览 === */
-        .abnormal-summary {
-            background: #fff1f2;
-            padding: 16px 40px;
-            border-bottom: 1px solid #ffe4e6;
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-        }
-        .ab-icon { font-size: 18px; line-height: 1; }
-        .ab-content { flex: 1; }
-        .ab-title { font-size: 14px; font-weight: 600; color: #be123c; margin-bottom: 4px; }
-        .ab-list { font-size: 13px; color: #9f1239; list-style: none; padding: 0; margin: 0; }
-        .ab-list li { margin-bottom: 2px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
-        .ab-list li:hover { color: #881337; }
-
-        /* === 工具栏 === */
-        .toolbar {
-            padding: 12px 40px;
-            background: #f8fafc;
-            border-bottom: 1px solid var(--border);
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        .search-box {
-            position: relative;
-            width: 100%;
-            max-width: 400px;
+        .header-title h1 { margin: 0; font-size: 18px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 10px; }
+        .badge-count { background: var(--primary-light); color: var(--primary); padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .header-meta { font-size: 12px; color: var(--text-dim); margin-top: 4px; font-family: monospace; }
+        
+        .btn-switch {
+            padding: 6px 12px; border: 1px solid var(--border); background: #fff;
+            border-radius: 6px; cursor: pointer; color: var(--text-main); font-weight: 500;
+            transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
-        .search-icon {
-            position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
-            color: #9ca3af; font-size: 14px;
+        .btn-switch:hover { background: #f1f5f9; color: var(--primary); border-color: var(--primary); }
+
+        /* === 2. 异常概览 (红色警示) === */
+        .abnormal-panel {
+            background: var(--danger-bg);
+            border-bottom: 1px solid #fee2e2;
+            padding: 10px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .ab-title { font-weight: 700; color: #991b1b; display: flex; align-items: center; gap: 6px; font-size: 12px; }
+        .ab-tag {
+            background: #fff; border: 1px solid #fecaca; color: #b91c1c;
+            padding: 2px 8px; border-radius: 4px; cursor: pointer;
+            font-size: 11px; font-family: monospace; transition: all 0.1s;
+        }
+        .ab-tag:hover { border-color: var(--danger); box-shadow: 0 2px 4px rgba(239, 68, 68, 0.1); transform: translateY(-1px); }
+
+        /* === 3. 工具栏 === */
+        .toolbar {
+            padding: 10px 24px;
+            background: #f8fafc;
+            border-bottom: 1px solid var(--border);
         }
         #searchInput {
-            width: 100%;
-            padding: 8px 12px 8px 32px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            font-size: 13px;
-            outline: none;
-            transition: all 0.2s;
+            width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+            font-size: 13px; outline: none; transition: border-color 0.2s;
         }
-        #searchInput:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59,130,246,0.1); }
+        #searchInput:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1); }
 
-        /* === 日志列表 (核心) === */
-        .log-list { padding: 0; }
+        /* === 4. 日志列表 (Modern Grid) === */
+        .log-list { display: flex; flex-direction: column; }
 
-        .log-row {
-            border-bottom: 1px solid var(--border);
-            padding: 12px 40px;
-            font-size: 13px;
-            transition: background 0.1s;
+        .row {
+            display: grid;
+            /* 布局：时间(160px) | 标签(自适应) | 内容(剩余) */
+            grid-template-columns: 160px min-content 1fr;
+            gap: 16px;
+            padding: 8px 24px; /* 舒适的间距 */
+            border-bottom: 1px solid #f1f5f9;
+            align-items: baseline;
+            transition: background 0.2s;
         }
-        .log-row:hover { background: #f9fafb; }
-        .log-row:last-child { border-bottom: none; }
-
-        /* 布局：时间 | 内容 */
-        .row-inner { display: flex; gap: 16px; align-items: baseline; }
+        .row:hover { background-color: #f8fafc; }
         
-        .col-meta {
-            flex-shrink: 0;
-            width: 140px;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
+        /* 报错高亮动画 (红色闪烁) */
+        @keyframes errorFlash {
+            0% { background-color: #fee2e2; border-left: 4px solid var(--danger); }
+            100% { background-color: transparent; border-left: 4px solid transparent; }
+        }
+        .row.highlight-error { animation: errorFlash 3s ease-out forwards; }
+
+        /* 列样式 */
+        .col-ts { 
+            font-family: 'JetBrains Mono', Consolas, monospace; 
+            font-size: 12px; color: var(--text-dim); text-align: right; 
+            white-space: nowrap; 
+        }
+        
+        .col-meta { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+
+        .col-content { 
+            position: relative; word-break: break-all; 
             font-family: 'JetBrains Mono', Consolas, monospace;
-            font-size: 12px;
-            color: var(--text-muted);
-            text-align: right;
+            font-size: 12px; color: #1e293b;
         }
-        .col-content { flex: 1; min-width: 0; }
 
-        /* 标签样式 */
-        .badge {
-            display: inline-flex; align-items: center; padding: 2px 6px; border-radius: 4px; 
-            font-size: 11px; font-weight: 600; line-height: 1; text-transform: uppercase; letter-spacing: 0.5px;
+        /* 胶囊标签 (Pills) */
+        .pill { 
+            display: inline-block; padding: 1px 6px; border-radius: 4px; 
+            font-size: 11px; font-weight: 600; line-height: 1.4; border: 1px solid transparent;
         }
-        .bg-req { background: #eff6ff; color: #3b82f6; }
-        .bg-resp { background: #f0fdf4; color: #15803d; }
-        .bg-retry { background: #fff1f2; color: #be123c; margin-left: 8px; }
-        .bg-dir-in { color: #991b1b; }
-        .bg-dir-out { color: #065f46; }
-
-        /* 字段样式 */
-        .segments { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; line-height: 1.6; }
-        .seg { color: var(--text-main); }
-        .seg-key { color: var(--text-muted); font-size: 12px; margin-right: 2px; }
-        .seg-val { font-family: 'JetBrains Mono', monospace; font-weight: 500; background: #f3f4f6; padding: 1px 4px; border-radius: 3px; color: #374151; }
-        .seg-val.highlight { background: #e0f2fe; color: #0369a1; }
-        .seg-text { color: #4b5563; }
+        .pill-in { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+        .pill-out { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+        .pill-sys { background: #f3e8ff; color: #6b21a8; border-color: #e9d5ff; }
         
-        /* 事务层级连线 */
-        .transaction-group {
-            position: relative;
-        }
-        .transaction-group::before {
-            content: ''; position: absolute; left: 186px; top: 18px; bottom: 18px;
-            width: 2px; background: #e5e7eb; border-radius: 2px;
-        }
-        .is-retry .col-content, .is-resp .col-content { padding-left: 20px; }
-        .is-retry .col-content::before {
-            content: ''; position: absolute; left: 186px; top: 50%; width: 12px; height: 2px; background: #e5e7eb;
+        /* 核心字段高亮 */
+        .f-val { 
+            color: #0369a1; background: #e0f2fe; 
+            padding: 1px 4px; border-radius: 3px; font-weight: 500;
+            border: 1px solid #bae6fd;
         }
 
-        /* === 原文区域 (美化版) === */
-        details.raw-toggle {
-            margin-top: 6px;
+        /* === 交互按钮 === */
+        /* 原文开关 */
+        .btn-raw {
+            display: inline-block; cursor: pointer; user-select: none;
+            font-size: 10px; color: #94a3b8; border: 1px solid #cbd5e1;
+            padding: 0 4px; border-radius: 3px; margin-left: 8px;
+            vertical-align: middle; height: 16px; line-height: 14px;
+            background: #fff; transition: all 0.2s;
         }
-        summary {
-            cursor: pointer;
-            font-size: 12px;
-            color: #9ca3af;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            user-select: none;
-            transition: color 0.2s;
-            list-style: none; /* Hide default triangle */
-        }
-        summary::-webkit-details-marker { display: none; }
-        summary:hover { color: var(--primary); }
-        summary::before {
-            content: '+'; display: inline-block; width: 12px; text-align: center;
-        }
-        details[open] summary::before { content: '-'; }
-        details[open] summary { color: var(--text-muted); margin-bottom: 6px; }
+        .btn-raw:hover { color: var(--primary); border-color: var(--primary); }
+        .btn-raw.active { background: var(--primary); color: white; border-color: var(--primary); }
 
-        .raw-block {
-            background: #f8fafc;
-            border: 1px solid var(--border);
+        /* 重试开关 */
+        .btn-retry {
+            cursor: pointer; color: var(--danger); font-weight: 600; font-size: 11px;
+            margin-left: 12px; padding: 2px 6px; border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .btn-retry:hover { background: #fee2e2; }
+
+        /* === 内嵌原文区域 (Dark Mode) === */
+        .raw-container {
+            display: none; /* 默认隐藏 */
+            margin-top: 8px;
+            background: var(--code-bg);
             border-radius: 6px;
             padding: 10px 12px;
-            font-family: 'JetBrains Mono', Consolas, monospace;
-            font-size: 12px;
-            color: #475569;
-            line-height: 1.5;
-            white-space: pre-wrap;
-            word-break: break-all;
-            position: relative;
+            border-left: 3px solid var(--primary);
+            box-shadow: inset 0 1px 4px rgba(0,0,0,0.2);
         }
-        /* 双层原文区分 */
-        .raw-l1 { font-weight: 500; color: #334155; }
-        .raw-l2 { border-top: 1px dashed #e2e8f0; margin-top: 6px; padding-top: 6px; color: #94a3b8; }
+        .raw-container.show { display: block; animation: slideDown 0.2s ease-out; }
         
-        /* 复制按钮 (悬停显示) */
-        .copy-btn {
-            position: absolute; top: 6px; right: 6px;
-            font-size: 10px; padding: 2px 6px;
-            background: #fff; border: 1px solid var(--border); border-radius: 4px;
-            cursor: pointer; opacity: 0; transition: opacity 0.2s;
-        }
-        .raw-block:hover .copy-btn { opacity: 1; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* 隐藏类 */
+        .raw-line {
+            color: var(--code-text);
+            font-family: Consolas, monospace;
+            font-size: 11px;
+            line-height: 1.4;
+            white-space: pre-wrap; /* 保留换行 */
+        }
+        .raw-l2 {
+            color: #94a3b8; /* 第二行更暗 */
+            border-top: 1px dashed #334155;
+            margin-top: 6px; padding-top: 6px;
+        }
+
+        /* === 重试行 (缩进显示) === */
+        .retry-block { display: none; }
+        .retry-block.show { display: block; }
+        
+        .row-retry {
+            background-color: #f8fafc;
+            padding-left: 40px; /* 缩进 */
+            grid-template-columns: 140px min-content 1fr;
+            border-bottom: 1px dashed #e2e8f0;
+        }
+        .row-retry .col-ts, .row-retry .col-content { opacity: 0.75; }
+        .retry-label { font-size: 11px; font-weight: 700; color: var(--text-dim); letter-spacing: 1px; }
+
+        /* 响应行特殊样式 */
+        .row-resp { border-left: 3px solid var(--success); padding-left: 21px; background-color: #f0fdfa; }
+
+        /* === 视图切换 === */
+        .view-section { display: none; }
+        .view-section.active { display: block; }
+
+        /* 纯文本视图 (修复格式问题) */
+        #view-raw {
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            overflow: auto;
+            min-height: 80vh;
+            font-family: Consolas, monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            white-space: pre; /* 严格保留格式 */
+        }
+
         .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <div class="header">
-        <h1>
-            {{ report_data.name }}
-            <span style="font-size: 12px; font-weight: normal; color: #9ca3af; margin-left: auto;">HTML 静态报告</span>
-        </h1>
-        <div class="meta-grid">
-            <div class="meta-item"><strong>工厂/系统:</strong> {{ report_data.factory }} / {{ report_data.system }}</div>
-            <div class="meta-item"><strong>生成时间:</strong> {{ report_data.generated_at }}</div>
-            <div class="meta-item"><strong>节点:</strong> {{ report_data.nodes | join(', ') }}</div>
-            <div class="meta-item"><strong>日志总数:</strong> {{ report_data.log_entries | length }}</div>
+    <div class="container">
+        <div class="header">
+            <div class="header-title">
+                <h1>
+                    {{ report_data.name }}
+                    <span class="badge-count">{{ report_data.log_entries | length }} Logs</span>
+                </h1>
+                <div class="header-meta">
+                    {{ report_data.factory }} / {{ report_data.system }} | 
+                    {{ report_data.generated_at }} | 
+                    Nodes: {{ report_data.nodes | join(', ') }}
+                </div>
+            </div>
+            <button class="btn-switch" onclick="toggleView()" id="btnView">📄 切换原文模式</button>
         </div>
-    </div>
 
-    {% if report_data.abnormal_items %}
-    <div class="abnormal-summary">
-        <div class="ab-icon">⚠️</div>
-        <div class="ab-content">
-            <div class="ab-title">发现 {{ report_data.abnormal_items | length }} 个异常点</div>
-            <ul class="abnormal-list">
+        {% if report_data.abnormal_items %}
+        <div class="abnormal-panel" id="abPanel">
+            <div class="ab-title">⚠️ 发现 {{ report_data.abnormal_items | length }} 个异常点:</div>
+            <div class="ab-list">
                 {% for item in report_data.abnormal_items %}
-                <li onclick="scrollToId('{{ item.anchor }}')">
-                    [{{ item.time }}] {{ item.msgType }} - {{ item.details | join(', ') }}
-                </li>
+                <div class="ab-tag" onclick="scrollToId('row_{{ item.anchor }}')">
+                    [{{ item.time }}] {{ item.msgType }}
+                </div>
                 {% endfor %}
-            </ul>
+            </div>
         </div>
-    </div>
-    {% endif %}
+        {% endif %}
 
-    <div class="toolbar">
-        <div class="search-box">
-            <span class="search-icon">🔍</span>
-            <input type="text" id="searchInput" placeholder="搜索报文内容、ID 或 关键字..." onkeyup="filterLogs()">
-        </div>
-    </div>
+        <div id="view-parsed" class="view-section active">
+            <div class="toolbar">
+                <input type="text" id="searchInput" placeholder="Type to filter logs..." onkeyup="filterLogs()">
+            </div>
 
-    <div class="log-list" id="logList">
-        {% for entry in report_data.log_entries %}
-            {% set is_trans = entry.requests is defined and entry.response is defined %}
-            
-            {# ================= 主请求 / 单条日志 ================= #}
-            {% set main = entry.latest_request if is_trans else entry %}
-            {% set retry_cnt = (entry.requests | length - 1) if is_trans else 0 %}
-            
-            <div class="log-row {% if is_trans %}transaction-group{% endif %}" id="ts_{{ loop.index0 }}" 
-                 data-search="{{ main.segments | map(attribute='text') | join(' ') | lower }}">
-                <div class="row-inner">
-                    <div class="col-meta">
-                        <span>{{ main.timestamp }}</span>
-                        {% for seg in main.segments %}
-                             {% if seg.kind == 'dir' %}
-                                <span class="{{ 'bg-dir-out' if 'Output' in seg.text else 'bg-dir-in' }}">{{ seg.text }}</span>
-                             {% endif %}
-                        {% endfor %}
-                    </div>
+            <div class="log-list">
+                {% for entry in report_data.log_entries %}
+                    {% set is_trans = entry.requests is defined and entry.response is defined %}
+                    
+                    {# 主日志 #}
+                    {% set main = entry.latest_request if is_trans else entry %}
+                    {% set retry_cnt = (entry.requests | length - 1) if is_trans else 0 %}
+                    {# ID 规则: row_ + 原始锚点ID (通常是 ts_0, ts_1) #}
+                    {% set row_id = "row_ts_" ~ loop.index0 %}
+                    
+                    <div class="row" id="{{ row_id }}" data-text="{{ main.segments | map(attribute='text') | join(' ') | lower }}">
+                        <div class="col-ts">{{ main.timestamp }}</div>
+                        
+                        <div class="col-meta">
+                            {% for seg in main.segments %}
+                                {% if seg.kind == 'dir' %}
+                                    <span class="pill {{ 'pill-out' if 'Output' in seg.text else 'pill-in' }}">{{ seg.text }}</span>
+                                {% elif seg.kind == 'node' %}
+                                    <span class="pill pill-sys">{{ seg.text }}</span>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
 
-                    <div class="col-content">
-                        <div class="segments">
-                            {% if is_trans %}<span class="badge bg-req">REQ</span>{% endif %}
+                        <div class="col-content">
+                            {% for seg in main.segments %}{% if seg.kind == 'msg_type' %}
+                                <span style="font-weight:600; color:#d97706; margin-right:6px;">{{ seg.text }}</span>
+                            {% endif %}{% endfor %}
+
+                            {% if is_trans %}<span style="color:var(--primary); font-weight:bold; margin-right:6px;">→</span>{% endif %}
                             
-                            {# 智能渲染段落：忽略 ts, dir, node，重点渲染内容 #}
                             {% for seg in main.segments %}
                                 {% if seg.kind == 'field' %}
-                                    <span class="seg"><span class="seg-val highlight">{{ seg.text }}</span></span>
-                                {% elif seg.kind == 'msg_type' %}
-                                    <span class="seg" style="font-weight:600">{{ seg.text }}</span>
-                                {% elif seg.kind not in ['ts', 'dir', 'node'] %}
-                                    <span class="seg seg-text">{{ seg.text }}</span>
+                                    <span class="f-val">{{ seg.text }}</span>
+                                {% elif seg.kind not in ['ts', 'dir', 'node', 'msg_type'] %}
+                                    <span>{{ seg.text }}</span>
                                 {% endif %}
                             {% endfor %}
 
                             {% if main.escape_hits %}
-                                <span class="badge" style="background:#fee2e2; color:#991b1b">ERR</span>
+                                <span style="background:var(--danger); color:#fff; padding:1px 4px; border-radius:3px; font-weight:bold; font-size:10px; margin-left:6px;">ERR</span>
                             {% endif %}
+                            
+                            <span class="btn-raw" onclick="toggleRaw(this)">RAW</span>
+                            
                             {% if retry_cnt > 0 %}
-                                <span class="badge bg-retry">{{ retry_cnt }} 重试</span>
+                                <span class="btn-retry" onclick="toggleRetry('rg_{{ loop.index0 }}')">
+                                    ↺ {{ retry_cnt }} 重试
+                                </span>
                             {% endif %}
-                        </div>
 
-                        <details class="raw-toggle">
-                            <summary>原文</summary>
-                            <div class="raw-block">
-                                <button class="copy-btn" onclick="copyText(this)">Copy</button>
-                                <div class="raw-l1">{{ main.original_line1 }}</div>
-                                {% if main.original_line2 %}<div class="raw-l2">{{ main.original_line2 }}</div>{% endif %}
+                            <div class="raw-container">
+                                <div class="raw-line">{{ main.original_line1 }}</div>
+                                {% if main.original_line2 %}<div class="raw-line raw-l2">{{ main.original_line2 }}</div>{% endif %}
                             </div>
-                        </details>
+                        </div>
                     </div>
-                </div>
-            </div>
 
-            {# ================= 重试日志 (缩进) ================= #}
-            {% if is_trans and retry_cnt > 0 %}
-                {% for req in entry.requests[:-1] %}
-                <div class="log-row is-retry transaction-group" 
-                     data-search="{{ req.segments | map(attribute='text') | join(' ') | lower }}">
-                    <div class="row-inner">
+                    {# 重试组 #}
+                    {% if is_trans and retry_cnt > 0 %}
+                    <div id="rg_{{ loop.index0 }}" class="retry-block">
+                        {% for req in entry.requests[:-1] %}
+                        <div class="row row-retry" data-text="{{ req.segments | map(attribute='text') | join(' ') | lower }}">
+                            <div class="col-ts">{{ req.timestamp }}</div>
+                            <div class="col-meta retry-label">RETRY</div>
+                            <div class="col-content">
+                                {% for seg in req.segments %}
+                                    {% if seg.kind == 'field' %}<span style="background:#f1f5f9; color:#64748b; padding:0 3px; border-radius:2px;">{{ seg.text }}</span>{% endif %}
+                                {% endfor %}
+                                
+                                <span class="btn-raw" onclick="toggleRaw(this)">RAW</span>
+                                <div class="raw-container">
+                                    <div class="raw-line">{{ req.original_line1 }}</div>
+                                    {% if req.original_line2 %}<div class="raw-line raw-l2">{{ req.original_line2 }}</div>{% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    {# 响应行 #}
+                    {% if is_trans and entry.response %}
+                    <div class="row row-resp" data-text="{{ entry.response.segments | map(attribute='text') | join(' ') | lower }}">
+                        <div class="col-ts">{{ entry.response.timestamp }}</div>
                         <div class="col-meta">
-                            <span>{{ req.timestamp }}</span>
-                            <span style="color:#9ca3af">RETRY</span>
+                            <span class="pill pill-out">RESP</span>
                         </div>
                         <div class="col-content">
-                            <div class="segments">
-                                <span class="seg-text" style="color:#9ca3af; font-style:italic;">(重试报文)</span>
-                                {% for seg in req.segments %}
-                                    {% if seg.kind == 'field' %}
-                                        <span class="seg-val">{{ seg.text }}</span>
-                                    {% endif %}
-                                {% endfor %}
-                            </div>
-                            <details class="raw-toggle">
-                                <summary>原文</summary>
-                                <div class="raw-block">
-                                    <div class="raw-l1">{{ req.original_line1 }}</div>
-                                    {% if req.original_line2 %}<div class="raw-l2">{{ req.original_line2 }}</div>{% endif %}
-                                </div>
-                            </details>
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
-            {% endif %}
-
-            {# ================= 响应日志 (缩进) ================= #}
-            {% if is_trans and entry.response %}
-            <div class="log-row is-resp transaction-group" id="ts_{{ loop.index0 }}_resp"
-                 data-search="{{ entry.response.segments | map(attribute='text') | join(' ') | lower }}">
-                <div class="row-inner">
-                    <div class="col-meta">
-                        <span>{{ entry.response.timestamp }}</span>
-                        </div>
-                    <div class="col-content">
-                        <div class="segments">
-                            <span class="badge bg-resp">RESP</span>
+                            <span style="color:var(--success); font-weight:bold; margin-right:6px;">←</span>
                             {% for seg in entry.response.segments %}
                                 {% if seg.kind == 'field' %}
-                                    <span class="seg"><span class="seg-val">{{ seg.text }}</span></span>
+                                    <span class="f-val" style="background:#dcfce7; color:#166534; border-color:#bbf7d0;">{{ seg.text }}</span>
                                 {% elif seg.kind not in ['ts', 'dir', 'node', 'msg_type'] %}
-                                    <span class="seg seg-text">{{ seg.text }}</span>
+                                    <span>{{ seg.text }}</span>
                                 {% endif %}
                             {% endfor %}
-                        </div>
-                        <details class="raw-toggle">
-                            <summary>原文</summary>
-                            <div class="raw-block">
-                                <button class="copy-btn" onclick="copyText(this)">Copy</button>
-                                <div class="raw-l1">{{ entry.response.original_line1 }}</div>
-                                {% if entry.response.original_line2 %}<div class="raw-l2">{{ entry.response.original_line2 }}</div>{% endif %}
+                            
+                            <span class="btn-raw" onclick="toggleRaw(this)">RAW</span>
+                            <div class="raw-container">
+                                <div class="raw-line">{{ entry.response.original_line1 }}</div>
+                                {% if entry.response.original_line2 %}<div class="raw-line raw-l2">{{ entry.response.original_line2 }}</div>{% endif %}
                             </div>
-                        </details>
+                        </div>
                     </div>
-                </div>
+                    {% endif %}
+
+                {% endfor %}
             </div>
-            {% endif %}
+        </div>
 
-        {% endfor %}
+        <div id="view-raw" class="view-section">
+            <pre class="full-raw-text">
+{%- for entry in report_data.log_entries -%}
+{%- set is_trans = entry.requests is defined and entry.response is defined -%}
+{%- if is_trans -%}
+{%- for req in entry.requests -%}
+{{ req.original_line1 }}{{ '\n' if req.original_line2 }}{{ req.original_line2 }}{{ '\n' }}
+{%- endfor -%}
+{%- if entry.response -%}
+{{ entry.response.original_line1 }}{{ '\n' if entry.response.original_line2 }}{{ entry.response.original_line2 }}{{ '\n' }}
+{%- endif -%}
+{%- else -%}
+{{ entry.original_line1 }}{{ '\n' if entry.original_line2 }}{{ entry.original_line2 }}{{ '\n' }}
+{%- endif -%}
+{%- endfor -%}
+</pre>
+        </div>
+
     </div>
-</div>
 
-<script>
-    // 简单的搜索功能
-    function filterLogs() {
-        const input = document.getElementById('searchInput').value.toLowerCase();
-        const rows = document.getElementsByClassName('log-row');
-        
-        for (let row of rows) {
-            const text = row.getAttribute('data-search') || '';
-            if (text.includes(input)) {
-                row.classList.remove('hidden');
+    <script>
+        // 搜索
+        function filterLogs() {
+            const input = document.getElementById('searchInput').value.toLowerCase();
+            const rows = document.querySelectorAll('.row[data-text]');
+            
+            rows.forEach(row => {
+                const txt = row.getAttribute('data-text') || '';
+                if (txt.includes(input)) {
+                    row.classList.remove('hidden');
+                } else {
+                    row.classList.add('hidden');
+                }
+            });
+        }
+
+        // 跳转修复
+        function scrollToId(id) {
+            // 兼容性处理
+            let el = document.getElementById(id);
+            if (!el && id.startsWith('row_ts_')) {
+               // 有些时候 anchor 可能只是数字索引
+               // 我们的 ID 格式是 row_ts_0
+            } else if (!el) {
+                // 尝试容错
+                el = document.getElementById('row_' + id) || document.getElementById(id.replace('ts_', 'row_ts_'));
+            }
+
+            if (el) {
+                // 确保在解析视图
+                const vParsed = document.getElementById('view-parsed');
+                if (vParsed.style.display === 'none') toggleView();
+
+                el.scrollIntoView({behavior: 'smooth', block: 'center'});
+                // 红色高亮
+                document.querySelectorAll('.highlight-error').forEach(e => e.classList.remove('highlight-error'));
+                el.classList.add('highlight-error');
             } else {
-                row.classList.add('hidden');
+                console.warn('Target ID not found:', id);
             }
         }
-    }
 
-    // 锚点跳转高亮
-    function scrollToId(id) {
-        const el = document.getElementById(id);
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            el.style.backgroundColor = '#fef9c3';
-            setTimeout(() => el.style.backgroundColor = '', 1500);
+        // 修复：使用 closest 确保找到正确的 raw-container
+        function toggleRaw(btn) {
+            // 在同级找
+            let container = btn.parentNode.querySelector('.raw-container');
+            if (container) {
+                container.classList.toggle('show');
+                btn.classList.toggle('active');
+            }
         }
-    }
 
-    // 复制文本
-    function copyText(btn) {
-        const block = btn.parentElement;
-        // 获取除按钮外的文本
-        const text = Array.from(block.children)
-            .filter(c => c !== btn)
-            .map(c => c.innerText)
-            .join('\n');
+        function toggleRetry(id) {
+            const group = document.getElementById(id);
+            if (group) group.classList.toggle('show');
+        }
+
+        function toggleView() {
+            const vParsed = document.getElementById('view-parsed');
+            const vRaw = document.getElementById('view-raw');
+            const btn = document.getElementById('btnView');
+            const abPanel = document.getElementById('abPanel');
+            const toolbar = document.querySelector('.toolbar');
             
-        navigator.clipboard.writeText(text).then(() => {
-            const original = btn.innerText;
-            btn.innerText = 'Copied!';
-            setTimeout(() => btn.innerText = original, 1500);
-        });
-    }
-</script>
-
+            if (vRaw.style.display === 'block') {
+                vRaw.style.display = 'none';
+                vParsed.style.display = 'block';
+                if(abPanel) abPanel.style.display = 'flex';
+                toolbar.style.display = 'block';
+                btn.innerText = '📄 切换原文模式';
+            } else {
+                vRaw.style.display = 'block';
+                vParsed.style.display = 'none';
+                if(abPanel) abPanel.style.display = 'none';
+                toolbar.style.display = 'none';
+                btn.innerText = '🔙 返回解析模式';
+            }
+        }
+        
+        document.getElementById('searchInput').focus();
+    </script>
 </body>
 </html>
