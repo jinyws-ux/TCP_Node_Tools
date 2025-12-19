@@ -63,8 +63,8 @@ class LogAnalyzer:
 
             parser = LogParser(parser_config)
             matcher = LogMatcher(parser_config)
-            # 修改报告生成目录，使其与报告管理API的查询目录一致
-            report_output_dir = os.path.join(self.output_dir, 'html_logs')
+            # 报告输出目录直接使用output_dir，不再创建子目录
+            report_output_dir = self.output_dir
             os.makedirs(report_output_dir, exist_ok=True)
 
             stage_start = perf_counter()
@@ -185,10 +185,7 @@ class LogAnalyzer:
                     'related_logs': log_paths  # 添加关联的日志路径
                 }
                 
-                # 保存报告数据到文件系统（临时保存，后续会由AnalysisService保存到报告数据存储）
-                temp_report_data_path = os.path.join(self.output_dir, f'report_data_{timestamp}.json')
-                with open(temp_report_data_path, 'w', encoding='utf-8') as f:
-                    json.dump(report_data, f, ensure_ascii=False, indent=2)
+                # 不再保存临时报告数据文件，直接返回报告数据
                 
                 stage_start = perf_counter()
                 # 不再生成HTML报告，改为由前端展示报告数据

@@ -88,7 +88,6 @@ function createToolbar() {
     toolbar.innerHTML = `
         <div class="toolbar-left">
             <input type="text" id="log-search-input" class="search-input" placeholder="搜索文件名/厂区/系统...">
-            <button id="batch-delete-btn" class="batch-del-btn"><i class="fas fa-trash"></i> 批量删除</button>
         </div>
         <div class="toolbar-right">
             </div>
@@ -102,8 +101,6 @@ function createToolbar() {
         currentPage = 1; // 搜索后重置为第一页
         renderLogsTable();
     });
-
-    $('#batch-delete-btn').addEventListener('click', batchDeleteLogs);
 }
 
 // 创建分页控件
@@ -202,10 +199,11 @@ function updateBatchDeleteButton() {
     if (!btn) return;
     
     if (selectedDownloadedLogs.size > 0) {
-        btn.classList.add('visible');
-        btn.textContent = `批量删除 (${selectedDownloadedLogs.size})`;
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fas fa-trash"></i> 批量删除 (${selectedDownloadedLogs.size})`;
     } else {
-        btn.classList.remove('visible');
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-trash"></i> 批量删除`;
     }
 }
 
@@ -423,6 +421,13 @@ function addLogRow(log) {
   btnDel.innerHTML = '<i class="fas fa-trash"></i> 删除';
   btnDel.onclick = () => deleteLog(log.id, log.path);
   tdAct.appendChild(btnDel);
+
+  // 添加锁定按钮
+  const btnLock = document.createElement('button');
+  btnLock.className = `action-btn action-lock ${log.is_locked ? 'locked' : 'unlocked'}`;
+  btnLock.innerHTML = `<i class="fas fa-${log.is_locked ? 'lock' : 'unlock'}"></i> ${log.is_locked ? '锁定' : '解锁'}`;
+  btnLock.onclick = () => toggleLogLock(log);
+  tdAct.appendChild(btnLock);
 
   tr.appendChild(tdAct);
   tbody.appendChild(tr);
@@ -690,6 +695,30 @@ async function deleteLog(logId, logPath) {
   } catch (e) { showMessage('error', '删除日志失败: ' + e.message, 'analyze-messages'); }
 }
 
+async function toggleLogLock(log) {
+  try {
+    const res = await api.toggleLogLock(log.path);
+    if (res.success) {
+      // 更新本地缓存中的锁定状态
+      const updatedLog = allLogsCache.find(l => l.path === log.path);
+      if (updatedLog) {
+        updatedLog.is_locked = res.is_locked;
+      }
+      // 更新元数据缓存
+      logMetadataCache[log.path.replace(/\\/g, '/')] = {
+        ...logMetadataCache[log.path.replace(/\\/g, '/')],
+        is_locked: res.is_locked
+      };
+      showMessage('success', `日志${res.is_locked ? '锁定' : '解锁'}成功`, 'analyze-messages');
+      renderLogsTable(); // 重新渲染当前页
+    } else {
+      showMessage('error', `日志${log.is_locked ? '解锁' : '锁定'}失败: ` + res.error, 'analyze-messages');
+    }
+  } catch (e) {
+    showMessage('error', `日志${log.is_locked ? '解锁' : '锁定'}失败: ` + e.message, 'analyze-messages');
+  }
+}
+
 async function analyzeLogs() {
   if (selectedDownloadedLogs.size === 0) return showMessage('error', '请选择要分析的日志文件', 'analyze-messages');
   const configId = $('#config-select')?.value;
@@ -782,13 +811,7 @@ async function loadDownloadedLogs(arg) {
   }
 }
 
-async function openReportsDirectory() {
-  try {
-    const res = await api.openReportsDirectory();
-    if (res.success) showMessage('success', '已打开报告目录', 'analyze-messages');
-    else showMessage('error', '打开目录失败: ' + res.error, 'analyze-messages');
-  } catch (e) { showMessage('error', '打开目录失败: ' + e.message, 'analyze-messages'); }
-}
+
 
 /* ---------- 解析配置部分 (保持不变) ---------- */
 
@@ -825,8 +848,8 @@ export function init() {
 
   bind('select-all-logs', 'change', toggleSelectAllLogs);
   bind('analyze-logs-btn', 'click', analyzeLogs);
+  bind('batch-delete-btn', 'click', batchDeleteLogs);
   bind('refresh-logs-btn', 'click', loadDownloadedLogs);
-  bind('open-reports-dir-btn', 'click', openReportsDirectory);
 
   // 初始化动态UI
   injectStyles();

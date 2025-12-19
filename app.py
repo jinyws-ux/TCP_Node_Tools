@@ -1,5 +1,6 @@
 CORE_MODULES = [
     "core.analysis_service",
+    "core.cleanup_manager",
     "core.config_manager",
     "core.download_service",
     "core.log_analyzer",

@@ -13,6 +13,7 @@ import paramiko
 from flask import Blueprint, Flask, render_template, request, jsonify, send_from_directory, Response
 
 from core.analysis_service import AnalysisService
+from core.cleanup_manager import CleanupManager
 from core.config_manager import ConfigManager
 from core.download_service import DownloadService
 from core.log_analyzer import LogAnalyzer
@@ -111,6 +112,17 @@ analysis_service = AnalysisService(
     log_analyzer=log_analyzer,
     report_store=report_mapping_store,
 )
+
+# 初始化清理管理器
+cleanup_manager = CleanupManager(
+    download_dir=DOWNLOAD_DIR,
+    html_logs_dir=HTML_LOGS_DIR,
+    report_mapping_store=report_mapping_store,
+    metadata_store=metadata_store,
+)
+
+# 安排每日清理任务（使用默认时间）
+cleanup_manager.schedule_daily_cleanup()
 
 app.config['HTML_LOGS_DIR'] = HTML_LOGS_DIR
 
@@ -743,9 +755,69 @@ def get_downloaded_logs():
     """获取已下载的日志列表"""
     try:
         logs = analysis_service.list_downloaded_logs()
+        # 添加锁定状态
+        for log in logs:
+            if 'path' in log:
+                metadata = metadata_store.read(log['path'])
+                log['is_locked'] = metadata.get('is_locked', False)
         return jsonify({'success': True, 'logs': logs})
     except Exception as e:
         logger.error(f"获取已下载日志失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/logs/toggle-lock', methods=['POST'])
+def toggle_log_lock():
+    """切换日志锁定状态"""
+    try:
+        data = request.json
+        log_path = data.get('log_path')
+        if not log_path:
+            return jsonify({'success': False, 'error': '缺少日志路径'}), 400
+        
+        # 读取当前元数据
+        metadata = metadata_store.read(log_path)
+        current_lock = metadata.get('is_locked', False)
+        new_lock = not current_lock
+        
+        # 更新元数据
+        metadata['is_locked'] = new_lock
+        metadata_store.write(log_path, metadata)
+        
+        return jsonify({
+            'success': True,
+            'log_path': log_path,
+            'is_locked': new_lock
+        })
+    except Exception as e:
+        logger.error(f"切换日志锁定状态失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/logs/cleanup', methods=['POST'])
+def manual_cleanup():
+    """手动触发清理任务"""
+    try:
+        result = cleanup_manager.cleanup_unlocked_files()
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"手动清理失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/logs/cleanup-single', methods=['POST'])
+def cleanup_single_log():
+    """清理单个日志文件及其关联文件"""
+    try:
+        data = request.json
+        log_path = data.get('log_path')
+        if not log_path:
+            return jsonify({'success': False, 'error': '缺少日志路径参数'}), 400
+        
+        result = cleanup_manager.cleanup_log(log_path)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"清理单个日志失败: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -1195,34 +1267,7 @@ def open_in_editor():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/open-reports-directory', methods=['POST'])
-def open_reports_directory():
-    """打开报告目录"""
-    try:
-        # 获取报告目录
-        reports_dir = analysis_service.get_reports_directory() or app.config['HTML_LOGS_DIR']
 
-        if not os.path.exists(reports_dir):
-            logger.error(f"报告目录不存在: {reports_dir}")
-            return jsonify({'success': False, 'error': '报告目录不存在'}), 404
-
-        logger.info(f"尝试打开报告目录: {reports_dir}")
-
-        # 使用系统命令打开目录
-        system = platform.system()
-        if system == 'Windows':
-            os.startfile(reports_dir)
-        elif system == 'Darwin':  # macOS
-            subprocess.call(['open', reports_dir])
-        else:  # Linux
-            subprocess.call(['xdg-open', reports_dir])
-
-        logger.info("成功打开报告目录")
-        return jsonify({'success': True, 'directory': reports_dir})
-
-    except Exception as e:
-        logger.error(f"打开报告目录失败: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 # 已移除客户端模式相关接口
 

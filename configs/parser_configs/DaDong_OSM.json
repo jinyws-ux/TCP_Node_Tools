@@ -488,26 +488,6 @@
       }
     }
   },
-  "TRIG_PNT": {
-    "Description": "SetCP",
-    "ResponseType": "TRIG_P_R",
-    "Versions": {
-      "0001": {
-        "Fields": {
-          "CP": {
-            "Escapes": {},
-            "Length": 8,
-            "Start": 86
-          },
-          "VIN_NO": {
-            "Escapes": {},
-            "Length": 7,
-            "Start": 99
-          }
-        }
-      }
-    }
-  },
   "TRIG_P_R": {
     "Description": "SetCP Reply",
     "ResponseType": "",
@@ -530,5 +510,26 @@
         }
       }
     }
+  },
+  "TRIG_PNT": {
+    "Description": "SetCP",
+    "ResponseType": "TRIG_P_R",
+    "Versions": {
+      "0001": {
+        "Fields": {
+          "CP": {
+            "Escapes": {},
+            "Length": 8,
+            "Start": 86
+          },
+          "VIN_NO": {
+            "Escapes": {},
+            "Length": 7,
+            "Start": 99
+          }
+        }
+      }
+    },
+    "TransIdPosition": "32,12"
   }
 }

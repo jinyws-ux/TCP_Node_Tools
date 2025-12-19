@@ -33,12 +33,13 @@ export const api = {
 
   /* -------- 分析页 -------- */
   getDownloadedLogs: () => get('/api/downloaded-logs'),
-  openReportsDirectory: () => post('/api/open-reports-directory', {}),
+
   checkReport: (log_path) => post('/api/check-report', { log_path }),
   openInBrowser: (url) => post('/api/open-in-browser', { url }),
   openInEditor: (file_path) => post('/api/open-in-editor', { file_path }),
   getLogContent: (file_path) => post('/api/get-log-content', { file_path }),
-  deleteLog: (id, path) => post('/api/delete-log', { id, path }),
+  deleteLog: (id, path) => post('/api/logs/cleanup-single', { log_path: path }),
+  toggleLogLock: (log_path) => post('/api/logs/toggle-lock', { log_path }),
   analyze: (logs, config) => post('/api/analyze', { logs, config }),
   getParserConfigs: () => get(`/api/parser-configs?_=${Date.now()}`),
   exitBackend: () => post('/api/exit', {}),

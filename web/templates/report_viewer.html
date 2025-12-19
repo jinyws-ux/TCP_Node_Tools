@@ -4,11 +4,11 @@
     <title>日志分析报告</title>
     <meta charset="utf-8">
     <style>
-        /* ================= Reset & Layout ================= */
+        /* ================= Reset & Layout Base ================= */
         * { box-sizing: border-box; }
         body { margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; color: #1f2937; height: 100vh; overflow: hidden; display: flex; }
 
-        /* ================= Sidebar ================= */
+        /* ================= Sidebar Styles ================= */
         #sidebar { width: 60px; height: 100%; background: #ffffff; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1); z-index: 50; flex-shrink: 0; box-shadow: 2px 0 8px rgba(0,0,0,0.05); }
         #sidebar.expanded { width: 320px; }
         .sidebar-header { height: 60px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-bottom: 1px solid #f3f4f6; background: #f9fafb; transition: background 0.2s; }
@@ -54,12 +54,13 @@
         .tools-group { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 
         /* Buttons */
-        .btn { padding: 0 14px; height: 36px; border-radius: 6px; border: 1px solid #d1d5db; background: white; cursor: pointer; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s; color: #374151; white-space: nowrap; }
+        .btn { padding: 0 12px; height: 36px; border-radius: 6px; border: 1px solid #d1d5db; background: white; cursor: pointer; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s; color: #374151; white-space: nowrap; }
         .btn:hover { background: #f9fafb; border-color: #9ca3af; }
         .btn-primary { background: #2563eb; color: white; border: 1px solid #2563eb; }
         .btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
         .export-btn { background: #10b981; color: white; border: 1px solid #10b981; }
         .export-btn:hover { background: #059669; border-color: #059669; }
+        
         .sort-group { display: flex; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden; }
         .sort-btn { border: none; background: #fff; padding: 0 12px; height: 34px; cursor: pointer; font-size: 12px; border-right: 1px solid #d1d5db; color: #4b5563; font-weight: 500; white-space: nowrap; }
         .sort-btn:last-child { border-right: none; }
@@ -70,16 +71,15 @@
         #quickAnalyzePanel { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 10px 20px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); flex-shrink: 0; }
         .qa-body { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
         .qa-select { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; outline: none; transition: all 0.15s ease; min-width: 150px; }
-        .qa-select:focus { border-color: #3b82f6; }
-        .qa-btn { height: 34px; padding: 0 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 600; }
+        .qa-btn { padding: 6px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 600; }
         .qa-btn:hover { background: #2563eb; }
         .qa-btn:disabled { background: #93c5fd; cursor: not-allowed; }
 
-        /* ================= Log Container (Fix: Push Layout) ================= */
+        /* ================= Log Container ================= */
         #log-container {
-            flex: 1; /* Take remaining space */
-            min-height: 0; /* Allow shrinking */
-            overflow-y: auto; /* Internal scroll */
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
             padding: 20px;
             scroll-behavior: smooth;
             position: relative;
@@ -96,6 +96,10 @@
         .seg-msgtype-sm { min-width: 100px; text-align: center; font-weight: 600; letter-spacing: 0.5px; }
         .seg-pid { min-width: 100px; text-align: center; }
         .seg-free { display: inline-block; padding: 1px 6px; margin: 0 2px; border-radius: 4px; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 12px; white-space: nowrap; cursor: default; }
+        
+        /* 交互字段样式：保留悬停样式，但不触发联动 */
+        .seg-interactive { cursor: crosshair; border-bottom: 1px dotted #cbd5e1; transition: all 0.1s; }
+        .seg-interactive:hover { background-color: #fef08a !important; color: #854d0e !important; border-bottom-color: #eab308; }
 
         .badge-req { padding: 1px 5px; background: #dbeafe; color: #1e40af; border-radius: 3px; font-size: 11px; font-weight: bold; border: 1px solid #bfdbfe; }
         .badge-resp { padding: 1px 5px; background: #dcfce7; color: #166534; border-radius: 3px; font-size: 11px; font-weight: bold; border: 1px solid #bbf7d0; }
@@ -109,25 +113,23 @@
         @keyframes flash-bg { 0% { background: #fee2e2; } 100% { background: #fff; } }
         .trans-highlight { background-color: #f0f9ff !important; border-left: 3px solid #3b82f6 !important; }
 
-        /* ================= Original Text Window (Fix: Layout & Resize) ================= */
+        /* ================= Original Text Window ================= */
         #original-text-container {
-            position: relative; /* Document flow, pushes content up */
+            position: relative; /* 挤压布局 */
             z-index: 40;
-            height: 0; /* Hidden by default */
-            flex-shrink: 0; /* Do not shrink */
+            height: 0;
+            flex-shrink: 0;
             background: white;
             border-top: 1px solid #e5e7eb;
             box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            /* Transition only when not dragging, handled in JS potentially, or keep for smooth toggle */
             transition: height 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
         }
         #original-text-container.show { height: 350px; }
         #original-text-container.collapsed { height: 40px !important; }
 
-        /* Resizer Handle */
         #resizer-handle {
             height: 6px;
             background: #f3f4f6;
@@ -150,14 +152,10 @@
         #original-text-content { flex: 1; overflow: hidden; background: #fff; position: relative; }
         #original-text-logs { width: 100%; height: 100%; overflow: auto; padding: 16px; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 12px; line-height: 1.5; color: #374151; }
         
-        /* Raw Text Blocks */
         .original-text-block { padding: 8px 12px; margin-bottom: 6px; border-radius: 4px; border-bottom: 1px dashed #f3f4f6; }
         .original-text-block.selected { background-color: #dbeafe; border-left: 3px solid #3b82f6; padding-left: 8px; }
         .raw-l1 { color: #111827; white-space: pre-wrap; word-break: break-all; font-weight: 500; }
         .raw-l2 { color: #6b7280; margin-top: 4px; white-space: pre-wrap; word-break: break-all; font-size: 11px; }
-        
-        /* New: Highlighting match in raw text */
-        .raw-highlight { background-color: #fef08a; color: #854d0e; font-weight: bold; border-radius: 2px; box-shadow: 0 0 0 1px #eab308; }
     </style>
 </head>
 <body>
@@ -174,8 +172,8 @@
             <div class="qa-body">
                 <select id="qaFactory" class="qa-select"><option value="">厂区</option></select>
                 <select id="qaSystem" class="qa-select"><option value="">系统</option></select>
-                <select id="qaTemplate" class="qa-select" style="min-width: 200px;"><option value="">区域</option></select>
-                <button id="qaRunBtn" class="qa-btn" type="button">下载并分析</button>
+                <select id="qaTemplate" class="qa-select"><option value="">区域</option></select>
+                <button id="qaRunBtn" class="btn btn-primary" type="button" style="height: var(--control-height);">下载并分析</button>
             </div>
         </div>
         
@@ -243,7 +241,6 @@
         let reportId = null;
         const quickState = { loading: false, factory: '', system: '', template: '', factories: [], systems: [], templates: [] };
 
-        // URLSearchParams Polyfill
         if (!window.URLSearchParams) {
             window.URLSearchParams = function(search) {
                 const params = {};
@@ -271,7 +268,7 @@
             loadReportData(reportId).then(() => {
                 initPage();
                 initQuickAnalyze(); 
-                initResizer(); // 启动拖拽
+                initResizer(); 
             }).catch(e => showError(e.message));
         });
 
@@ -306,19 +303,16 @@
                 const ts = getTimestamp(isTrans ? item.requests[0] : item); 
                 const rawTarget = `raw_log_${index}_main`;
 
-                // Main Row
                 html += `<div class="timestamp" id="ts_${index}" data-log-id="${logId}" data-target-raw="${rawTarget}" data-orig-idx="${index}" data-timestamp="${ts}" ${isTrans ? `data-trans-group="${transId}" onmouseover="highlightTransaction('${transId}')" onmouseout="clearHighlight()"` : ''}>`;
                 if(isTrans) html += `<span class="badge-req">发送</span>`;
                 html += renderLineContent(main);
                 
                 if(isTrans && !hasResp) html += ` <span style="font-size:11px;color:#9ca3af;background:#f3f4f6;padding:1px 4px;border-radius:3px;margin-left:6px">[无回复]</span>`;
-                // Retry button (Right aligned)
                 if(retryCount > 0) {
                     html += `<span class="tag-retry" onclick="toggleRetries('${logId}')">◀ 重试 x${retryCount}</span>`;
                 }
                 html += `</div>`;
 
-                // Retry Rows (Hidden)
                 if(isTrans && retryCount > 0) {
                     html += `<div id="retries_${logId}" style="display:none; margin-left: 20px; border-left: 2px solid #e5e7eb; padding-left: 8px;">`;
                     item.requests.slice(0, -1).forEach((req, rIdx) => {
@@ -331,7 +325,6 @@
                     html += `</div>`;
                 }
 
-                // Response Row
                 if(isTrans && hasResp) {
                     const respRawTarget = `raw_log_${index}_resp`;
                     html += `<div class="timestamp" id="ts_${index}_resp" data-target-raw="${respRawTarget}" data-timestamp="${ts}" ${isTrans ? `data-trans-group="${transId}" onmouseover="highlightTransaction('${transId}')" onmouseout="clearHighlight()"` : ''} style="border-top:none; margin-top:-1px;">
@@ -349,25 +342,24 @@
             if(!entry) return '';
             const segs = entry.segments || [];
             let html = '';
-            let ts = '';
             
-            segs.forEach(s => { if(s.kind === 'ts') ts = s.text; });
-            if(!ts && entry.timestamp) ts = entry.timestamp;
-
             segs.forEach(s => {
                 const txt = htmlEscape(s.text || '');
+                // 保留 seg-interactive 类以维持悬停视觉效果，但不绑定JS事件
                 if(s.kind === 'ts') html += `<span class="seg-fixed seg-ts" style="background:#e3f2fd;color:#0c4a6e;">${txt}</span>`;
                 else if(s.kind === 'dir') html += `<span class="seg-fixed seg-dir" style="background:${txt.toLowerCase().includes('output')?'#fee2e2':'#d1fae5'};color:#1b1f23;">${txt}</span>`;
-                else if(s.kind === 'msg_type') html += `<span class="seg-fixed seg-msgtype-sm" style="background:#fff7ed;color:#9a3412;">${txt}</span>`;
-                else if(s.kind === 'node') html += `<span class="seg-fixed seg-node-sm" style="background:#f3f4f6;">${txt}</span>`;
-                else if(s.kind === 'field') html += `<span class="seg-free" style="background:#f0fdf4;color:#374151;">${txt}</span>`;
-                else html += `<span class="seg-free" style="background:#f3f4f6;">${txt}</span>`;
+                else if(s.kind === 'msg_type') html += `<span class="seg-fixed seg-msgtype-sm seg-interactive" style="background:#fff7ed;color:#9a3412;">${txt}</span>`;
+                else if(s.kind === 'node') html += `<span class="seg-fixed seg-node-sm seg-interactive" style="background:#f3f4f6;">${txt}</span>`;
+                else if(s.kind === 'field') html += `<span class="seg-free seg-interactive" style="background:#f0fdf4;color:#374151;">${txt}</span>`;
+                else if(s.kind === 'pid') html += `<span class="seg-pid seg-interactive" style="background:#fef3c7;">${txt}</span>`;
+                else html += `<span class="seg-free seg-interactive" style="background:#f3f4f6;">${txt}</span>`; // free text
             });
 
             if(entry.escape_hits && entry.escape_hits.length > 0) html += ` <span class="tag-abnormal">异常报错</span>`;
             return html;
         }
 
+        // --- 4. Original Text ---
         function renderOriginalText() {
             const container = document.getElementById('original-text-logs');
             if (!container || !reportData) return;
@@ -404,7 +396,43 @@
                     </div>`;
         }
 
-        // --- 4. Interactions (Fixes) ---
+        // --- 5. Resizer ---
+        function initResizer() {
+            const resizer = document.getElementById('resizer-handle');
+            const container = document.getElementById('original-text-container');
+            const main = document.getElementById('main-wrapper');
+            
+            if (!resizer || !container) return;
+
+            let startY, startHeight;
+
+            resizer.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                startY = e.clientY;
+                startHeight = parseInt(window.getComputedStyle(container).height, 10);
+                container.style.transition = 'none'; 
+                document.documentElement.addEventListener('mousemove', doDrag, false);
+                document.documentElement.addEventListener('mouseup', stopDrag, false);
+            });
+
+            function doDrag(e) {
+                const newHeight = startHeight - (e.clientY - startY);
+                if (newHeight > 40 && newHeight < main.clientHeight - 100) {
+                    container.style.height = newHeight + 'px';
+                    container.classList.add('show');
+                    container.classList.remove('collapsed');
+                    document.getElementById('toggle-original-text').textContent = '▼';
+                }
+            }
+
+            function stopDrag() {
+                container.style.transition = 'height 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';
+                document.documentElement.removeEventListener('mousemove', doDrag, false);
+                document.documentElement.removeEventListener('mouseup', stopDrag, false);
+            }
+        }
+
+        // --- 6. Interactions ---
         function handleLogRowClick(e) {
             const target = e.target.closest('.timestamp');
             if (!target || e.target.classList.contains('tag-retry')) return;
@@ -417,15 +445,12 @@
             if(rawId) {
                 const rawEl = document.getElementById(rawId);
                 const win = document.getElementById('original-text-container');
-                
-                // Show window (push layout)
                 if (win) {
                     if (win.clientHeight === 0) win.style.height = '350px';
                     win.classList.add('show');
                     win.classList.remove('collapsed');
                     document.getElementById('toggle-original-text').textContent = '▼';
                 }
-
                 if (rawEl) {
                     rawEl.classList.add('selected');
                     rawEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -477,88 +502,12 @@
             if(el) el.style.display = (el.style.display === 'none' || el.style.display === '') ? 'block' : 'none';
         };
 
-        // --- 5. Segment Highlighting Logic ---
-        function bindSegmentHighlight() {
-            const container = document.getElementById('log-container');
-            let currentRawHtml = null;
-            let currentRawEl = null;
-
-            container.addEventListener('mouseover', (e) => {
-                if (e.target.classList.contains('seg-fixed') || e.target.classList.contains('seg-free')) {
-                    const text = e.target.textContent.trim();
-                    if(!text) return;
-
-                    const row = e.target.closest('.timestamp');
-                    if (!row) return;
-                    const rawId = row.getAttribute('data-target-raw');
-                    const rawEl = document.getElementById(rawId);
-
-                    if(rawEl) {
-                        const l1 = rawEl.querySelector('.raw-l1');
-                        if(l1) {
-                            currentRawEl = l1;
-                            currentRawHtml = l1.innerHTML;
-                            const safeText = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                            const re = new RegExp(`(${safeText})`, 'g');
-                            // Replace text content (roughly)
-                            l1.innerHTML = l1.innerText.replace(re, '<span class="raw-highlight">$1</span>');
-                        }
-                    }
-                }
-            });
-
-            container.addEventListener('mouseout', (e) => {
-                if(currentRawEl && currentRawHtml !== null) {
-                    currentRawEl.innerHTML = currentRawHtml;
-                    currentRawEl = null;
-                    currentRawHtml = null;
-                }
-            });
-        }
-
-        // --- 6. Resizer Logic ---
-        function initResizer() {
-            const resizer = document.getElementById('resizer-handle');
-            const container = document.getElementById('original-text-container');
-            const main = document.getElementById('main-wrapper');
-            
-            if (!resizer || !container) return;
-
-            let startY, startHeight;
-
-            resizer.addEventListener('mousedown', function(e) {
-                e.preventDefault();
-                startY = e.clientY;
-                startHeight = parseInt(window.getComputedStyle(container).height, 10);
-                container.style.transition = 'none'; // Disable transition during drag
-                document.documentElement.addEventListener('mousemove', doDrag, false);
-                document.documentElement.addEventListener('mouseup', stopDrag, false);
-            });
-
-            function doDrag(e) {
-                const newHeight = startHeight - (e.clientY - startY);
-                if (newHeight > 40 && newHeight < main.clientHeight - 100) {
-                    container.style.height = newHeight + 'px';
-                    container.classList.add('show');
-                    container.classList.remove('collapsed');
-                    document.getElementById('toggle-original-text').textContent = '▼';
-                }
-            }
-
-            function stopDrag() {
-                container.style.transition = 'height 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'; // Restore transition
-                document.documentElement.removeEventListener('mousemove', doDrag, false);
-                document.documentElement.removeEventListener('mouseup', stopDrag, false);
-            }
-        }
-
         // --- 7. Quick Analyze ---
         function initQuickAnalyze() {
             const qaFactory = document.getElementById('qaFactory');
             if (qaFactory) qaFactory.addEventListener('change', (e) => {
                 quickState.factory = e.target.value;
-                quickState.system = ''; 
-                quickState.template = '';
+                quickState.system = ''; quickState.template = '';
                 loadQaSystems(e.target.value);
             });
             const qaSystem = document.getElementById('qaSystem');
@@ -773,7 +722,7 @@
                 input.addEventListener('input', (e) => { renderDropdown(e.target.value); document.getElementById('msgTypeDropdown').style.display = 'block'; });
                 document.addEventListener('click', (e) => { if (!e.target.closest('.msg-type-container')) document.getElementById('msgTypeDropdown').style.display = 'none'; });
             }
-            bindSegmentHighlight(); // New Highlight Feature
+            // Removed bindSegmentHighlight() call
         }
         function highlightTransaction(id) { document.querySelectorAll(`[data-trans-group="${id}"]`).forEach(e => e.classList.add('trans-highlight')); }
         function clearHighlight() { document.querySelectorAll('.trans-highlight').forEach(e => e.classList.remove('trans-highlight')); }
