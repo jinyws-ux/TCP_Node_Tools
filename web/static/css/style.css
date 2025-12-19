@@ -48,6 +48,11 @@ body {
   line-height: 1.6;
   position: relative;
   overflow-x: hidden;
+  transform: scale(0.75);
+  transform-origin: top center;
+  width: calc(100% / 0.75);
+  margin: 0 auto;
+  min-width: calc(1400px * 0.75);
 }
 
 body::before {

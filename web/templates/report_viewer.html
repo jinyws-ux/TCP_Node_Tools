@@ -559,7 +559,7 @@
                 const downloadData = await downloadRes.json();
                 if (!downloadRes.ok || downloadData?.success === false) throw new Error(downloadData?.error || '下载日志失败');
                 
-                const downloadedLogs = Array.isArray(downloadData?.logs) ? downloadData.logs : [];
+                const downloadedLogs = Array.isArray(downloadData?.downloaded_files) ? downloadData.downloaded_files : [];
                 if (!downloadedLogs.length) throw new Error('下载的日志为空');
 
                 // 构建配置ID（格式：factory_system.json）
