@@ -70,8 +70,8 @@
         /* Quick Analyze Panel */
         #quickAnalyzePanel { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 10px 20px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); flex-shrink: 0; }
         .qa-body { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-        .qa-select { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; outline: none; transition: all 0.15s ease; min-width: 150px; }
-        .qa-btn { padding: 6px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 600; }
+        .qa-select { height: 36px; padding: 0 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; outline: none; transition: all 0.15s ease; min-width: 150px; }
+        .qa-btn { height: 36px; padding: 0 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
         .qa-btn:hover { background: #2563eb; }
         .qa-btn:disabled { background: #93c5fd; cursor: not-allowed; }
 
@@ -173,7 +173,7 @@
                 <select id="qaFactory" class="qa-select"><option value="">厂区</option></select>
                 <select id="qaSystem" class="qa-select"><option value="">系统</option></select>
                 <select id="qaTemplate" class="qa-select"><option value="">区域</option></select>
-                <button id="qaRunBtn" class="btn btn-primary" type="button" style="height: var(--control-height);">下载并分析</button>
+                <button id="qaRunBtn" class="qa-btn" type="button">下载并分析</button>
             </div>
         </div>
         
@@ -542,7 +542,7 @@
                 const searchRes = await fetch(`${API_BASE}/api/logs/search_strict`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ template_id: tpl.id || tpl.tid || tpl.template_id || '', include_realtime: true, include_archive: false })
+                    body: JSON.stringify({ template_id: tpl.id || tpl.tid || tpl.template_id || '', include_realtime: true, include_archive: false, strict_format: true })
                 });
                 const searchData = await searchRes.json();
                 if (!searchRes.ok || searchData?.success === false) throw new Error(searchData?.error || '搜索日志失败');
@@ -562,10 +562,13 @@
                 const downloadedLogs = Array.isArray(downloadData?.logs) ? downloadData.logs : [];
                 if (!downloadedLogs.length) throw new Error('下载的日志为空');
 
-                const analyzeRes = await fetch(`${API_BASE}/api/logs/analyze`, {
+                // 构建配置ID（格式：factory_system.json）
+                const configId = `${factory}_${system}.json`;
+                
+                const analyzeRes = await fetch(`${API_BASE}/api/analyze`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ logs: downloadedLogs.map(l => l.path), config_id: '', factory, system })
+                    body: JSON.stringify({ logs: downloadedLogs.map(l => l.path), config: configId })
                 });
                 const analyzeData = await analyzeRes.json();
                 if (!analyzeRes.ok || analyzeData?.success === false) throw new Error(analyzeData?.error || '分析日志失败');

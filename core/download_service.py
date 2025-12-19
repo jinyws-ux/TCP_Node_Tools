@@ -26,6 +26,7 @@ class DownloadService:
         include_archive: bool = False,
         date_start: Optional[str] = None,
         date_end: Optional[str] = None,
+        strict_format: bool = False,
     ) -> List[Dict[str, Any]]:
         """Search logs with manual inputs."""
 
@@ -45,6 +46,7 @@ class DownloadService:
                 include_archive=include_archive,
                 date_start=date_start,
                 date_end=date_end,
+                strict_format=strict_format,
             )
         else:
             single_node = normalized_nodes[0] if normalized_nodes else ""
@@ -56,6 +58,7 @@ class DownloadService:
                 include_archive=include_archive,
                 date_start=date_start,
                 date_end=date_end,
+                strict_format=strict_format,
             )
         return self._normalize_log_payloads(logs)
 
@@ -67,6 +70,7 @@ class DownloadService:
         include_archive: bool = False,
         date_start: Optional[str] = None,
         date_end: Optional[str] = None,
+        strict_format: bool = False,  # 默认使用模糊匹配
     ) -> List[Dict[str, Any]]:
         template = self._templates.get(template_id)
         if not template:
@@ -83,6 +87,7 @@ class DownloadService:
             include_archive=include_archive,
             date_start=date_start,
             date_end=date_end,
+            strict_format=strict_format,
         )
 
     def download(

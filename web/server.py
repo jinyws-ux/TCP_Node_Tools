@@ -1586,6 +1586,7 @@ def api_logs_search_strict():
             include_archive=_get_bool(data, 'include_archive', 'includeArchive', default=False),
             date_start=data.get('date_start') or data.get('dateStart'),
             date_end=data.get('date_end') or data.get('dateEnd'),
+            strict_format=_get_bool(data, 'strict_format', 'strictFormat', default=True),
         )
 
         return jsonify({"success": True, "logs": logs})
@@ -1593,7 +1594,7 @@ def api_logs_search_strict():
         return jsonify({"success": False, "error": str(exc)}), 400
     except Exception as exc:
         logger.error(f"/api/logs/search_strict 失败: {exc}", exc_info=True)
-        return jsonify({"success": False, "error": '搜索日志失败'}), 500
+        return jsonify({"success": False, "error": "搜索日志失败"}), 500
 
 
 @app.route('/api/logs/download', methods=['POST'])

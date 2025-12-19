@@ -44,9 +44,11 @@ class LogDownloader:
         include_archive: bool = False,
         date_start: Optional[str] = None,
         date_end: Optional[str] = None,
+        strict_format: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         保持原签名不变；内部复用多节点实现。
+        strict_format: 是否只搜索精确格式 tcp_trace.{node} 和 tcp_trace.{node}.old
         """
         nodes = self._normalize_nodes(node)
         return self.search_logs_many_nodes(
@@ -57,6 +59,7 @@ class LogDownloader:
             include_archive=include_archive,
             date_start=date_start,
             date_end=date_end,
+            strict_format=strict_format,
         )
 
     # ---------------------- 对外：多节点（通用/模糊） ----------------------
@@ -69,9 +72,11 @@ class LogDownloader:
         include_archive: bool = False,
         date_start: Optional[str] = None,
         date_end: Optional[str] = None,
+        strict_format: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         多节点搜索（实时使用 tcp_trace.{node}* 模式；归档限定日期范围）。
+        strict_format: 是否只搜索精确格式 tcp_trace.{node} 和 tcp_trace.{node}.old
         """
         try:
             server_config = self._get_server_config(factory, system)
@@ -86,7 +91,7 @@ class LogDownloader:
             with self._open_ssh(server_info) as ssh:
                 if include_realtime:
                     realtime_path = (server_info.get("realtime_path") or f"/{server_alias}/km/log")
-                    for it in self._search_realtime_for_nodes(ssh, realtime_path, nodes):
+                    for it in self._search_realtime_for_nodes(ssh, realtime_path, nodes, strict_format):
                         rp = it.get("remote_path") or it.get("path")
                         if rp and rp not in visited:
                             visited.add(rp)
@@ -135,6 +140,7 @@ class LogDownloader:
             include_archive=include_archive,
             date_start=date_start,
             date_end=date_end,
+            strict_format=False,  # 恢复默认行为，不使用严格格式匹配
         )
 
     # ====================== 内部：公共工具 ======================
@@ -195,16 +201,22 @@ class LogDownloader:
 
     # ====================== 内部：实时/归档检索 ======================
     def _search_realtime_for_nodes(
-        self, ssh: paramiko.SSHClient, base_path: str, nodes: Iterable[str]
+        self, ssh: paramiko.SSHClient, base_path: str, nodes: Iterable[str], strict_format: bool = False
     ) -> List[Dict[str, Any]]:
         """
-        遍历节点，执行 ls -l {base_path}/tcp_trace.{node}*
-        修复返回 remote_path，补充 node 字段。
+        遍历节点搜索实时日志文件
+        strict_format: 是否只搜索精确格式 tcp_trace.{node} 和 tcp_trace.{node}.old
         """
         results: List[Dict[str, Any]] = []
         for node in nodes or []:
             try:
-                cmd = f'ls -l {base_path}/tcp_trace.{node}* 2>/dev/null'
+                if strict_format:
+                    # 精确匹配两种格式：tcp_trace.{node} 和 tcp_trace.{node}.old
+                    cmd = f'ls -l {base_path}/tcp_trace.{node} {base_path}/tcp_trace.{node}.old 2>/dev/null'
+                else:
+                    # 使用通配符匹配所有相关文件
+                    cmd = f'ls -l {base_path}/tcp_trace.{node}* 2>/dev/null'
+                
                 stdin, stdout, stderr = ssh.exec_command(cmd)
                 lines = stdout.read().decode(errors="ignore").splitlines()
 
@@ -223,6 +235,12 @@ class LogDownloader:
 
                     # 兼容 ls 可能返回绝对路径或仅文件名
                     basename = os.path.basename(filename)
+                    
+                    # 如果是严格模式，只处理符合精确格式的文件
+                    if strict_format:
+                        if not (basename == f"tcp_trace.{node}" or basename == f"tcp_trace.{node}.old"):
+                            continue
+                    
                     remote_path = f"{base_path.rstrip('/')}/{basename}"
 
                     item = {
