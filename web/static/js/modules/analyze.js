@@ -493,29 +493,86 @@ function renderReportsList(logPath, reports) {
     <div class="optimized-reports-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
       ${reports.map(report => {
         const { factoryLabel, systemLabel, nodeLabels } = getLogMetadata(report.related_logs);
+        
+        // 辅助函数：格式化完整时间 (YYYY-MM-DD HH:mm:ss)
+        const formatFullTime = (isoStr) => {
+            if (!isoStr) return '???';
+            const d = new Date(isoStr);
+            if (isNaN(d.getTime())) return isoStr;
+            const pad = n => n.toString().padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        };
+
+        // 确定时间范围显示内容
+        // 优先使用报告本身记录的时间范围 (report.start_time/end_time)
+        // 如果没有（旧报告），则尝试从关联日志缓存中获取（不太准确）
+        let timeRangeHtml = '';
+        let startTime = report.start_time;
+        let endTime = report.end_time;
+
+        if (!startTime) {
+             // 兼容旧报告：查找当前日志在报告中的相关日志对象
+             const currentLogObj = report.related_logs.find(l => 
+                 l.path === logPath || 
+                 l.path.replace(/\\/g, '/') === logPath.replace(/\\/g, '/')
+             );
+             if (currentLogObj) {
+                 startTime = currentLogObj.start_time || currentLogObj.timestamp;
+                 endTime = currentLogObj.end_time;
+             }
+        }
+
+        if (startTime) {
+            const fmtStart = formatFullTime(startTime);
+            const fmtEnd = endTime ? formatFullTime(endTime) : '???';
+            timeRangeHtml = `
+            <div class="meta-time-range" style="margin-top: 6px; background: #f8f9fa; padding: 6px 8px; border-radius: 4px; border: 1px solid #eee;">
+                <div style="color: #666; font-size: 11px; display: flex; align-items: center; gap: 4px;">
+                   <i class="far fa-clock"></i> <span>日志时间范围:</span>
+                </div>
+                <div style="font-family: Consolas, Monaco, monospace; font-size: 11px; color: #333; margin-top: 2px;">
+                   ${fmtStart} <span style="color:#999">→</span> ${fmtEnd}
+                </div>
+            </div>`;
+        }
+
+        // 优化节点显示：使用 Tag 样式，适应多节点布局
+        const nodesList = nodeLabels ? nodeLabels.split(',').map(n => n.trim()).filter(n => n) : [];
+        const nodesHtml = nodesList.length > 0 
+            ? `<div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px;">
+                ${nodesList.map(n => `<span style="background: #e8f5e9; color: #2e7d32; padding: 1px 6px; border-radius: 3px; font-size: 11px; border: 1px solid #c8e6c9;">${escapeHtml(n)}</span>`).join('')}
+               </div>`
+            : '<span style="color: #999;">-</span>';
+
         return `
         <div class="report-item-card" data-report-id="${report.report_id || report.name}" style="
           background: #fff; border: 1px solid #e1e4e8; border-radius: 6px; padding: 12px;
           display: flex; flex-direction: column; gap: 8px; transition: all 0.2s ease;
         " onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'" onmouseout="this.style.transform='none';this.style.boxShadow='none'">
           
-          <div class="report-header" style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 8px; border-bottom: 1px solid #f0f0f0;">
+          <div class="report-header" style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid #f0f0f0;">
              <div style="flex: 1; min-width: 0;">
-                <div class="report-name" style="font-weight: 600; color: #24292e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px;" title="${escapeHtml(report.name)}">${escapeHtml(report.name || '未知报告')}</div>
-                <div class="report-time" style="font-size: 12px; color: #888; margin-top: 2px;">${formatReportDate(report.created_at)}</div>
+                <div class="report-time" style="font-size: 12px; color: #888;" title="报告生成时间">生成于: ${formatReportDate(report.created_at)}</div>
              </div>
-             <div class="report-icon" style="background: #e3f2fd; color: #2196f3; width: 32px; height: 32px; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: 10px;">
+             <div class="report-icon" style="background: #e3f2fd; color: #2196f3; width: 28px; height: 28px; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: 10px;">
                 <i class="fas fa-file-alt"></i>
              </div>
           </div>
 
-          <div class="report-metadata-labels" style="display: flex; flex-direction: column; gap: 4px; font-size: 12px;">
-            <span class="meta-label meta-fs" style="display: block; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="厂区/系统: ${escapeHtml(factoryLabel)} / ${escapeHtml(systemLabel)}">
-              <strong style="color: #1976d2;">厂区/系统:</strong> ${escapeHtml(factoryLabel)} / ${escapeHtml(systemLabel)}
-            </span>
-            <span class="meta-label meta-node" style="display: block; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="涉及节点: ${escapeHtml(nodeLabels)}">
-              <strong style="color: #2e7d32;">节点:</strong> ${escapeHtml(nodeLabels)}
-            </span>
+          <div class="report-metadata-labels" style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+            <div class="meta-group">
+                <div style="color: #1976d2; font-weight: 600; font-size: 11px; margin-bottom: 2px;">厂区 / 系统</div>
+                <div style="color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(factoryLabel)} / ${escapeHtml(systemLabel)}">
+                    ${escapeHtml(factoryLabel)} / ${escapeHtml(systemLabel)}
+                </div>
+            </div>
+            
+            <div class="meta-group">
+                <div style="color: #2e7d32; font-weight: 600; font-size: 11px; margin-bottom: 2px;">涉及节点</div>
+                ${nodesHtml}
+            </div>
+
+            ${timeRangeHtml}
           </div>
 
           <div class="report-actions-bar" style="display: flex; gap: 8px; margin-top: 4px; padding-top: 8px; border-top: 1px dashed #eee;">

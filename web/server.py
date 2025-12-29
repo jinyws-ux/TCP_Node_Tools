@@ -1425,25 +1425,36 @@ def export_pure_report():
     try:
         data = request.json
         report_id = data.get('report_id')
+        filtered_data = data.get('filtered_data')  # 接收筛选后的数据
         
-        # 检查报告ID是否有效，处理'undefined'或其他无效值
-        if not report_id or report_id.lower() == 'undefined' or report_id.lower() == 'null':
+        # 检查报告ID是否有效
+        if not report_id or report_id.lower() in ('undefined', 'null'):
             return jsonify({'success': False, 'error': '缺少或无效的报告ID'}), 400
         
         # 获取报告数据
-        report_data = analysis_service.get_report_details(report_id)
+        if filtered_data:
+            # 如果提供了筛选后的数据，直接使用
+            report_data = filtered_data
+            # 确保有一些基本字段，比如名称
+            if 'name' not in report_data:
+                original_report = analysis_service.get_report_details(report_id)
+                if original_report:
+                    report_data['name'] = f"{original_report.get('name', 'report')}_filtered"
+        else:
+            # 否则获取完整的报告数据
+            report_data = analysis_service.get_report_details(report_id)
+            
         if not report_data:
-            return jsonify({'success': False, 'error': '报告不存在'}), 404
+            return jsonify({'success': False, 'error': '报告数据为空或报告不存在'}), 404
         
         # 渲染纯净版报告HTML
         html_content = render_template('pure_report.html', report_data=report_data)
         
         # 设置响应头，返回HTML文件
         import urllib.parse
-        # 对文件名进行URL编码，处理中文字符
         report_name = report_data.get("name", "report")
         encoded_filename = urllib.parse.quote(f"{report_name}_pure.html")
-        # 使用filename*参数支持UTF-8文件名
+        
         return Response(
             html_content,
             mimetype='text/html',

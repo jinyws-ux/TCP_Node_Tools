@@ -3,6 +3,7 @@
 <head>
     <title>日志分析报告</title>
     <meta charset="utf-8">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         /* ================= Reset & Layout Base ================= */
         * { box-sizing: border-box; }
@@ -20,7 +21,54 @@
         .count-badge { position: absolute; top: 2px; right: 2px; background: #fee2e2; color: #991b1b; border: 1px solid #fecdd3; font-size: 10px; font-weight: 700; height: 18px; min-width: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
         .count-badge.zero { background: #f3f4f6; color: #9ca3af; border-color: #e5e7eb; }
         .sidebar-content { flex: 1; overflow-y: auto; overflow-x: hidden; opacity: 0; pointer-events: none; transition: opacity 0.1s; padding: 12px; }
-        #sidebar.expanded .sidebar-content { opacity: 1; pointer-events: auto; transition: opacity 0.2s 0.1s; }
+        
+        .sidebar-split-container {
+            display: flex;
+            flex-direction: column;
+            height: calc(100% - 60px); /* Subtract header height */
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.1s;
+        }
+        #sidebar.expanded .sidebar-split-container {
+            opacity: 1;
+            pointer-events: auto;
+            transition: opacity 0.2s 0.1s;
+        }
+        #sidebar.expanded .sidebar-content {
+            flex: 1;
+            min-height: 0;
+            border-bottom: 1px solid #e5e7eb;
+            opacity: 1; /* Override default opacity */
+            pointer-events: auto;
+        }
+        
+        .sidebar-chart-panel {
+            height: 50%;
+            display: flex;
+            flex-direction: column;
+            border-top: 1px solid #e5e7eb;
+            background: #f9fafb;
+            overflow: hidden;
+        }
+        .chart-header {
+            padding: 10px 16px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #374151;
+            border-bottom: 1px solid #f3f4f6;
+            background: #fff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .chart-wrapper {
+            flex: 1;
+            position: relative;
+            padding: 10px;
+            min-height: 0;
+        }
+        
         .abnormal-item { background: #fff; border: 1px solid #e5e7eb; border-left: 4px solid #f43f5e; border-radius: 6px; margin-bottom: 8px; padding: 10px; cursor: pointer; transition: transform 0.1s, box-shadow 0.1s; }
         .abnormal-item:hover { transform: translateY(-1px); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border-color: #fecdd3; }
         .ab-time { font-size: 12px; color: #6b7280; display: block; margin-bottom: 4px; }
@@ -60,6 +108,42 @@
         .btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
         .export-btn { background: #10b981; color: white; border: 1px solid #10b981; }
         .export-btn:hover { background: #059669; border-color: #059669; }
+
+        /* Export Dropdown Styles */
+        .export-dropdown { position: relative; display: inline-block; }
+        .export-dropdown-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%; /* 紧贴按钮底部 */
+            background-color: #ffffff;
+            min-width: 140px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+            z-index: 1000;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+            margin-top: 0; /* 移除间距，避免鼠标划过时断开 */
+            padding-top: 5px; /* 使用 padding 增加视觉间隔（如果需要内部间隔），或者保持紧凑 */
+            overflow: hidden;
+            /* 增加一个透明伪元素来填补可能的间隙（虽然 top:100% 应该够了，双重保险） */
+        }
+        /* 也可以给 dropdown-content 加一个透明的顶部边框来作为缓冲区 */
+        .export-dropdown:hover .export-dropdown-content { display: block; }
+        .export-dropdown-item {
+            color: #374151;
+            padding: 10px 16px;
+            text-decoration: none;
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+            text-align: left;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .export-dropdown-item:last-child { border-bottom: none; }
+        .export-dropdown-item:hover { background-color: #f9fafb; color: #10b981; }
+        .export-dropdown-item i { margin-right: 8px; width: 14px; text-align: center; }
         
         .sort-group { display: flex; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden; }
         .sort-btn { border: none; background: #fff; padding: 0 12px; height: 34px; cursor: pointer; font-size: 12px; border-right: 1px solid #d1d5db; color: #4b5563; font-weight: 500; white-space: nowrap; }
@@ -164,7 +248,17 @@
             <div class="icon-box">⚠️<div id="sidebarBadge" class="count-badge">0</div></div>
             <span class="sb-title">异常报错列表</span>
         </div>
-        <div id="sidebarContent" class="sidebar-content"></div>
+        <div class="sidebar-split-container">
+            <div id="sidebarContent" class="sidebar-content"></div>
+            <div class="sidebar-chart-panel">
+                <div class="chart-header">
+                    <span>📊 报文耗时 (ms)</span>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="responseChart"></canvas>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div id="main-wrapper">
@@ -206,7 +300,19 @@
                         <button class="sort-btn" id="sort-desc-btn" onclick="sortLogs('desc')">⬇ 时间逆序</button>
                     </div>
                     <button class="btn" onclick="clearFilter()">重置</button>
-                    <button class="btn export-btn" onclick="exportPureReport()">导出报告</button>
+                    <div class="export-dropdown">
+                        <button class="btn export-btn" onclick="exportPureReport(false)">
+                            导出全部 <span style="margin-left:5px; font-size:10px;">▼</span>
+                        </button>
+                        <div class="export-dropdown-content">
+                            <div class="export-dropdown-item" onclick="exportPureReport(false)">
+                                导出全部数据
+                            </div>
+                            <div class="export-dropdown-item" onclick="exportPureReport(true)">
+                                导出筛选结果
+                            </div>
+                        </div>
+                    </div>
                     <button class="btn" onclick="toggleOriginalText()">📄 原文</button>
                 </div>
             </div>
@@ -239,6 +345,7 @@
         let selectedMsgTypes = new Set();
         let reportData = null;
         let reportId = null;
+        let responseChart = null; // Chart instance
         const quickState = { loading: false, factory: '', system: '', template: '', factories: [], systems: [], templates: [] };
 
         if (!window.URLSearchParams) {
@@ -278,6 +385,7 @@
             renderAbnormalNav();
             renderLogEntries();
             renderOriginalText();
+            updateChart(); // Initialize chart
             bindEvents();
         }
 
@@ -317,7 +425,7 @@
                     html += `<div id="retries_${logId}" style="display:none; margin-left: 20px; border-left: 2px solid #e5e7eb; padding-left: 8px;">`;
                     item.requests.slice(0, -1).forEach((req, rIdx) => {
                         const subRawTarget = `raw_log_${index}_req_${rIdx}`;
-                        html += `<div class="timestamp" data-target-raw="${subRawTarget}" style="border:none; padding:2px 0;">
+                        html += `<div class="timestamp" data-target-raw="${subRawTarget}" data-orig-idx="${index}" style="border:none; padding:2px 0;">
                                     <span style="color:#9ca3af; margin-right:8px; font-size:12px;">├─ 重试</span>
                                     ${renderLineContent(req)}
                                  </div>`;
@@ -327,7 +435,7 @@
 
                 if(isTrans && hasResp) {
                     const respRawTarget = `raw_log_${index}_resp`;
-                    html += `<div class="timestamp" id="ts_${index}_resp" data-target-raw="${respRawTarget}" data-timestamp="${ts}" ${isTrans ? `data-trans-group="${transId}" onmouseover="highlightTransaction('${transId}')" onmouseout="clearHighlight()"` : ''} style="border-top:none; margin-top:-1px;">
+                    html += `<div class="timestamp" id="ts_${index}_resp" data-target-raw="${respRawTarget}" data-orig-idx="${index}" data-timestamp="${ts}" ${isTrans ? `data-trans-group="${transId}" onmouseover="highlightTransaction('${transId}')" onmouseout="clearHighlight()"` : ''} style="border-top:none; margin-top:-1px;">
                                 <div class="resp-container">
                                     <span class="tree-connector">└──</span><span class="badge-resp">回复</span>
                                     ${renderLineContent(item.response)}
@@ -591,7 +699,91 @@
             }
         }
 
-        // --- 8. Helpers ---
+        /**
+         * Update Response Time Chart
+         * @param {Set} visibleIndices - Set of visible log entry indices (optional)
+         */
+        function updateChart(visibleIndices = null) {
+            if (!reportData || !reportData.log_entries) return;
+            
+            const ctx = document.getElementById('responseChart');
+            if (!ctx) return;
+
+            // Prepare Data
+            const dataPoints = [];
+            const labels = [];
+            
+            reportData.log_entries.forEach((item, index) => {
+                // Filter if indices provided
+                if (visibleIndices && !visibleIndices.has(index)) return;
+                
+                // Use pre-calculated duration
+                if (item._duration !== undefined) {
+                    labels.push(item._timeLabel || '');
+                    dataPoints.push(item._duration);
+                }
+            });
+
+            // Destroy existing chart if exists
+            if (responseChart) {
+                responseChart.destroy();
+            }
+
+            // Render Chart
+            responseChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '耗时 (ms)',
+                        data: dataPoints,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 1.5,
+                        pointRadius: 2,
+                        pointHoverRadius: 4,
+                        fill: true,
+                        tension: 0.2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `耗时: ${context.parsed.y} ms`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: false, // Hide X axis labels to save space
+                            grid: { display: false }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#f3f4f6' },
+                            ticks: {
+                                font: { size: 10 }
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        }
+
+        // --- 6. Helpers ---
         function setQaLoading(loading, text = '处理中...') {
             quickState.loading = !!loading;
             const btn = document.getElementById('qaRunBtn');
@@ -675,6 +867,10 @@
             if (q) { try { re = new RegExp(q.startsWith('/') ? q.slice(1, q.lastIndexOf('/')) : q, 'i'); } catch(e){} }
             const sTime = document.getElementById('startTime').value ? new Date(document.getElementById('startTime').value).getTime() : null;
             const eTime = document.getElementById('endTime').value ? new Date(document.getElementById('endTime').value).getTime() : null;
+            
+            // Collect visible indices for chart update
+            const visibleIndices = new Set();
+            
             document.querySelectorAll('.timestamp').forEach(r => {
                 let show = true;
                 if (re && !re.test(r.innerText)) show = false;
@@ -688,7 +884,14 @@
                     if (!mt || !selectedMsgTypes.has(mt.textContent.trim())) show = false;
                 }
                 r.style.display = show ? 'flex' : 'none';
+                
+                if (show) {
+                    const idx = parseInt(r.getAttribute('data-orig-idx'));
+                    if (!isNaN(idx)) visibleIndices.add(idx);
+                }
             });
+            
+            updateChart(visibleIndices);
         }
         function clearFilter() {
             document.getElementById('filterInput').value = '';
@@ -732,7 +935,30 @@
         async function loadReportData(id) {
             const res = await fetch(`${API_BASE}/api/report-details/${encodeURIComponent(id)}`);
             const json = await res.json();
-            if (json.success) { reportData = json.report_data; document.title = `${reportData.name} - 报告`; }
+            if (json.success) { 
+                reportData = json.report_data; 
+                document.title = `${reportData.name} - 报告`; 
+                
+                // Pre-calculate timestamps and durations to optimize performance
+                if (reportData.log_entries) {
+                    reportData.log_entries.forEach(item => {
+                        // Calculate transaction duration
+                        if (item.requests && item.response && item.requests.length > 0) {
+                            const req = item.latest_request || item.requests[0];
+                            const resp = item.response;
+                            if (req && resp && req.timestamp && resp.timestamp) {
+                                const t1 = new Date(req.timestamp).getTime();
+                                const t2 = new Date(resp.timestamp).getTime();
+                                const diff = t2 - t1;
+                                if (!isNaN(diff) && diff >= 0) {
+                                    item._duration = diff;
+                                    item._timeLabel = req.timestamp.split(' ')[1] || req.timestamp;
+                                }
+                            }
+                        }
+                    });
+                }
+            }
             else throw new Error(json.error);
         }
         function showError(msg) { document.getElementById('log-container').innerHTML = `<div style="text-align:center;padding:20px;color:red">${msg}</div>`; }
@@ -760,17 +986,106 @@
             const c = document.getElementById('selectedTags'); c.innerHTML = '';
             selectedMsgTypes.forEach(mt => { const t = document.createElement('div'); t.className = 'tag'; t.innerHTML = `${mt}<span class="tag-remove" onclick="removeMsgType('${mt}')">×</span>`; c.appendChild(t); });
         }
-        async function exportPureReport() { 
-            if (!reportData || !reportId) { showError('缺少报告数据或报告ID'); return; }
+        async function exportPureReport(isFiltered = false) {
             try {
-                const response = await fetch(`${API_BASE}/api/export-pure-report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report_id: reportId }) });
+                if (!reportId) throw new Error('报告ID未定义');
+                
+                let payload = { report_id: reportId };
+                
+                // 如果是导出筛选后的结果，需要提取当前过滤后的数据
+                if (isFiltered) {
+                    const filteredEntries = getFilteredEntries();
+                    if (filteredEntries.length === 0) {
+                        showMessage('error', '当前筛选结果为空，无法导出');
+                        return;
+                    }
+                    
+                    // 克隆一份报告数据，只替换 log_entries
+                    const filteredData = {
+                        ...reportData,
+                        log_entries: filteredEntries,
+                        name: (reportData.name || 'report') + '_filtered'
+                    };
+                    
+                    // 重新生成异常列表，确保 anchor 与新索引对应
+                    const newAbnormalItems = [];
+                    filteredEntries.forEach((entry, index) => {
+                        const isTrans = entry.requests && entry.response;
+                        const main = (isTrans && Array.isArray(entry.requests)) ? (entry.latest_request || entry) : entry;
+                        
+                        if (main && main.escape_hits && main.escape_hits.length > 0) {
+                            // 获取时间戳
+                            let timeStr = '';
+                            if (main.timestamp) timeStr = main.timestamp;
+                            else if (main.segments) {
+                                const tsSeg = main.segments.find(s => s.kind === 'ts');
+                                if (tsSeg) timeStr = tsSeg.text;
+                            }
+                            
+                            // 获取消息类型
+                            let msgType = 'Unknown';
+                            if (main.msg_type) msgType = main.msg_type;
+                            else if (main.segments) {
+                                const mtSeg = main.segments.find(s => s.kind === 'msg_type');
+                                if (mtSeg) msgType = mtSeg.text;
+                            }
+                            
+                            newAbnormalItems.push({
+                                anchor: `ts_${index}`, // 对应 pure_report.html 中的 loop.index0
+                                time: timeStr,
+                                msgType: msgType,
+                                details: main.escape_hits
+                            });
+                        }
+                    });
+                    filteredData.abnormal_items = newAbnormalItems;
+                    
+                    payload.filtered_data = filteredData;
+                }
+
+                const response = await fetch(`${API_BASE}/api/export-pure-report`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const blob = await response.blob();
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a'); a.href = url;
-                a.download = `${reportData && reportData.name ? reportData.name : '报告'}_pure.html`;
+                
+                const fileNameSuffix = isFiltered ? '_filtered' : '_all';
+                const baseName = reportData && reportData.name ? reportData.name : '报告';
+                a.download = `${baseName}${fileNameSuffix}.html`;
+                
                 document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-            } catch (error) { showError(`导出报告失败: ${error.message}`); }
+            } catch (error) { showMessage('error', `导出报告失败: ${error.message}`); }
+        }
+
+        /**
+         * 获取当前筛选后的日志条目
+         * 基于 DOM 的可见性来判断，保证所见即所得
+         */
+        function getFilteredEntries() {
+            if (!reportData || !reportData.log_entries) return [];
+            
+            // 获取所有可见的 timestamp 元素（每一行日志的容器）
+            const visibleRows = Array.from(document.querySelectorAll('.timestamp')).filter(el => {
+                // check visibility
+                return el.style.display !== 'none' && (el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0);
+            });
+            
+            // 使用 Set 去重
+            const indices = new Set();
+            visibleRows.forEach(el => {
+                const idx = parseInt(el.getAttribute('data-orig-idx'));
+                if (!isNaN(idx) && idx >= 0 && idx < reportData.log_entries.length) {
+                    indices.add(idx);
+                }
+            });
+            
+            // 根据索引提取数据 (排序以保持原序)
+            return Array.from(indices).sort((a, b) => a - b).map(idx => reportData.log_entries[idx]);
         }
     </script>
 </body>

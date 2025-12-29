@@ -171,6 +171,11 @@ class LogAnalyzer:
                         # 其他类型，直接返回
                         return obj
                 
+                # 计算报告的时间范围
+                all_timestamps = [e.get('timestamp') for e in log_entries if isinstance(e.get('timestamp'), datetime)]
+                report_start_time = min(all_timestamps).isoformat() if all_timestamps else None
+                report_end_time = max(all_timestamps).isoformat() if all_timestamps else None
+
                 # 构建报告数据
                 report_data = {
                     'name': self._generate_smart_filename(factory, system, log_paths, timestamp).replace('.html', ''),
@@ -182,7 +187,9 @@ class LogAnalyzer:
                     'message_types': sorted_msg_types,
                     'stats': stats,
                     'generated_at': datetime.now().isoformat(),
-                    'related_logs': log_paths  # 添加关联的日志路径
+                    'related_logs': log_paths,  # 添加关联的日志路径
+                    'start_time': report_start_time,
+                    'end_time': report_end_time
                 }
                 
                 # 不再保存临时报告数据文件，直接返回报告数据

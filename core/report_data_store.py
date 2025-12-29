@@ -56,6 +56,8 @@ class ReportDataStore:
                 'system': report_data.get('system', ''),
                 'nodes': report_data.get('nodes', []),
                 'related_logs': report_data.get('related_logs', []),
+                'start_time': report_data.get('start_time'),
+                'end_time': report_data.get('end_time'),
                 'size': 0,  # 后续计算
                 'status': 'completed'
             }
