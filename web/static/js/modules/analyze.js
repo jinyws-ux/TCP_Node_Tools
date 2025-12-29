@@ -525,61 +525,84 @@ function renderReportsList(logPath, reports) {
         if (startTime) {
             const fmtStart = formatFullTime(startTime);
             const fmtEnd = endTime ? formatFullTime(endTime) : '???';
-            timeRangeHtml = `
-            <div class="meta-time-range" style="margin-top: 6px; background: #f8f9fa; padding: 6px 8px; border-radius: 4px; border: 1px solid #eee;">
-                <div style="color: #666; font-size: 11px; display: flex; align-items: center; gap: 4px;">
-                   <i class="far fa-clock"></i> <span>日志时间范围:</span>
-                </div>
-                <div style="font-family: Consolas, Monaco, monospace; font-size: 11px; color: #333; margin-top: 2px;">
-                   ${fmtStart} <span style="color:#999">→</span> ${fmtEnd}
-                </div>
-            </div>`;
+            
+            // 检查是否有分节点的时间范围
+            let nodeRangesHtml = '';
+            // 如果有分节点时间，则只显示分节点时间
+            if (report.node_time_ranges && Object.keys(report.node_time_ranges).length > 0) {
+                nodeRangesHtml = Object.entries(report.node_time_ranges).map(([nodeId, range]) => {
+                     const nStart = formatFullTime(range.start_time);
+                     const nEnd = range.end_time ? formatFullTime(range.end_time) : '???';
+                     return `
+                        <div style="font-family: Consolas, Monaco, monospace; font-size: 10px; color: #555; display: flex; align-items: center;">
+                            <span style="color: #2e7d32; font-weight: bold; margin-right: 4px;">[${nodeId}]</span>
+                            <span>${nStart}</span>
+                            <span style="color:#999; margin: 0 6px;">→</span>
+                            <span>${nEnd}</span>
+                        </div>
+                     `;
+                }).join('');
+                
+                // 仅显示节点时间列表
+                timeRangeHtml = `
+                <div class="meta-time-range" style="margin-top: 4px; background: #f8f9fa; padding: 4px 6px; border-radius: 4px; border: 1px solid #eee;">
+                    ${nodeRangesHtml}
+                </div>`;
+            } else {
+                // 如果没有分节点时间（旧报告），显示整体时间
+                timeRangeHtml = `
+                <div class="meta-time-range" style="margin-top: 4px; background: #f8f9fa; padding: 4px 6px; border-radius: 4px; border: 1px solid #eee;">
+                    <div style="font-family: Consolas, Monaco, monospace; font-size: 10px; color: #333;">
+                       ${fmtStart} <span style="color:#999">→</span> ${fmtEnd}
+                    </div>
+                </div>`;
+            }
         }
 
         // 优化节点显示：使用 Tag 样式，适应多节点布局
         const nodesList = nodeLabels ? nodeLabels.split(',').map(n => n.trim()).filter(n => n) : [];
         const nodesHtml = nodesList.length > 0 
-            ? `<div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px;">
-                ${nodesList.map(n => `<span style="background: #e8f5e9; color: #2e7d32; padding: 1px 6px; border-radius: 3px; font-size: 11px; border: 1px solid #c8e6c9;">${escapeHtml(n)}</span>`).join('')}
+            ? `<div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 1px;">
+                ${nodesList.map(n => `<span style="background: #e8f5e9; color: #2e7d32; padding: 0px 4px; border-radius: 2px; font-size: 10px; border: 1px solid #c8e6c9;">${escapeHtml(n)}</span>`).join('')}
                </div>`
             : '<span style="color: #999;">-</span>';
 
         return `
         <div class="report-item-card" data-report-id="${report.report_id || report.name}" style="
-          background: #fff; border: 1px solid #e1e4e8; border-radius: 6px; padding: 12px;
-          display: flex; flex-direction: column; gap: 8px; transition: all 0.2s ease;
+          background: #fff; border: 1px solid #e1e4e8; border-radius: 6px; padding: 8px 10px;
+          display: flex; flex-direction: column; gap: 6px; transition: all 0.2s ease;
         " onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'" onmouseout="this.style.transform='none';this.style.boxShadow='none'">
           
-          <div class="report-header" style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid #f0f0f0;">
+          <div class="report-header" style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 6px; border-bottom: 1px solid #f0f0f0;">
              <div style="flex: 1; min-width: 0;">
-                <div class="report-time" style="font-size: 12px; color: #888;" title="报告生成时间">生成于: ${formatReportDate(report.created_at)}</div>
+                <div class="report-time" style="font-size: 11px; color: #888;" title="报告生成时间">生成于: ${formatReportDate(report.created_at)}</div>
              </div>
-             <div class="report-icon" style="background: #e3f2fd; color: #2196f3; width: 28px; height: 28px; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: 10px;">
-                <i class="fas fa-file-alt"></i>
+             <div class="report-icon" style="background: #e3f2fd; color: #2196f3; width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: 8px;">
+                <i class="fas fa-file-alt" style="font-size: 12px;"></i>
              </div>
           </div>
 
-          <div class="report-metadata-labels" style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
-            <div class="meta-group">
-                <div style="color: #1976d2; font-weight: 600; font-size: 11px; margin-bottom: 2px;">厂区 / 系统</div>
+          <div class="report-metadata-labels" style="display: flex; flex-direction: column; gap: 4px; font-size: 11px;">
+            <div class="meta-group" style="display: flex; align-items: center; gap: 6px;">
+                <div style="color: #1976d2; font-weight: 600; white-space: nowrap;">厂区/系统:</div>
                 <div style="color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(factoryLabel)} / ${escapeHtml(systemLabel)}">
                     ${escapeHtml(factoryLabel)} / ${escapeHtml(systemLabel)}
                 </div>
             </div>
             
-            <div class="meta-group">
-                <div style="color: #2e7d32; font-weight: 600; font-size: 11px; margin-bottom: 2px;">涉及节点</div>
+            <div class="meta-group" style="display: flex; align-items: center; gap: 6px;">
+                <div style="color: #2e7d32; font-weight: 600; white-space: nowrap;">涉及节点:</div>
                 ${nodesHtml}
             </div>
 
             ${timeRangeHtml}
           </div>
 
-          <div class="report-actions-bar" style="display: flex; gap: 8px; margin-top: 4px; padding-top: 8px; border-top: 1px dashed #eee;">
-            <button class="btn-action action-open" data-action="open" style="flex: 1; padding: 6px; font-size: 12px; cursor: pointer; background: #2196f3; color: white; border: none; border-radius: 4px;">
+          <div class="report-actions-bar" style="display: flex; gap: 6px; margin-top: 2px; padding-top: 6px; border-top: 1px dashed #eee;">
+            <button class="btn-action action-open" data-action="open" style="flex: 1; padding: 4px; font-size: 11px; cursor: pointer; background: #2196f3; color: white; border: none; border-radius: 3px;">
               <i class="fas fa-eye"></i> 查看
             </button>
-            <button class="btn-action action-delete" data-action="delete" style="flex: 1; padding: 6px; font-size: 12px; cursor: pointer; background: #fff; color: #d32f2f; border: 1px solid #ffcdd2; border-radius: 4px;">
+            <button class="btn-action action-delete" data-action="delete" style="flex: 1; padding: 4px; font-size: 11px; cursor: pointer; background: #fff; color: #d32f2f; border: 1px solid #ffcdd2; border-radius: 3px;">
               <i class="fas fa-trash"></i> 删除
             </button>
           </div>

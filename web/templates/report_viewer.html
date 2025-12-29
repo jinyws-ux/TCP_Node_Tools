@@ -347,6 +347,38 @@
         let reportId = null;
         let responseChart = null; // Chart instance
         const quickState = { loading: false, factory: '', system: '', template: '', factories: [], systems: [], templates: [] };
+        
+        // Node Color Management
+        const nodeColorPalette = [
+            { bg: '#dbeafe', color: '#1e40af', border: '#bfdbfe' }, // Blue
+            { bg: '#dcfce7', color: '#166534', border: '#bbf7d0' }, // Green
+            { bg: '#fef9c3', color: '#854d0e', border: '#fde047' }, // Yellow
+            { bg: '#fee2e2', color: '#991b1b', border: '#fecdd3' }, // Red
+            { bg: '#f3e8ff', color: '#6b21a8', border: '#d8b4fe' }, // Purple
+            { bg: '#fce7f3', color: '#9d174d', border: '#fbcfe8' }, // Pink
+            { bg: '#e0e7ff', color: '#3730a3', border: '#c7d2fe' }, // Indigo
+            { bg: '#ffedd5', color: '#9a3412', border: '#fed7aa' }, // Orange
+            { bg: '#ecfccb', color: '#3f6212', border: '#d9f99d' }, // Lime
+            { bg: '#fae8ff', color: '#86198f', border: '#f0abfc' }, // Fuchsia
+            { bg: '#ccfbf1', color: '#0f766e', border: '#99f6e4' }, // Teal
+            { bg: '#ffedea', color: '#be123c', border: '#fecfda' }  // Rose
+        ];
+        const nodeColorMap = new Map();
+
+        function getNodeColor(nodeName) {
+            if (!nodeName) return { bg: '#f3f4f6', color: '#374151', border: 'transparent' };
+            const key = nodeName.trim();
+            if (!nodeColorMap.has(key)) {
+                // Generate a consistent index based on string hash
+                let hash = 0;
+                for (let i = 0; i < key.length; i++) {
+                    hash = key.charCodeAt(i) + ((hash << 5) - hash);
+                }
+                const index = Math.abs(hash) % nodeColorPalette.length;
+                nodeColorMap.set(key, nodeColorPalette[index]);
+            }
+            return nodeColorMap.get(key);
+        }
 
         if (!window.URLSearchParams) {
             window.URLSearchParams = function(search) {
@@ -457,7 +489,10 @@
                 if(s.kind === 'ts') html += `<span class="seg-fixed seg-ts" style="background:#e3f2fd;color:#0c4a6e;">${txt}</span>`;
                 else if(s.kind === 'dir') html += `<span class="seg-fixed seg-dir" style="background:${txt.toLowerCase().includes('output')?'#fee2e2':'#d1fae5'};color:#1b1f23;">${txt}</span>`;
                 else if(s.kind === 'msg_type') html += `<span class="seg-fixed seg-msgtype-sm seg-interactive" style="background:#fff7ed;color:#9a3412;">${txt}</span>`;
-                else if(s.kind === 'node') html += `<span class="seg-fixed seg-node-sm seg-interactive" style="background:#f3f4f6;">${txt}</span>`;
+                else if(s.kind === 'node') {
+                    const style = getNodeColor(txt);
+                    html += `<span class="seg-fixed seg-node-sm seg-interactive" style="background:${style.bg};color:${style.color};border:1px solid ${style.border}">${txt}</span>`;
+                }
                 else if(s.kind === 'field') html += `<span class="seg-free seg-interactive" style="background:#f0fdf4;color:#374151;">${txt}</span>`;
                 else if(s.kind === 'pid') html += `<span class="seg-pid seg-interactive" style="background:#fef3c7;">${txt}</span>`;
                 else html += `<span class="seg-free seg-interactive" style="background:#f3f4f6;">${txt}</span>`; // free text

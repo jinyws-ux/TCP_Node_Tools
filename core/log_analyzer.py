@@ -86,6 +86,20 @@ class LogAnalyzer:
             matched_entries = matcher.match_logs(log_entries)
             self._record_stage(stats, '匹配请求-回复', stage_start, len(log_entries), len(matched_entries))
 
+            # [FIX] 对匹配后的日志按时间戳排序，确保多节点日志按时间顺序展示
+            # Transaction 对象取 start_time，普通 dict 取 timestamp
+            def get_sort_key(item):
+                if hasattr(item, 'start_time'): # Transaction
+                    ts = item.start_time
+                else: # dict
+                    ts = item.get('timestamp')
+                # 确保 ts 是 datetime 对象，如果不是（比如None），给个最小时间
+                if isinstance(ts, datetime):
+                    return ts
+                return datetime.min
+
+            matched_entries.sort(key=get_sort_key)
+
             timestamp = self._get_timestamp()
             html_report_path = ''
             report_data = {}
@@ -171,10 +185,40 @@ class LogAnalyzer:
                         # 其他类型，直接返回
                         return obj
                 
-                # 计算报告的时间范围
-                all_timestamps = [e.get('timestamp') for e in log_entries if isinstance(e.get('timestamp'), datetime)]
+                # 计算报告的时间范围（全局 + 分节点）
+                all_timestamps = []
+                node_time_ranges = {} # { node_id: { min: dt, max: dt } }
+
+                for e in log_entries:
+                    ts = e.get('timestamp')
+                    if isinstance(ts, datetime):
+                        all_timestamps.append(ts)
+                        
+                        # 提取节点ID
+                        node_id = '0'
+                        for seg in e.get('segments', []):
+                            if seg.get('kind') == 'node':
+                                node_id = str(seg.get('text', '0'))
+                                break
+                        
+                        if node_id not in node_time_ranges:
+                            node_time_ranges[node_id] = {'min': ts, 'max': ts}
+                        else:
+                            if ts < node_time_ranges[node_id]['min']:
+                                node_time_ranges[node_id]['min'] = ts
+                            if ts > node_time_ranges[node_id]['max']:
+                                node_time_ranges[node_id]['max'] = ts
+
                 report_start_time = min(all_timestamps).isoformat() if all_timestamps else None
                 report_end_time = max(all_timestamps).isoformat() if all_timestamps else None
+                
+                # 格式化节点时间范围
+                formatted_node_ranges = {}
+                for nid, rng in node_time_ranges.items():
+                    formatted_node_ranges[nid] = {
+                        'start_time': rng['min'].isoformat(),
+                        'end_time': rng['max'].isoformat()
+                    }
 
                 # 构建报告数据
                 report_data = {
@@ -189,7 +233,8 @@ class LogAnalyzer:
                     'generated_at': datetime.now().isoformat(),
                     'related_logs': log_paths,  # 添加关联的日志路径
                     'start_time': report_start_time,
-                    'end_time': report_end_time
+                    'end_time': report_end_time,
+                    'node_time_ranges': formatted_node_ranges # 添加分节点时间范围
                 }
                 
                 # 不再保存临时报告数据文件，直接返回报告数据
