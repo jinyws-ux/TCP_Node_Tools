@@ -48,11 +48,9 @@ body {
   line-height: 1.6;
   position: relative;
   overflow-x: hidden;
-  transform: scale(0.75);
-  transform-origin: top center;
-  width: calc(100% / 0.75);
-  margin: 0 auto;
-  min-width: calc(1400px * 0.75);
+  width: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 body::before {
@@ -67,7 +65,9 @@ body::before {
   position: relative;
   max-width: 1500px;
   margin: 0 auto;
-  padding: 32px 24px 72px;
+  padding: 20px 16px 40px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* ======================= Tab Content ======================= */
@@ -670,6 +670,9 @@ button:focus-visible {
   background: #fff;
   border-radius: var(--radius);
   border: 1px solid var(--line);
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .action-row {
@@ -689,8 +692,8 @@ button:focus-visible {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 820px;
-  font-size: 0.9rem;
+  min-width: auto;
+  font-size: 0.85rem;
   border: 1px solid var(--line);
 }
 
@@ -876,16 +879,17 @@ tbody tr:hover {
 /* ======================= Layout Helpers ======================= */
 .config-layout {
   display: flex;
-  gap: 24px;
+  gap: 20px;
   align-items: stretch;
+  flex-wrap: wrap;
 }
 
 .config-form-section {
-  flex: 1 1 auto;
+  flex: 1 1 320px;
 }
 
 .config-list-section {
-  flex: 0 0 360px;
+  flex: 1 1 320px;
 }
 
 .config-form,
@@ -1330,7 +1334,7 @@ tbody tr:hover {
 /* ======================= Analysis Block ======================= */
 .analyze-controls {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 18px;
   flex-wrap: wrap;
   margin-bottom: 20px;
@@ -1346,7 +1350,7 @@ tbody tr:hover {
 }
 
 .analyze-controls-right {
-  flex: 1 1 320px;
+  flex: 0 0 auto;
   display: flex;
   justify-content: flex-end;
   align-items: center;
@@ -2207,14 +2211,15 @@ footer {
 }
 
 @media (max-width: 640px) {
-  .analyze-controls,
-  .analyze-actions {
+  .analyze-controls {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .btn {
-    width: 100%;
+  .analyze-actions {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
   }
 
   .tab {

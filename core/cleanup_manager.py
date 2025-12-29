@@ -57,12 +57,48 @@ class CleanupManager:
         # 确保是布尔类型
         is_locked = bool(is_locked)
         
+        # 过期状态判断 (14天限制)
+        is_expired = False
+        file_age_days = 0
+        
+        # 优先使用元数据中的下载时间
+        download_time_str = metadata.get("download_time") or metadata.get("timestamp")
+        if download_time_str:
+            try:
+                # 处理 ISO 格式 (2025-12-29T10:00:00.000)
+                if 'T' in download_time_str:
+                    # 简单处理，移除毫秒部分如果存在
+                    dt_str = download_time_str.split('.')[0]
+                    download_time = datetime.fromisoformat(dt_str)
+                else:
+                    # 处理其他格式 (2025-12-29 10:00:00)
+                    download_time = datetime.strptime(download_time_str, "%Y-%m-%d %H:%M:%S")
+                
+                delta = datetime.now() - download_time
+                file_age_days = delta.total_seconds() / (24 * 3600)
+            except Exception as e:
+                self.logger.warning(f"解析下载时间失败 {download_time_str}: {e}")
+                # 解析失败则回退到文件系统时间
+                if os.path.exists(log_path):
+                    mtime = os.path.getmtime(log_path)
+                    file_age_days = (time.time() - mtime) / (24 * 3600)
+        else:
+            # 如果没有元数据时间，使用文件系统修改时间
+            if os.path.exists(log_path):
+                mtime = os.path.getmtime(log_path)
+                file_age_days = (time.time() - mtime) / (24 * 3600)
+        
+        # 超过 14 天视为过期
+        is_expired = file_age_days > 14
+        
         # 获取关联报告
         related_reports = self.report_mapping_store.get(log_path)
         
         return {
             "log_path": log_path,
             "is_locked": is_locked,
+            "is_expired": is_expired,
+            "file_age_days": round(file_age_days, 1),
             "metadata_path": self.metadata_store.path_for(log_path),
             "related_reports": related_reports,
         }
@@ -92,17 +128,24 @@ class CleanupManager:
             for log_info in all_logs:
                 log_path = log_info["log_path"]
                 is_locked = log_info["is_locked"]
+                is_expired = log_info.get("is_expired", False)
                 metadata_path = log_info["metadata_path"]
                 related_reports = log_info["related_reports"]
                 
-                # 明确检查锁定状态，确保锁定的日志不会被删除
-                if is_locked:
+                # 清理逻辑：
+                # 1. 如果未锁定，直接清理
+                # 2. 如果已锁定但已过期 (超过14天)，也清理
+                if is_locked and not is_expired:
                     stats["locked_logs"] += 1
-                    self.logger.info(f"跳过锁定文件: {log_path}")
+                    self.logger.info(f"跳过锁定文件 (未过期): {log_path}")
                     continue
                 
+                if is_locked and is_expired:
+                    self.logger.info(f"处理已过期锁定文件 (超过14天): {log_path}")
+                else:
+                    self.logger.info(f"处理未锁定文件: {log_path}")
+                
                 stats["unlocked_logs"] += 1
-                self.logger.info(f"处理未锁定文件: {log_path}")
                 
                 # 删除日志文件和关联元数据
                 try:
@@ -273,16 +316,21 @@ class CleanupManager:
             # 获取日志信息
             log_info = self._get_log_info(log_path)
             is_locked = log_info["is_locked"]
+            is_expired = log_info.get("is_expired", False)
             metadata_path = log_info["metadata_path"]
             related_reports = log_info["related_reports"]
             
-            if is_locked:
+            # 如果已锁定且未过期，禁止删除
+            if is_locked and not is_expired:
                 stats["locked_logs"] += 1
                 return {
                     "success": False,
-                    "error": f"日志文件已锁定: {log_path}",
+                    "error": f"日志文件已锁定且未过期: {log_path}",
                     "stats": stats
                 }
+            
+            if is_locked and is_expired:
+                self.logger.info(f"手动清理已过期的锁定文件: {log_path}")
             
             stats["unlocked_logs"] += 1
             
