@@ -187,6 +187,7 @@
 
         .badge-req { padding: 1px 5px; background: #dbeafe; color: #1e40af; border-radius: 3px; font-size: 11px; font-weight: bold; border: 1px solid #bfdbfe; }
         .badge-resp { padding: 1px 5px; background: #dcfce7; color: #166534; border-radius: 3px; font-size: 11px; font-weight: bold; border: 1px solid #bbf7d0; }
+        .badge-timeout { padding: 1px 6px; background: #fee2e2; color: #991b1b; border-radius: 3px; font-size: 11px; font-weight: 800; border: 1px solid #fecdd3; box-shadow: 0 0 0 2px #fee2e2 inset; }
         .tag-retry { background: #fee2e2; color: #991b1b; cursor: pointer; padding: 1px 6px; border-radius: 3px; font-size: 11px; border: 1px solid #fecdd3; margin-left: auto; }
         .tag-retry:hover { background: #fecdd3; }
         .tag-abnormal { background: #fef2f2; border: 1px solid #fecdd3; color: #b91c1c; font-size: 11px; padding: 0 4px; border-radius: 3px; margin-left: 6px; }
@@ -467,9 +468,17 @@
 
                 if(isTrans && hasResp) {
                     const respRawTarget = `raw_log_${index}_resp`;
+                    const isTimeout = item.response && item.response.timeout_exceeded;
+                    const durationHtml = item._duration !== undefined 
+                        ? (isTimeout 
+                            ? `<span style="margin-right:8px; font-size:11px; color:#991b1b; background:#fee2e2; border:1px solid #fecdd3; padding:2px 6px; border-radius:4px; font-weight:700;">耗时: ${item._duration}ms</span>`
+                            : `<span style="margin-right:8px; font-size:11px; color:#374151; background:#eef2ff; border:1px solid #c7d2fe; padding:2px 6px; border-radius:4px; font-weight:600;">耗时: ${item._duration}ms</span>`
+                          )
+                        : '';
                     html += `<div class="timestamp" id="ts_${index}_resp" data-target-raw="${respRawTarget}" data-orig-idx="${index}" data-timestamp="${ts}" ${isTrans ? `data-trans-group="${transId}" onmouseover="highlightTransaction('${transId}')" onmouseout="clearHighlight()"` : ''} style="border-top:none; margin-top:-1px;">
                                 <div class="resp-container">
-                                    <span class="tree-connector">└──</span><span class="badge-resp">回复</span>
+                                    <span class="tree-connector">└──</span>${isTimeout ? '<span class="badge-timeout">回复超时</span>' : '<span class="badge-resp">回复</span>'}
+                                    ${durationHtml}
                                     ${renderLineContent(item.response)}
                                 </div>
                              </div>`;
@@ -499,6 +508,7 @@
             });
 
             if(entry.escape_hits && entry.escape_hits.length > 0) html += ` <span class="tag-abnormal">异常报错</span>`;
+            if(entry.timeout_exceeded) html += ` <span class="tag-abnormal">回复超时</span>`;
             return html;
         }
 

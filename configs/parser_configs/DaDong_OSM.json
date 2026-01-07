@@ -530,6 +530,7 @@
         }
       }
     },
-    "TransIdPosition": "64,18"
+    "TransIdPosition": "64,18",
+    "TimeoutThresholdMs": 4000
   }
 }

@@ -1671,7 +1671,7 @@ tbody tr:hover {
 }
 
 .parser-three-column.preview-collapsed {
-  grid-template-columns: 420px minmax(0, 1fr) 68px;
+  grid-template-columns: 420px minmax(0, 1fr) 48px;
 }
 
 .parser-left-nav,
@@ -1998,13 +1998,52 @@ tbody tr:hover {
   display: flex;
   flex-direction: column;
   flex: 1;
-  padding: 20px 22px 22px;
-  gap: 14px;
+  padding: 10px 12px 12px;
+  gap: 8px;
   min-height: 0;
 }
 
 .parser-right-json.is-collapsed .parser-preview-body {
   display: none;
+}
+
+/* Expanded: compress toggle to a small icon button */
+.parser-right-json:not(.is-collapsed) .parser-preview-toggle {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  transform: none;
+  padding: 6px;
+  border: none;
+  background: transparent;
+}
+.parser-right-json:not(.is-collapsed) .parser-preview-toggle .toggle-text {
+  display: none;
+}
+
+/* Collapsed: minimize toggle and hide text */
+.parser-right-json.is-collapsed .parser-preview-toggle {
+  writing-mode: horizontal-tb;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  justify-content: center;
+}
+.parser-right-json.is-collapsed .parser-preview-toggle .toggle-text {
+  display: none;
+}
+.parser-right-json.is-collapsed .parser-resize-handle {
+  display: none;
+}
+
+.parser-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 3;
 }
 
 .parser-json-header {

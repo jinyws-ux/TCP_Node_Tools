@@ -45,6 +45,7 @@ downloads/
 html_logs/
 **/html_logs/**
 reports/
+*.meta.json
 
 # 忽略测试相关的文件
 .cache/
@@ -69,5 +70,4 @@ build/
 *.swo
 *~
 
-# 确保.gitignore不会被忽略
-!.gitignore
+*.gitignore

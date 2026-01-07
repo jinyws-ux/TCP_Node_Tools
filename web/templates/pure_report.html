@@ -352,7 +352,18 @@
                     <div class="row row-resp" data-text="{{ entry.response.segments | map(attribute='text') | join(' ') | lower }}">
                         <div class="col-ts">{{ entry.response.timestamp }}</div>
                         <div class="col-meta">
+                            {% if entry.response.timeout_exceeded %}
+                            <span class="pill pill-out" style="background:#fef2f2;color:#b91c1c;border-color:#fecdd3;">回复超时</span>
+                            {% else %}
                             <span class="pill pill-out">RESP</span>
+                            {% endif %}
+                            {% if entry._duration is defined %}
+                            {% if entry.response.timeout_exceeded %}
+                            <span class="pill" style="background:#fef2f2;color:#b91c1c;border:1px solid #fecdd3; margin-left:6px;">耗时: {{ entry._duration }}ms</span>
+                            {% else %}
+                            <span class="pill" style="background:#eef2ff;color:#374151;border:1px solid #c7d2fe; margin-left:6px;">耗时: {{ entry._duration }}ms</span>
+                            {% endif %}
+                            {% endif %}
                         </div>
                         <div class="col-content">
                             <span style="color:var(--success); font-weight:bold; margin-right:6px;">←</span>

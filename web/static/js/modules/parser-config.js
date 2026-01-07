@@ -37,6 +37,11 @@ let pendingPreviewPath = '';
 const expandedTreeNodes = new Set();
 let fieldLibrary = [];
 let selectedFieldTemplate = null;
+let currentNode = null;
+const FAVORITES_KEY = 'parserFavorites';
+const RECENT_KEY = 'parserRecent';
+let favoritesSet = new Set();
+let recentList = [];
 
 const cssEscape = (value) => {
   if (typeof value !== 'string') value = String(value ?? '');
@@ -199,6 +204,24 @@ function buildNodePath(meta = {}) {
   return '';
 }
 
+function parseNodePath(path) {
+  if (!path || typeof path !== 'string') return null;
+  const segs = path.split('/');
+  let mt = '', ver = '', fd = '', esc = '';
+  for (const s of segs) {
+    const [k, v] = s.split(':');
+    if (k === 'mt') mt = v;
+    else if (k === 'ver') ver = v;
+    else if (k === 'field') fd = v;
+    else if (k === 'escape') esc = v;
+  }
+  if (mt && !ver && !fd && !esc) return { type: 'message_type', messageType: mt, path };
+  if (mt && ver && !fd && !esc) return { type: 'version', messageType: mt, version: ver, path };
+  if (mt && ver && fd && !esc) return { type: 'field', messageType: mt, version: ver, field: fd, path };
+  if (mt && ver && fd && esc) return { type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: esc, path };
+  return null;
+}
+
 function suggestName(base, existingList = []) {
   const normalized = (base || '复制项').trim() || '复制项';
   const baseName = normalized.replace(/\s+/g, '_');
@@ -258,6 +281,12 @@ export function init() {
   bindIfExists('#parser-preview-toggle', 'click', togglePreviewPanel);
   bindIfExists('[data-action="clear-clipboard"]', 'click', clearClipboard);
 
+  setupKeyboardShortcuts();
+  setupCommandPalette();
+  setupPreviewResizer();
+  loadQuickLists();
+  renderQuickLists();
+
   // “添加”模态框 —— 兼容你现有 HTML
   bindIfExists('#mt-submit-btn', 'click', submitMessageTypeForm);
   bindIfExists('#ver-submit-btn', 'click', submitVersionForm);
@@ -308,6 +337,13 @@ function togglePreviewPanel() {
   const collapsed = panel.classList.toggle('is-collapsed');
   panel.dataset.state = collapsed ? 'collapsed' : 'expanded';
   layout.classList.toggle('preview-collapsed', collapsed);
+  if (collapsed) {
+    layout.style.gridTemplateColumns = '420px minmax(0, 1fr) 48px';
+  } else {
+    const saved = parseInt(localStorage.getItem('parserPreviewWidth') || '360', 10);
+    const w = Number.isNaN(saved) ? 360 : Math.max(240, Math.min(640, saved));
+    layout.style.gridTemplateColumns = `420px minmax(0, 1fr) ${w}px`;
+  }
   updatePreviewToggleUI(collapsed);
   if (collapsed) {
     const focused = qs('#json-preview-content .json-line.is-focused');
@@ -916,6 +952,7 @@ function renderEditorFor(node) {
   const box = qs('#full-layers-container');
   if (!box) return;
   const nodePath = node.path || buildNodePath(node);
+  currentNode = node;
 
   if (node.type === 'message_type') {
     const mt = node.messageType;
@@ -926,12 +963,18 @@ function renderEditorFor(node) {
     const pasteVersionBtn = hasClipboard('version')
       ? '<button class="btn btn-outline btn-compact" id="btn-paste-version-into-mt"><i class="fas fa-paste"></i> 粘贴版本</button>'
       : '';
+    const favBtn = buildFavoriteBtn(nodePath);
     box.innerHTML = `
       <div class="parser-card-actions parser-card-actions--top">
         <button class="btn btn-outline btn-compact" id="btn-copy-mt"><i class="fas fa-copy"></i> 复制</button>
         <button class="btn btn-compact" id="btn-add-ver"><i class="fas fa-plus"></i> 添加版本</button>
         ${pasteTypeBtn}
         ${pasteVersionBtn}
+        ${favBtn}
+      </div>
+      <div class="parser-breadcrumb">
+        <span class="breadcrumb-label">路径</span>
+        <strong>${escapeHtml(mt)}</strong>
       </div>
       <p class="parser-edit-label">报文类型</p>
       <div class="form-group">
@@ -950,9 +993,17 @@ function renderEditorFor(node) {
         <label>TransID 位置 (Start,Length)</label>
         <input id="mt-trans-id-pos" type="text" value="${escapeAttr(workingConfig?.[mt]?.TransIdPosition || '')}" placeholder="例如：32,12">
       </div>
+      <div class="form-group">
+        <label>异常回复阈值 (ms，未填默认3000)</label>
+        <input id="mt-timeout-ms" type="number" min="0" value="${escapeAttr(workingConfig?.[mt]?.TimeoutThresholdMs ?? '')}" placeholder="默认 3000">
+      </div>
       <div class="parser-card-actions parser-card-actions--bottom">
         <button class="btn btn-primary" id="btn-save-mt"><i class="fas fa-save"></i> 保存信息</button>
         <button class="btn btn-danger" id="btn-del-mt"><i class="fas fa-trash"></i> 删除</button>
+      </div>
+      <div class="parser-subsection">
+        <p class="parser-edit-label">版本列表</p>
+        <div id="mt-versions-list" class="config-list"></div>
       </div>`;
     qs('#btn-save-mt')?.addEventListener('click', () => saveMessageType(mt));
     qs('#btn-copy-mt')?.addEventListener('click', () => copyMessageType(mt));
@@ -962,6 +1013,34 @@ function renderEditorFor(node) {
     });
     qs('#btn-paste-mt')?.addEventListener('click', () => pasteMessageType());
     qs('#btn-paste-version-into-mt')?.addEventListener('click', () => pasteVersion(mt));
+    bindFavoriteBtn(nodePath);
+    const vlist = qs('#mt-versions-list');
+    if (vlist) {
+      const versions = Object.keys(workingConfig?.[mt]?.Versions || {});
+      if (!versions.length) {
+        vlist.innerHTML = '<div class="message-empty">暂无版本</div>';
+      } else {
+        const frag = document.createDocumentFragment();
+        versions.forEach(ver => {
+          const fields = workingConfig?.[mt]?.Versions?.[ver]?.Fields || {};
+          const row = document.createElement('div');
+          row.className = 'config-item config-item--slim';
+          row.innerHTML = `
+            <div class="config-info">
+              <div class="config-compact-title">
+                <h3>${escapeHtml(ver)}</h3>
+                <span class="config-chip">${Object.keys(fields).length} 字段</span>
+              </div>
+            </div>`;
+          row.addEventListener('click', () => {
+            const path = buildNodePath({ type: 'version', messageType: mt, version: ver });
+            renderEditorFor({ type: 'version', messageType: mt, version: ver, path });
+          });
+          frag.appendChild(row);
+        });
+        vlist.appendChild(frag);
+      }
+    }
     focusPreviewPath(nodePath);
     return;
   }
@@ -971,12 +1050,21 @@ function renderEditorFor(node) {
     const pasteFieldBtn = hasClipboard('field')
       ? '<button class="btn btn-outline btn-compact" id="btn-paste-field"><i class="fas fa-paste"></i> 粘贴字段</button>'
       : '';
+    const favBtn = buildFavoriteBtn(nodePath);
     box.innerHTML = `
       <div class="parser-card-actions parser-card-actions--top">
+        <button class="btn btn-outline btn-compact" id="btn-back-to-mt"><i class="fas fa-level-up-alt"></i> 返回上级</button>
         <button class="btn btn-outline btn-compact" id="btn-copy-ver"><i class="fas fa-copy"></i> 复制</button>
         <button class="btn btn-compact" id="btn-add-field"><i class="fas fa-plus"></i> 添加字段</button>
         <button class="btn btn-compact" id="btn-add-field-history"><i class="fas fa-history"></i> 添加历史字段</button>
         ${pasteFieldBtn}
+        ${favBtn}
+      </div>
+      <div class="parser-breadcrumb">
+        <span class="breadcrumb-label">路径</span>
+        <a href="#" data-nav="mt">${escapeHtml(mt)}</a>
+        <span>/</span>
+        <strong>${escapeHtml(ver)}</strong>
       </div>
       <p class="parser-edit-label">版本</p>
       <div class="form-group">
@@ -990,10 +1078,17 @@ function renderEditorFor(node) {
           <button class="btn btn-primary btn-sm" id="btn-save-field-order"><i class="fas fa-save"></i> 保存顺序</button>
         </div>
       </div>
+      <div class="parser-subsection">
+        <p class="parser-edit-label">字段列表</p>
+        <div id="ver-fields-list" class="config-list"></div>
+      </div>
       <div class="parser-card-actions parser-card-actions--bottom">
         <button class="btn btn-primary" id="btn-save-ver"><i class="fas fa-save"></i> 保存版本</button>
         <button class="btn btn-danger" id="btn-del-ver"><i class="fas fa-trash"></i> 删除版本</button>
       </div>`;
+    qs('#btn-back-to-mt')?.addEventListener('click', () => {
+      renderEditorFor({ type: 'message_type', messageType: mt });
+    });
     qs('#btn-save-ver')?.addEventListener('click', () => saveVersion(mt, ver));
     qs('#btn-copy-ver')?.addEventListener('click', () => copyVersion(mt, ver));
     qs('#btn-del-ver')?.addEventListener('click', () => deleteConfigItem('version', mt, ver));
@@ -1002,6 +1097,43 @@ function renderEditorFor(node) {
     qs('#btn-add-field-history')?.addEventListener('click', () => openFieldHistoryDropdown(mt, ver));
     setupFieldOrderList(mt, ver);
     qs('#btn-save-field-order')?.addEventListener('click', () => saveFieldOrder(mt, ver));
+    bindFavoriteBtn(nodePath);
+    qs('.parser-breadcrumb [data-nav="mt"]')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      renderEditorFor({ type: 'message_type', messageType: mt });
+    });
+    const flist = qs('#ver-fields-list');
+    if (flist) {
+      const fieldsObj = workingConfig?.[mt]?.Versions?.[ver]?.Fields || {};
+      const names = Object.keys(fieldsObj);
+      if (!names.length) {
+        flist.innerHTML = '<div class="message-empty">暂无字段</div>';
+      } else {
+        const frag = document.createDocumentFragment();
+        names.forEach(name => {
+          const f = fieldsObj[name] || {};
+          const start = Number(f.Start ?? 0);
+          const length = f.Length == null ? -1 : Number(f.Length);
+          const escCount = Object.keys(f.Escapes || {}).length;
+          const row = document.createElement('div');
+          row.className = 'config-item config-item--slim';
+          row.innerHTML = `
+            <div class="config-info">
+              <div class="config-compact-title">
+                <h3>${escapeHtml(name)}</h3>
+                <span class="config-chip">转义 ${escCount}</span>
+              </div>
+              <div class="config-compact-subline">Start ${start} / Len ${length === -1 ? '到结尾' : length}</div>
+            </div>`;
+          row.addEventListener('click', () => {
+            const path = buildNodePath({ type: 'field', messageType: mt, version: ver, field: name });
+            renderEditorFor({ type: 'field', messageType: mt, version: ver, field: name, path });
+          });
+          frag.appendChild(row);
+        });
+        flist.appendChild(frag);
+      }
+    }
     focusPreviewPath(nodePath);
     return;
   }
@@ -1012,11 +1144,22 @@ function renderEditorFor(node) {
     const pasteEscapeBtn = hasClipboard('escape')
       ? '<button class="btn btn-outline btn-compact" id="btn-paste-escape"><i class="fas fa-paste"></i> 粘贴转义</button>'
       : '';
+    const favBtn = buildFavoriteBtn(nodePath);
     box.innerHTML = `
       <div class="parser-card-actions parser-card-actions--top">
+        <button class="btn btn-outline btn-compact" id="btn-back-to-ver"><i class="fas fa-level-up-alt"></i> 返回上级</button>
         <button class="btn btn-outline btn-compact" id="btn-copy-fd"><i class="fas fa-copy"></i> 复制</button>
         <button class="btn btn-compact" id="btn-add-esc"><i class="fas fa-plus"></i> 添加转义</button>
         ${pasteEscapeBtn}
+        ${favBtn}
+      </div>
+      <div class="parser-breadcrumb">
+        <span class="breadcrumb-label">路径</span>
+        <a href="#" data-nav="mt">${escapeHtml(mt)}</a>
+        <span>/</span>
+        <a href="#" data-nav="ver">${escapeHtml(ver)}</a>
+        <span>/</span>
+        <strong>${escapeHtml(fd)}</strong>
       </div>
       <p class="parser-edit-label">字段</p>
       <div class="form-group">
@@ -1040,13 +1183,61 @@ function renderEditorFor(node) {
       <div class="parser-card-actions parser-card-actions--bottom">
         <button class="btn btn-primary" id="btn-save-fd"><i class="fas fa-save"></i> 保存</button>
         <button class="btn btn-danger" id="btn-del-fd"><i class="fas fa-trash"></i> 删除字段</button>
+      </div>
+      <div class="parser-subsection">
+        <p class="parser-edit-label">转义列表</p>
+        <div id="fd-escapes-list" class="config-list"></div>
       </div>`;
 
+    qs('#btn-back-to-ver')?.addEventListener('click', () => {
+      renderEditorFor({ type: 'version', messageType: mt, version: ver });
+    });
     qs('#btn-save-fd')?.addEventListener('click', () => saveField(mt, ver, fd));
     qs('#btn-copy-fd')?.addEventListener('click', () => copyField(mt, ver, fd));
     qs('#btn-del-fd')?.addEventListener('click', () => deleteConfigItem('field', mt, ver, fd));
     qs('#btn-add-esc')?.addEventListener('click', () => addEscapeInline(mt, ver, fd));
     qs('#btn-paste-escape')?.addEventListener('click', () => pasteEscape(mt, ver, fd));
+    bindFavoriteBtn(nodePath);
+    qs('.parser-breadcrumb [data-nav="mt"]')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      renderEditorFor({ type: 'message_type', messageType: mt });
+    });
+    qs('.parser-breadcrumb [data-nav="ver"]')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      renderEditorFor({ type: 'version', messageType: mt, version: ver });
+    });
+    const elist = qs('#fd-escapes-list');
+    if (elist) {
+      const esc = fcfg.Escapes || {};
+      const tagMap = fcfg.EscapeTags || {};
+      const keys = Object.keys(esc);
+      if (!keys.length) {
+        elist.innerHTML = '<div class="message-empty">暂无转义</div>';
+      } else {
+        const frag = document.createDocumentFragment();
+        keys.forEach(k => {
+          const v = esc[k];
+          const tags = Array.isArray(tagMap[k]) ? tagMap[k] : [];
+          const isAb = tags.includes(ESCAPE_TAGS.ABNORMAL);
+          const row = document.createElement('div');
+          row.className = 'config-item config-item--slim';
+          row.innerHTML = `
+            <div class="config-info">
+              <div class="config-compact-title">
+                <h3>${escapeHtml(k)}</h3>
+                ${isAb ? '<span class="escape-tag-badge">异常报错</span>' : ''}
+              </div>
+              <div class="config-compact-subline">→ ${escapeHtml(String(v ?? ''))}</div>
+            </div>`;
+          row.addEventListener('click', () => {
+            const path = buildNodePath({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: k });
+            renderEditorFor({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: k, path });
+          });
+          frag.appendChild(row);
+        });
+        elist.appendChild(frag);
+      }
+    }
 
     focusPreviewPath(nodePath);
     return;
@@ -1072,8 +1263,26 @@ function renderEscapeEditor(node) {
   const { messageType: mt, version: ver, field: fd, escapeKey: key } = node;
   const {value, tags} = readEscapeMeta(mt, ver, fd, key);
   const isAbnormal = tags.includes(ESCAPE_TAGS.ABNORMAL);
+  const nodePath = node.path || buildNodePath(node);
+  const favBtn = buildFavoriteBtn(nodePath);
+
   box.innerHTML = `
-    <h4><i class="fas fa-exchange-alt"></i> 转义：${escapeHtml(mt)} / ${escapeHtml(ver)} / ${escapeHtml(fd)} / ${escapeHtml(key)}</h4>
+    <div class="parser-card-actions parser-card-actions--top">
+      <button class="btn btn-outline btn-compact" id="btn-back-to-fd"><i class="fas fa-level-up-alt"></i> 返回上级</button>
+      <button class="btn btn-outline btn-compact" id="btn-copy-escape"><i class="fas fa-copy"></i> 复制</button>
+      ${favBtn}
+    </div>
+    <div class="parser-breadcrumb">
+      <span class="breadcrumb-label">路径</span>
+      <a href="#" data-nav="mt">${escapeHtml(mt)}</a>
+      <span>/</span>
+      <a href="#" data-nav="ver">${escapeHtml(ver)}</a>
+      <span>/</span>
+      <a href="#" data-nav="fd">${escapeHtml(fd)}</a>
+      <span>/</span>
+      <strong>${escapeHtml(key)}</strong>
+    </div>
+    <p class="parser-edit-label">转义配置</p>
     <div class="form-group">
       <label>转义键</label>
       <input id="escape-key-input" type="text" value="${escapeAttr(key)}">
@@ -1088,9 +1297,8 @@ function renderEscapeEditor(node) {
         勾选后可在解析结果中额外提示此转义对应的异常状态。
       </p>
     </div>
-    <div class="form-actions">
+    <div class="parser-card-actions parser-card-actions--bottom">
       <button class="btn btn-primary" id="btn-save-escape"><i class="fas fa-save"></i> 保存</button>
-      <button class="btn btn-outline" id="btn-copy-escape"><i class="fas fa-copy"></i> 复制</button>
       <button class="btn btn-danger" id="btn-del-escape"><i class="fas fa-trash"></i> 删除</button>
     </div>`;
 
@@ -1100,6 +1308,23 @@ function renderEscapeEditor(node) {
     if (!confirm('确认删除此转义？')) return;
     deleteEscape(mt, ver, fd, key, { renderNode: { type: 'field', messageType: mt, version: ver, field: fd } });
   });
+  qs('#btn-back-to-fd')?.addEventListener('click', () => {
+    renderEditorFor({ type: 'field', messageType: mt, version: ver, field: fd });
+  });
+  bindFavoriteBtn(nodePath);
+
+  qs('.parser-breadcrumb [data-nav="mt"]')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    renderEditorFor({ type: 'message_type', messageType: mt });
+  });
+  qs('.parser-breadcrumb [data-nav="ver"]')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    renderEditorFor({ type: 'version', messageType: mt, version: ver });
+  });
+  qs('.parser-breadcrumb [data-nav="fd"]')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    renderEditorFor({ type: 'field', messageType: mt, version: ver, field: fd });
+  });
 }
 
 // =============== 右侧：保存/删除/重命名等 ===============
@@ -1107,6 +1332,8 @@ async function saveMessageType(mt) {
   const name = (qs('#mt-name')?.value || '').trim() || mt;
   const desc = (qs('#mt-desc')?.value || '').trim();
   const responseType = (qs('#mt-response-type')?.value || '').trim();
+  const timeoutRaw = (qs('#mt-timeout-ms')?.value || '').trim();
+  const timeoutMs = timeoutRaw === '' ? '' : parseInt(timeoutRaw, 10);
   try {
     await postJSON('/api/update-message-type', {
       factory: workingFactory,
@@ -1115,7 +1342,8 @@ async function saveMessageType(mt) {
       new_name: name,
       description: desc,
       response_type: responseType,
-      trans_id_pos: (qs('#mt-trans-id-pos')?.value || '').trim()
+      trans_id_pos: (qs('#mt-trans-id-pos')?.value || '').trim(),
+      timeout_ms: timeoutMs
     });
     showMessage('success', '报文类型已保存', 'parser-config-messages');
     await refreshFullConfig();
@@ -1527,11 +1755,13 @@ function hideAddMessageTypeModal() { const m = qs('#add-message-type-modal'); if
 async function submitMessageTypeForm() {
   const name = qs('#message-type-name')?.value?.trim();
   const desc = qs('#message-type-description')?.value?.trim() || '';
+  const timeoutRaw = qs('#message-type-timeout-ms')?.value?.trim() || '';
+  const timeoutMs = timeoutRaw === '' ? '' : parseInt(timeoutRaw, 10);
   if (!name) { showMessage('error', '请输入报文类型名称', 'parser-config-messages'); return; }
   try {
     await postJSON('/api/add-message-type', {
       factory: workingFactory, system: workingSystem,
-      message_type: name, description: desc
+      message_type: name, description: desc, timeout_ms: timeoutMs
     });
     hideAddMessageTypeModal();
     showMessage('success', '报文类型已添加', 'parser-config-messages');
@@ -1903,6 +2133,292 @@ function renderJsonPreview() {
     }
   });
   box.appendChild(pre);
+  box.addEventListener('click', (evt) => {
+    const target = evt.target.closest('.json-line');
+    if (!target) return;
+    const p = target.dataset && target.dataset.path;
+    if (!p) return;
+    const node = parseNodePath(p);
+    if (node) { renderEditorFor(node); focusPreviewPath(p); }
+  });
+  addToRecent(currentNode);
+  renderQuickLists();
+}
+
+function setupKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    const isMac = navigator.platform.toLowerCase().includes('mac');
+    const ctrl = isMac ? e.metaKey : e.ctrlKey;
+    if (ctrl && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      if (!currentNode) return;
+      if (currentNode.type === 'message_type') qs('#btn-save-mt')?.click();
+      else if (currentNode.type === 'version') qs('#btn-save-ver')?.click();
+      else if (currentNode.type === 'field') qs('#btn-save-fd')?.click();
+      else if (currentNode.type === 'escape') qs('#btn-save-escape')?.click();
+      return;
+    }
+    if (ctrl && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      openCommandPalette();
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const items = Array.from(qsa('#left-nav-tree .parser-item'));
+      if (!items.length) return;
+      const active = items.findIndex(el => el.classList.contains('active'));
+      let next = active;
+      if (e.key === 'ArrowDown') next = Math.min(items.length - 1, active < 0 ? 0 : active + 1);
+      else next = Math.max(0, active < 0 ? 0 : active - 1);
+      items.forEach(el => el.classList.remove('active'));
+      const el = items[next];
+      el.classList.add('active');
+      el.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    if (e.key === 'Enter') {
+      const active = qs('#left-nav-tree .parser-item.active');
+      active?.click();
+      return;
+    }
+    if (e.key === 'Escape') {
+      closeCommandPalette();
+    }
+  });
+}
+
+function setupCommandPalette() {
+  if (qs('#command-palette-modal')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'command-palette-modal';
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'none';
+  overlay.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i class="fas fa-terminal"></i> 快速跳转</h3>
+        <button class="close-btn" id="cmdp-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="parser-search-box" style="margin-bottom:8px;">
+          <i class="fas fa-search"></i>
+          <input type="text" id="cmdp-input" placeholder="输入关键字（类型/版本/字段/转义）">
+        </div>
+        <div id="cmdp-list" class="config-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cmdp-cancel">关闭</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  qs('#cmdp-close')?.addEventListener('click', closeCommandPalette);
+  qs('#cmdp-cancel')?.addEventListener('click', closeCommandPalette);
+  const input = qs('#cmdp-input');
+  const list = qs('#cmdp-list');
+  input?.addEventListener('input', () => {
+    const kw = (input.value || '').trim().toLowerCase();
+    renderCommandPaletteList(list, kw);
+  });
+}
+
+function openCommandPalette() {
+  const overlay = qs('#command-palette-modal');
+  if (!overlay) return;
+  overlay.style.display = 'block';
+  const input = qs('#cmdp-input');
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
+  renderCommandPaletteList(qs('#cmdp-list'), '');
+}
+
+function closeCommandPalette() {
+  const overlay = qs('#command-palette-modal');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function renderCommandPaletteList(container, keyword) {
+  if (!container) return;
+  container.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  const match = (s) => (s || '').toLowerCase().includes(keyword);
+  Object.keys(workingConfig || {}).forEach(mt => {
+    const mtObj = workingConfig[mt] || {};
+    const versions = mtObj.Versions || {};
+    const mtItem = { type: 'message_type', messageType: mt, path: buildNodePath({ type: 'message_type', messageType: mt }) };
+    if (!keyword || match(mt)) frag.appendChild(buildCmdpRow(TYPE_LABELS.message_type, mt, () => renderEditorFor(mtItem)));
+    Object.keys(versions).forEach(ver => {
+      const verItem = { type: 'version', messageType: mt, version: ver, path: buildNodePath({ type: 'version', messageType: mt, version: ver }) };
+      if (!keyword || match(`${mt}/${ver}`)) frag.appendChild(buildCmdpRow(TYPE_LABELS.version, `${mt} / ${ver}`, () => renderEditorFor(verItem)));
+      const fields = versions[ver]?.Fields || {};
+      Object.keys(fields).forEach(fd => {
+        const fdItem = { type: 'field', messageType: mt, version: ver, field: fd, path: buildNodePath({ type: 'field', messageType: mt, version: ver, field: fd }) };
+        if (!keyword || match(`${mt}/${ver}/${fd}`)) frag.appendChild(buildCmdpRow(TYPE_LABELS.field, `${mt} / ${ver} / ${fd}`, () => renderEditorFor(fdItem)));
+        const escapes = fields[fd]?.Escapes || {};
+        Object.keys(escapes).forEach(esc => {
+          const escItem = { type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: esc, path: buildNodePath({ type: 'escape', messageType: mt, version: ver, field: fd, escapeKey: esc }) };
+          if (!keyword || match(`${mt}/${ver}/${fd}/${esc}`)) frag.appendChild(buildCmdpRow(TYPE_LABELS.escape, `${mt} / ${ver} / ${fd} / ${esc}`, () => renderEditorFor(escItem)));
+        });
+      });
+    });
+  });
+  container.appendChild(frag);
+}
+
+function buildCmdpRow(label, text, onClick) {
+  const row = document.createElement('div');
+  row.className = 'config-item config-item--slim';
+  row.innerHTML = `
+    <div class="config-info">
+      <div class="config-compact-title">
+        <h3>${escapeHtml(text)}</h3>
+        <span class="config-chip">${escapeHtml(label)}</span>
+      </div>
+    </div>`;
+  row.addEventListener('click', () => {
+    closeCommandPalette();
+    onClick && onClick();
+  });
+  return row;
+}
+
+function setupPreviewResizer() {
+  const handle = qs('#parser-preview-resize');
+  const grid = qs('.parser-three-column');
+  const panel = qs('#parser-preview-panel');
+  if (!handle || !grid || !panel) return;
+  const saved = parseInt(localStorage.getItem('parserPreviewWidth') || '360', 10);
+  if (!Number.isNaN(saved)) {
+    grid.style.gridTemplateColumns = `420px minmax(0, 1fr) ${Math.max(68, saved)}px`;
+  }
+  let dragging = false;
+  let startX = 0;
+  let startWidth = 0;
+  handle.addEventListener('mousedown', (e) => {
+    dragging = true;
+    startX = e.clientX;
+    startWidth = panel.getBoundingClientRect().width;
+    document.body.style.cursor = 'col-resize';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp, { once: true });
+  });
+  function onMove(e) {
+    if (!dragging) return;
+    const diff = startX - e.clientX;
+    const newWidth = Math.max(68, Math.min(640, startWidth + diff));
+    grid.style.gridTemplateColumns = `420px minmax(0, 1fr) ${newWidth}px`;
+  }
+  function onUp() {
+    dragging = false;
+    document.body.style.cursor = '';
+    document.removeEventListener('mousemove', onMove);
+    const cols = (grid.style.gridTemplateColumns || '').split(' ');
+    const last = cols[cols.length - 1] || '360px';
+    const val = parseInt(last.replace('px', ''), 10);
+    if (!Number.isNaN(val)) localStorage.setItem('parserPreviewWidth', String(val));
+  }
+}
+
+function loadQuickLists() {
+  try {
+    const fav = JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]');
+    favoritesSet = new Set(Array.isArray(fav) ? fav : []);
+  } catch (_) { favoritesSet = new Set(); }
+  try {
+    const rec = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+    recentList = Array.isArray(rec) ? rec : [];
+  } catch (_) { recentList = []; }
+}
+
+function saveFavorites() {
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(favoritesSet)));
+}
+function saveRecent() {
+  localStorage.setItem(RECENT_KEY, JSON.stringify(recentList));
+}
+
+function isFavorite(path) {
+  return path && favoritesSet.has(path);
+}
+function buildFavoriteBtn(path) {
+  const active = isFavorite(path);
+  const icon = active ? '<i class="fas fa-star"></i>' : '<i class="far fa-star"></i>';
+  const text = active ? '取消收藏' : '收藏';
+  return `<button class="btn btn-compact" id="btn-toggle-fav">${icon} ${text}</button>`;
+}
+function bindFavoriteBtn(path) {
+  qs('#btn-toggle-fav')?.addEventListener('click', () => {
+    if (!path) return;
+    if (favoritesSet.has(path)) favoritesSet.delete(path);
+    else favoritesSet.add(path);
+    saveFavorites();
+    renderQuickLists();
+    renderEditorFor(currentNode);
+  });
+}
+
+function addToRecent(node) {
+  const path = node?.path || buildNodePath(node || {});
+  if (!path) return;
+  recentList = recentList.filter(p => p !== path);
+  recentList.unshift(path);
+  if (recentList.length > 12) recentList = recentList.slice(0, 12);
+  saveRecent();
+}
+
+function renderQuickLists() {
+  renderFavorites();
+  renderRecent();
+}
+function renderFavorites() {
+  const box = qs('#favorites-list');
+  if (!box) return;
+  box.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  Array.from(favoritesSet).forEach(path => {
+    const meta = parseNodePath(path);
+    if (!meta) return;
+    frag.appendChild(buildQuickRow(meta));
+  });
+  box.appendChild(frag);
+}
+function renderRecent() {
+  const box = qs('#recent-list');
+  if (!box) return;
+  box.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  recentList.forEach(path => {
+    const meta = parseNodePath(path);
+    if (!meta) return;
+    frag.appendChild(buildQuickRow(meta));
+  });
+  box.appendChild(frag);
+}
+function buildQuickRow(meta) {
+  const label = formatNodeLabel(meta);
+  const row = document.createElement('div');
+  row.className = 'config-item config-item--slim';
+  row.innerHTML = `
+    <div class="config-info">
+      <div class="config-compact-title">
+        <h3>${escapeHtml(label)}</h3>
+        <span class="config-chip">${escapeHtml(TYPE_LABELS[meta.type] || meta.type)}</span>
+      </div>
+    </div>`;
+  row.addEventListener('click', () => {
+    renderEditorFor(meta);
+    if (meta.path) focusPreviewPath(meta.path);
+  });
+  return row;
+}
+function formatNodeLabel(meta) {
+  if (!meta) return '';
+  if (meta.type === 'message_type') return meta.messageType || '';
+  if (meta.type === 'version') return `${meta.messageType} / ${meta.version}`;
+  if (meta.type === 'field') return `${meta.messageType} / ${meta.version} / ${meta.field}`;
+  if (meta.type === 'escape') return `${meta.messageType} / ${meta.version} / ${meta.field} / ${meta.escapeKey}`;
+  return '';
 }
 
 function copyJsonPreview() {
@@ -1971,7 +2487,7 @@ function buildJsonLinesFromConfig(config) {
                 const suffix = escIndex === escapeKeys.length - 1 ? '' : ',';
                 pushLine(`"${escKey}": ${formatJsonValue(escapes[escKey])}${suffix}`, 7, escPath);
               });
-              pushLine(`)${hasEscapeTags ? ',' : ''}`, 6);
+              pushLine(`}${hasEscapeTags ? ',' : ''}`, 6);
             }else{
               pushLine(`"Escapes": {}${hasEscapeTags ? ',' : ''}`, 6);
             } 
@@ -1981,7 +2497,7 @@ function buildJsonLinesFromConfig(config) {
                 const suffix = tagIdx === escapeTagKeys.length - 1 ? '' : ',';
                 pushLine(`"${tagKey}": ${formatJsonValue(escapeTags[tagKey])}${suffix}`, 7);
               });
-              pushLine(`)`, 6);
+              pushLine(`}`, 6);
             }
             const fieldSuffix = fdIndex === fieldKeys.length - 1 ? '' : ',';
             pushLine(`}${fieldSuffix}`, 5);

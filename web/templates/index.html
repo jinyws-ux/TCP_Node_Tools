@@ -456,6 +456,16 @@
                                     <button class="btn btn-info btn-sm" id="open-visual-parser-btn"
                                         style="margin-left: 5px;"><i class="fas fa-magic"></i> 可视化添加</button>
                                 </div>
+                                <div class="parser-nav-quick">
+                                    <div class="parser-quick-section">
+                                        <p class="parser-nav-label">收藏</p>
+                                        <div id="favorites-list" class="config-list"></div>
+                                    </div>
+                                    <div class="parser-quick-section">
+                                        <p class="parser-nav-label">最近编辑</p>
+                                        <div id="recent-list" class="config-list"></div>
+                                    </div>
+                                </div>
                                 <div id="left-nav-tree" class="parser-nav-tree">
                                     <div class="parser-tree-placeholder">
                                         <i class="fas fa-folder-open"></i>
@@ -491,6 +501,7 @@
 
                         <!-- 右列：JSON预览 -->
                         <aside class="parser-right-json is-collapsed" id="parser-preview-panel" data-state="collapsed">
+                            <div class="parser-resize-handle" id="parser-preview-resize" title="拖拽调整预览宽度"></div>
                             <button type="button" class="parser-preview-toggle" id="parser-preview-toggle"
                                 aria-expanded="false" title="点击展开实时预览">
                                 <span class="toggle-text">点击展开实时预览</span>
@@ -536,6 +547,10 @@
                                 <label for="message-type-description">描述</label>
                                 <input type="text" id="message-type-description" class="form-control"
                                     placeholder="请输入描述信息">
+                            </div>
+                            <div class="form-group">
+                                <label for="message-type-timeout-ms">异常回复阈值 (ms，未填默认3000)</label>
+                                <input type="number" id="message-type-timeout-ms" class="form-control" min="0" placeholder="默认 3000">
                             </div>
                         </form>
                     </div>

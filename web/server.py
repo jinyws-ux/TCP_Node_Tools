@@ -420,6 +420,7 @@ def add_message_type():
         description = data.get('description', '')
         response_type = data.get('response_type', '')
         trans_id_pos = data.get('trans_id_pos', '')
+        timeout_ms = data.get('timeout_ms')
 
         if not all([factory, system, message_type]):
             return jsonify({'success': False, 'error': '缺少必要参数'}), 400
@@ -440,6 +441,12 @@ def add_message_type():
             'TransIdPosition': trans_id_pos,
             'Versions': {}
         }
+        # 写入可选阈值
+        try:
+            if timeout_ms is not None and str(timeout_ms).strip() != '':
+                config[message_type]['TimeoutThresholdMs'] = int(timeout_ms)
+        except Exception:
+            pass
 
         # 保存配置
         success = parser_config_manager.save_config(factory, system, config)
@@ -466,6 +473,7 @@ def update_message_type():
         description = data.get('description')
         response_type = data.get('response_type')
         trans_id_pos = data.get('trans_id_pos')
+        timeout_ms = data.get('timeout_ms')
 
         if not all([factory, system, old_name, new_name]):
             return jsonify({'success': False, 'error': '缺少必要参数'}), 400
@@ -488,6 +496,12 @@ def update_message_type():
             message_config['ResponseType'] = response_type
         if trans_id_pos is not None:
             message_config['TransIdPosition'] = trans_id_pos
+        # 更新可选阈值
+        try:
+            if timeout_ms is not None and str(timeout_ms).strip() != '':
+                message_config['TimeoutThresholdMs'] = int(timeout_ms)
+        except Exception:
+            pass
 
         config[new_name] = message_config
 

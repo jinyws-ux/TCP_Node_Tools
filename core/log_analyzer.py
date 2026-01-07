@@ -137,13 +137,42 @@ class LogAnalyzer:
                             # 检查回复中的异常
                             if item.response and item.response.get('escape_hits'):
                                 abnormal_items.append({
-                                    'anchor': f"ts_{index}",
+                                    'anchor': f"ts_{index}_resp",
                                     'time': item.response.get('timestamp', ''),
                                     'msgType': item.response.get('message_type', '未知回复'),
                                     'fields': [],
                                     'count': len(item.response['escape_hits']),
                                     'details': [f"{hit.get('field', '')}={hit.get('value', '')}" for hit in item.response['escape_hits']]
                                 })
+                            # 检查超时异常：回复耗时超过阈值
+                            try:
+                                req_ts = None
+                                if item.latest_request and item.latest_request.get('timestamp'):
+                                    req_ts = item.latest_request.get('timestamp')
+                                elif item.requests and len(item.requests) > 0:
+                                    req_ts = item.requests[0].get('timestamp')
+                                resp_ts = item.response.get('timestamp') if item.response else None
+                                if isinstance(req_ts, datetime) and isinstance(resp_ts, datetime):
+                                    duration_ms = int((resp_ts - req_ts).total_seconds() * 1000)
+                                    msg_type = (item.latest_request or {}).get('message_type', '未知报文')
+                                    threshold_ms = 3000
+                                    try:
+                                        if msg_type and isinstance(parser_config, dict):
+                                            mt_cfg = parser_config.get(msg_type) or {}
+                                            threshold_ms = int(mt_cfg.get('TimeoutThresholdMs', threshold_ms))
+                                    except Exception:
+                                        threshold_ms = 3000
+                                    if duration_ms >= threshold_ms:
+                                        abnormal_items.append({
+                                            'anchor': f"ts_{index}_resp",
+                                            'time': resp_ts.isoformat(),
+                                            'msgType': msg_type,
+                                            'fields': [],
+                                            'count': 1,
+                                            'details': [f"回复耗时 {duration_ms}ms (阈值 {threshold_ms}ms)"]
+                                        })
+                            except Exception:
+                                pass
                         # 处理普通字典对象
                         elif isinstance(item, dict) and item.get('escape_hits'):
                             abnormal_items.append({
@@ -169,7 +198,7 @@ class LogAnalyzer:
                         return [convert_to_dict(item) for item in obj]
                     elif hasattr(obj, 'requests') and hasattr(obj, 'response'):
                         # Transaction对象
-                        return {
+                        res = {
                             'node_id': obj.node_id,
                             'trans_id': obj.trans_id,
                             'requests': convert_to_dict(obj.requests),
@@ -178,6 +207,28 @@ class LogAnalyzer:
                             'start_time': obj.start_time.isoformat() if hasattr(obj.start_time, 'isoformat') else obj.start_time,
                             'message_type': obj.latest_request.get('message_type', '未知报文') if obj.latest_request else '未知报文'
                         }
+                        
+                        # 计算耗时
+                        if obj.response and hasattr(obj, 'start_time') and isinstance(obj.start_time, datetime):
+                            resp_ts = obj.response.get('timestamp')
+                            if isinstance(resp_ts, datetime):
+                                duration = (resp_ts - obj.start_time).total_seconds() * 1000
+                                res['_duration'] = int(duration)
+                                # 超时标记写入 response 以便前端展示
+                                try:
+                                    msg_type = (obj.latest_request or {}).get('message_type', '未知报文')
+                                    threshold_ms = 3000
+                                    if msg_type and isinstance(parser_config, dict):
+                                        mt_cfg = parser_config.get(msg_type) or {}
+                                        threshold_ms = int(mt_cfg.get('TimeoutThresholdMs', threshold_ms))
+                                    if res.get('_duration', 0) >= threshold_ms:
+                                        if isinstance(res.get('response'), dict):
+                                            res['response']['timeout_exceeded'] = True
+                                            res['response']['timeout_threshold_ms'] = threshold_ms
+                                except Exception:
+                                    pass
+                        
+                        return res
                     elif hasattr(obj, 'isoformat'):
                         # datetime对象
                         return obj.isoformat()
