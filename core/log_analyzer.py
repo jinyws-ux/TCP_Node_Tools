@@ -132,7 +132,7 @@ class LogAnalyzer:
                                         'msgType': req.get('message_type', '未知报文'),
                                         'fields': [],
                                         'count': len(req['escape_hits']),
-                                        'details': [f"{hit.get('field', '')}={hit.get('value', '')}" for hit in req['escape_hits']]
+                                        'details': [hit.get('display', '') for hit in req['escape_hits']]
                                     })
                             # 检查回复中的异常
                             if item.response and item.response.get('escape_hits'):
@@ -142,7 +142,7 @@ class LogAnalyzer:
                                     'msgType': item.response.get('message_type', '未知回复'),
                                     'fields': [],
                                     'count': len(item.response['escape_hits']),
-                                    'details': [f"{hit.get('field', '')}={hit.get('value', '')}" for hit in item.response['escape_hits']]
+                                    'details': [hit.get('display', '') for hit in item.response['escape_hits']]
                                 })
                             # 检查超时异常：回复耗时超过阈值
                             try:
@@ -181,9 +181,9 @@ class LogAnalyzer:
                                 'msgType': item.get('message_type', '未知报文'),
                                 'fields': [],
                                 'count': len(item['escape_hits']),
-                                'details': [f"{hit.get('field', '')}={hit.get('value', '')}" for hit in item['escape_hits']]
+                                'details': [hit.get('display', '') for hit in item['escape_hits']]
                             })
-                    return abnormal_items
+                        return abnormal_items
                 
                 abnormal_items = collect_abnormal_items(matched_entries)
                 

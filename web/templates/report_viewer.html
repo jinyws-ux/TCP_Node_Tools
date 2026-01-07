@@ -347,7 +347,9 @@
         let reportData = null;
         let reportId = null;
         let responseChart = null; // Chart instance
+        let lastChartData = { labels: [], dataPoints: [], pointIndices: [] };
         const quickState = { loading: false, factory: '', system: '', template: '', factories: [], systems: [], templates: [] };
+        let selectedAbCategory = null;
         
         // Node Color Management
         const nodeColorPalette = [
@@ -754,27 +756,26 @@
             const ctx = document.getElementById('responseChart');
             if (!ctx) return;
 
-            // Prepare Data
             const dataPoints = [];
             const labels = [];
+            const pointIndices = [];
             
             reportData.log_entries.forEach((item, index) => {
-                // Filter if indices provided
                 if (visibleIndices && !visibleIndices.has(index)) return;
                 
-                // Use pre-calculated duration
                 if (item._duration !== undefined) {
                     labels.push(item._timeLabel || '');
                     dataPoints.push(item._duration);
+                    pointIndices.push(index);
                 }
             });
 
-            // Destroy existing chart if exists
             if (responseChart) {
                 responseChart.destroy();
             }
 
-            // Render Chart
+            lastChartData = { labels, dataPoints, pointIndices };
+            window.lastChartData = lastChartData;
             responseChart = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -823,10 +824,20 @@
                         mode: 'nearest',
                         axis: 'x',
                         intersect: false
+                    },
+                    onClick: (evt, elements) => {
+                        if (!elements || elements.length === 0) return;
+                        const idx = elements[0].index;
+                        const origIdx = pointIndices[idx];
+                        if (typeof origIdx === 'number') {
+                            const anchor = `ts_${origIdx}_resp`;
+                            scrollToLog(anchor);
+                        }
                     }
                 }
             });
         }
+
 
         // --- 6. Helpers ---
         function setQaLoading(loading, text = '处理中...') {
@@ -954,16 +965,60 @@
             if (badge) { badge.textContent = abnormalItems.length; badge.classList.toggle('zero', abnormalItems.length === 0); }
             if (!list) return;
             if (abnormalItems.length === 0) { list.innerHTML = '<div class="ab-empty">🎉 无异常报错</div>'; return; }
+            const catCounts = {};
+            abnormalItems.forEach(item => {
+                const cats = [];
+                (item.details || []).forEach(d => {
+                    const c = getAbCategory(d);
+                    if (!c) return;
+                    cats.push(c);
+                    catCounts[c] = (catCounts[c] || 0) + 1;
+                });
+                item._categories = cats;
+            });
+            let summary = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">';
+            Object.keys(catCounts).sort().forEach(cat => {
+                const active = selectedAbCategory === cat;
+                const style = active ? 'background:#2563eb;color:#fff;border-color:#1d4ed8' : '';
+                const enc = encodeURIComponent(cat);
+                summary += `<div class="tag" onclick="toggleAbCategoryEncoded('${enc}')" style="${style}">${htmlEscape(cat)} (${catCounts[cat]})</div>`;
+            });
+            summary += '</div>';
             let html = '';
             for (const item of abnormalItems) {
-                const details = item.details ? item.details.map(d => `<div class="ab-detail-row">${d}</div>`).join('') : '';
-                html += `<div class="abnormal-item" onclick="scrollToLog('${item.anchor}')"><span class="ab-time">${item.time}</span><div style="font-weight:600;font-size:13px;margin-bottom:4px;">${item.msgType}</div>${details}</div>`;
+                if (selectedAbCategory && !(item._categories || []).includes(selectedAbCategory)) continue;
+                const timeTxt = item.time || '';
+                const msgTxt = item.msgType || '';
+                const detHtml = (item.details || []).map(d => {
+                    const c = getAbCategory(d);
+                    if (!c) return '';
+                    if (selectedAbCategory && c !== selectedAbCategory) return '';
+                    return `<div class="ab-detail-row">${htmlEscape(c)}</div>`;
+                }).join('');
+                html += `<div class="abnormal-item" onclick="scrollToLog('${item.anchor}')"><span class="ab-time">${htmlEscape(timeTxt)}</span><div style="font-weight:600;font-size:13px;margin-bottom:4px;">${htmlEscape(msgTxt)}</div>${detHtml}</div>`;
             }
-            list.innerHTML = html;
+            list.innerHTML = summary + html;
+        }
+        function getAbCategory(text) {
+            if (!text) return '';
+            let s = typeof text === 'string' ? text : String(text);
+            if (s.indexOf('回复耗时') === 0) return '报文超时';
+            const m = s.match(/\(([^)]+)\)/);
+            if (m && m[1]) return m[1];
+            if (s.indexOf('=') >= 0) return s.split('=').pop();
+            return s;
+        }
+        function toggleAbCategory(cat) {
+            if (selectedAbCategory === cat) selectedAbCategory = null;
+            else selectedAbCategory = cat;
+            renderAbnormalNav();
+        }
+        function toggleAbCategoryEncoded(s) {
+            try { toggleAbCategory(decodeURIComponent(s)); } catch(_) { toggleAbCategory(s); }
         }
         function scrollToLog(anchor) {
             const target = document.getElementById(anchor);
-            if (target) { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); target.classList.remove('flash-highlight'); void target.offsetWidth; target.classList.add('flash-highlight'); }
+            if (target) { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); target.classList.remove('flash-highlight'); void target.offsetWidth; target.classList.add('flash-highlight'); setTimeout(() => { target.classList.remove('flash-highlight'); }, 4500); }
         }
         function bindEvents() {
             document.getElementById('log-container').addEventListener('click', handleLogRowClick);
