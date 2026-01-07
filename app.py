@@ -261,9 +261,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     print(f"   - 使用 --host=0.0.0.0 参数允许外部访问（服务器部署）")
     print(f"   - 使用 Ctrl+C 停止服务\n")
 
-    # 根据参数决定是否自动打开浏览器
-    if not args.no_browser and not args.backend_only:
-        open_default_browser(args.host, args.port)
+    # 启动时不自动打开浏览器，改为手动输入URL访问
 
     try:
         thread.join()

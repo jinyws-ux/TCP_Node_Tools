@@ -142,52 +142,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const first = qs('.tab')?.getAttribute('data-tab') || 'download';
   await switchTab(first);
 
-  // 仅保留退出后台按钮逻辑
-  const btnExit = qs('#btn-exit-backend');
-  const modal = qs('#confirm-modal');
-  const okBtn = qs('#confirm-ok');
-  const cancelBtn = qs('#confirm-cancel');
-  const txtEl = qs('#confirm-text');
-  async function showConfirm(text) {
-    if (!modal || !okBtn || !cancelBtn || !txtEl) return true;
-    txtEl.textContent = text || '';
-    modal.style.display = 'block';
-    return new Promise((resolve) => {
-      const onOk = () => { cleanup(); resolve(true); };
-      const onCancel = () => { cleanup(); resolve(false); };
-      function cleanup() {
-        okBtn.removeEventListener('click', onOk);
-        cancelBtn.removeEventListener('click', onCancel);
-        modal.style.display = 'none';
-      }
-      okBtn.addEventListener('click', onOk);
-      cancelBtn.addEventListener('click', onCancel);
-    });
-  }
-
-  function tryCloseTab() {
-    try { window.open('', '_self'); } catch { }
-    try { window.close(); } catch { }
-    try { window.location.href = 'about:blank'; } catch { }
-  }
-
-  btnExit?.addEventListener('click', async () => {
-    const ok = await showConfirm('确定退出后台并关闭当前页面？');
-    if (!ok) return;
-    try {
-      ui.setButtonLoading('btn-exit-backend', true, { text: '退出中...' });
-      const res = await api.exitBackend();
-      ui.setButtonLoading('btn-exit-backend', false);
-      if (res && res.success !== false) {
-        tryCloseTab();
-      } else {
-        messages.showMessage('error', '退出后台失败: ' + (res?.error || ''), 'download-messages');
-      }
-    } catch (err) {
-      ui.setButtonLoading('btn-exit-backend', false);
-      messages.showMessage('error', '退出后台失败: ' + (err?.message || err), 'download-messages');
-    }
-  });
+  // 已移除：退出后台按钮及相关逻辑
 
   // 绑定可视化构建器按钮
   const vpBtn = document.getElementById('open-visual-parser-btn');
