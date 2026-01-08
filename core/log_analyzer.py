@@ -179,7 +179,7 @@ class LogAnalyzer:
                                 'count': len(item['escape_hits']),
                                 'details': [hit.get('display', '') for hit in item['escape_hits']]
                             })
-                        return abnormal_items
+                    return abnormal_items
                 
                 abnormal_items = collect_abnormal_items(matched_entries)
                 

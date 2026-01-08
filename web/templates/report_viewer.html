@@ -1029,7 +1029,9 @@
                     const c = getAbCategory(d);
                     if (!c) return '';
                     if (selectedAbCategory && c !== selectedAbCategory) return '';
-                    return `<div class="ab-detail-row">${htmlEscape(c)}</div>`;
+                    // 如果是超时，显示完整详情，否则显示分类名（即转义内容）
+                    const displayText = (c === '报文超时') ? d : c;
+                    return `<div class="ab-detail-row">${htmlEscape(displayText)}</div>`;
                 }).join('');
                 html += `<div class="abnormal-item" onclick="scrollToLog('${item.anchor}')"><span class="ab-time">${htmlEscape(timeTxt)}</span><div style="font-weight:600;font-size:13px;margin-bottom:4px;">${htmlEscape(msgTxt)}</div>${detHtml}</div>`;
             }
