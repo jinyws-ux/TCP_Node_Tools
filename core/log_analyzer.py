@@ -146,11 +146,7 @@ class LogAnalyzer:
                                 })
                             # 检查超时异常：回复耗时超过阈值
                             try:
-                                req_ts = None
-                                if item.latest_request and item.latest_request.get('timestamp'):
-                                    req_ts = item.latest_request.get('timestamp')
-                                elif item.requests and len(item.requests) > 0:
-                                    req_ts = item.requests[0].get('timestamp')
+                                req_ts = item.start_time
                                 resp_ts = item.response.get('timestamp') if item.response else None
                                 if isinstance(req_ts, datetime) and isinstance(resp_ts, datetime):
                                     duration_ms = int((resp_ts - req_ts).total_seconds() * 1000)

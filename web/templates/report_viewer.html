@@ -747,6 +747,39 @@
         }
 
         /**
+         * Downsample chart data to reduce point density while preserving peaks
+         */
+        function downsampleData(dataPoints, labels, pointIndices, maxPoints = 300) {
+            if (dataPoints.length <= maxPoints) return { dataPoints, labels, pointIndices };
+            
+            const step = Math.ceil(dataPoints.length / maxPoints);
+            const dsData = [];
+            const dsLabels = [];
+            const dsIndices = [];
+            
+            for (let i = 0; i < dataPoints.length; i += step) {
+                // Find peak in this chunk
+                let maxVal = -Infinity;
+                let maxIdx = -1;
+                const end = Math.min(i + step, dataPoints.length);
+                
+                for (let j = i; j < end; j++) {
+                    if (dataPoints[j] > maxVal) {
+                        maxVal = dataPoints[j];
+                        maxIdx = j;
+                    }
+                }
+                
+                if (maxIdx !== -1) {
+                    dsData.push(dataPoints[maxIdx]);
+                    dsLabels.push(labels[maxIdx]);
+                    dsIndices.push(pointIndices[maxIdx]);
+                }
+            }
+            return { dataPoints: dsData, labels: dsLabels, pointIndices: dsIndices };
+        }
+
+        /**
          * Update Response Time Chart
          * @param {Set} visibleIndices - Set of visible log entry indices (optional)
          */
@@ -756,19 +789,22 @@
             const ctx = document.getElementById('responseChart');
             if (!ctx) return;
 
-            const dataPoints = [];
-            const labels = [];
-            const pointIndices = [];
+            const rawDataPoints = [];
+            const rawLabels = [];
+            const rawPointIndices = [];
             
             reportData.log_entries.forEach((item, index) => {
                 if (visibleIndices && !visibleIndices.has(index)) return;
                 
                 if (item._duration !== undefined) {
-                    labels.push(item._timeLabel || '');
-                    dataPoints.push(item._duration);
-                    pointIndices.push(index);
+                    rawLabels.push(item._timeLabel || '');
+                    rawDataPoints.push(item._duration);
+                    rawPointIndices.push(index);
                 }
             });
+
+            // Apply downsampling
+            const { dataPoints, labels, pointIndices } = downsampleData(rawDataPoints, rawLabels, rawPointIndices);
 
             if (responseChart) {
                 responseChart.destroy();
