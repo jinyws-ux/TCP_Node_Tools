@@ -169,6 +169,19 @@ class LogAnalyzer:
                                         })
                             except Exception:
                                 pass
+                            
+                            # 检查重试异常（报文未回复）
+                            if len(item.requests) > 1:
+                                retry_count = len(item.requests) - 1
+                                msg_type = (item.latest_request or {}).get('message_type', '未知报文')
+                                abnormal_items.append({
+                                    'anchor': f"ts_{index}", # 指向事务开始位置，通常包含重试标签
+                                    'time': item.start_time.isoformat() if hasattr(item.start_time, 'isoformat') else item.start_time,
+                                    'msgType': msg_type,
+                                    'fields': [],
+                                    'count': retry_count,
+                                    'details': [f"已折叠{retry_count}条未回复报文"]
+                                })
                         # 处理普通字典对象
                         elif isinstance(item, dict) and item.get('escape_hits'):
                             abnormal_items.append({

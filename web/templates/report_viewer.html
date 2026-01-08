@@ -1029,8 +1029,8 @@
                     const c = getAbCategory(d);
                     if (!c) return '';
                     if (selectedAbCategory && c !== selectedAbCategory) return '';
-                    // 如果是超时，显示完整详情，否则显示分类名（即转义内容）
-                    const displayText = (c === '报文超时') ? d : c;
+                    // 如果是超时或未回复，显示完整详情，否则显示分类名（即转义内容）
+                    const displayText = (c === '报文超时' || c === '报文未回复') ? d : c;
                     return `<div class="ab-detail-row">${htmlEscape(displayText)}</div>`;
                 }).join('');
                 html += `<div class="abnormal-item" onclick="scrollToLog('${item.anchor}')"><span class="ab-time">${htmlEscape(timeTxt)}</span><div style="font-weight:600;font-size:13px;margin-bottom:4px;">${htmlEscape(msgTxt)}</div>${detHtml}</div>`;
@@ -1041,6 +1041,7 @@
             if (!text) return '';
             let s = typeof text === 'string' ? text : String(text);
             if (s.indexOf('回复耗时') === 0) return '报文超时';
+            if (s.indexOf('已折叠') === 0 && s.indexOf('条未回复报文') > 0) return '报文未回复';
             const m = s.match(/\(([^)]+)\)/);
             if (m && m[1]) return m[1];
             if (s.indexOf('=') >= 0) return s.split('=').pop();
@@ -1056,7 +1057,24 @@
         }
         function scrollToLog(anchor) {
             const target = document.getElementById(anchor);
-            if (target) { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); target.classList.remove('flash-highlight'); void target.offsetWidth; target.classList.add('flash-highlight'); setTimeout(() => { target.classList.remove('flash-highlight'); }, 4500); }
+            if (target) { 
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' }); 
+                target.classList.remove('flash-highlight'); 
+                void target.offsetWidth; 
+                target.classList.add('flash-highlight'); 
+                setTimeout(() => { target.classList.remove('flash-highlight'); }, 4500); 
+                
+                // 如果是重试异常，尝试自动展开重试列表
+                const retryTag = target.querySelector('.tag-retry');
+                if (retryTag) {
+                    const logId = target.getAttribute('data-log-id');
+                    const retriesDiv = document.getElementById(`retries_${logId}`);
+                    if (retriesDiv && (retriesDiv.style.display === 'none' || retriesDiv.style.display === '')) {
+                        // 模拟点击展开
+                        retryTag.click();
+                    }
+                }
+            }
         }
         function bindEvents() {
             document.getElementById('log-container').addEventListener('click', handleLogRowClick);
