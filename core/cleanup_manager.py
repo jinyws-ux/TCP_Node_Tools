@@ -1,11 +1,13 @@
 """智能清理管理器 - 处理未锁定文件的自动清理。"""
 from __future__ import annotations
 
+import json
 import logging
 import os
+import threading
 import time
 from datetime import datetime, timedelta
-from typing import Dict, Iterable, List, Set
+from typing import Dict, Iterable, List, Set, Optional
 
 from .log_metadata_store import LogMetadataStore
 from .report_mapping_store import ReportMappingStore
@@ -20,6 +22,7 @@ class CleanupManager:
         html_logs_dir: str,
         report_mapping_store: ReportMappingStore,
         metadata_store: LogMetadataStore,
+        config_dir: str = None,
     ):
         """初始化清理管理器。"""
         self.download_dir = download_dir
@@ -27,6 +30,52 @@ class CleanupManager:
         self.report_mapping_store = report_mapping_store
         self.metadata_store = metadata_store
         self.logger = logging.getLogger(__name__)
+        self.config_dir = config_dir or os.path.dirname(download_dir)
+        self.config_file = os.path.join(self.config_dir, "cleanup_config.json")
+        self.cleanup_timer: Optional[threading.Timer] = None
+        self.config = self._load_config()
+
+    def _load_config(self) -> Dict[str, any]:
+        """加载清理配置。"""
+        default_config = {
+            "enabled": True,
+            "schedule_time": "05:00",  # 24小时制
+            "retention_days": 14,
+        }
+        if os.path.exists(self.config_file):
+            try:
+                with open(self.config_file, "r", encoding="utf-8") as f:
+                    return {**default_config, **json.load(f)}
+            except Exception as e:
+                self.logger.error(f"加载清理配置失败: {e}")
+        return default_config
+
+    def save_config(self, config: Dict[str, any]) -> None:
+        """保存清理配置并重启调度。"""
+        try:
+            with open(self.config_file, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+            self.config = config
+            self.schedule_daily_cleanup()  # 重启调度
+        except Exception as e:
+            self.logger.error(f"保存清理配置失败: {e}")
+            raise
+
+    def get_config(self) -> Dict[str, any]:
+        """获取当前配置。"""
+        return self.config
+
+    def toggle_lock(self, log_path: str, locked: bool) -> bool:
+        """切换日志锁定状态。"""
+        try:
+            metadata = self.metadata_store.read(log_path)
+            metadata["is_locked"] = locked
+            self.metadata_store.write(log_path, metadata)
+            return True
+        except Exception as e:
+            self.logger.error(f"更新锁定状态失败 {log_path}: {e}")
+            return False
+
 
     def get_all_logs_with_reports(self) -> List[Dict[str, any]]:
         """获取所有日志及其关联报告。"""
@@ -88,8 +137,9 @@ class CleanupManager:
                 mtime = os.path.getmtime(log_path)
                 file_age_days = (time.time() - mtime) / (24 * 3600)
         
-        # 超过 14 天视为过期
-        is_expired = file_age_days > 14
+        # 超过配置的天数视为过期
+        retention_days = self.config.get("retention_days", 14)
+        is_expired = file_age_days > retention_days
         
         # 获取关联报告
         related_reports = self.report_mapping_store.get(log_path)
@@ -141,7 +191,8 @@ class CleanupManager:
                     continue
                 
                 if is_locked and is_expired:
-                    self.logger.info(f"处理已过期锁定文件 (超过14天): {log_path}")
+                    retention_days = self.config.get("retention_days", 14)
+                    self.logger.info(f"处理已过期锁定文件 (超过{retention_days}天): {log_path}")
                 else:
                     self.logger.info(f"处理未锁定文件: {log_path}")
                 
@@ -458,8 +509,32 @@ class CleanupManager:
         
         return deleted_count
 
-    def schedule_daily_cleanup(self, hour: int = 5, minute: int = 0) -> None:
+    def schedule_daily_cleanup(self, hour: int = None, minute: int = None) -> None:
         """安排每天的自动清理任务。"""
+        # 取消现有的定时器
+        if self.cleanup_timer:
+            self.cleanup_timer.cancel()
+            self.cleanup_timer = None
+
+        # 检查是否启用
+        if not self.config.get("enabled", True):
+            self.logger.info("自动清理任务已禁用")
+            return
+
+        # 获取配置的时间
+        schedule_time = self.config.get("schedule_time", "05:00")
+        try:
+            h, m = map(int, schedule_time.split(":"))
+        except ValueError:
+            h, m = 5, 0
+            self.logger.warning(f"无效的时间格式 {schedule_time}, 使用默认值 05:00")
+
+        # 允许参数覆盖（为了向后兼容，虽然主要应该用配置）
+        if hour is not None:
+            h = hour
+        if minute is not None:
+            m = minute
+
         def run_cleanup():
             """执行清理的内部函数。"""
             self.logger.info("开始执行每日自动清理任务...")
@@ -480,8 +555,14 @@ class CleanupManager:
         
         def schedule_next_run():
             """安排下一次清理任务。"""
+            # 重新检查配置，确保最新的配置生效（虽然闭包捕获了h,m，但这里主要是为了重新计算时间）
+            # 实际上如果是递归调用，应该重新读取配置中的时间，或者依赖外部 save_config 触发的重新调度
+            # 这里简单起见，我们直接重新调用 schedule_daily_cleanup，这样会使用最新的配置
+            # 但是要注意不要无限递归如果 schedule_daily_cleanup 立即执行
+            # 所以这里只计算时间并设置 timer
+            
             now = datetime.now()
-            next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            next_run = now.replace(hour=h, minute=m, second=0, microsecond=0)
             
             # 如果今天的时间已过，安排到明天
             if next_run <= now:
@@ -491,8 +572,8 @@ class CleanupManager:
             self.logger.info(f"下次清理任务安排在: {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
             
             # 使用线程定时器执行
-            import threading
-            threading.Timer(delay_seconds, run_cleanup).start()
+            self.cleanup_timer = threading.Timer(delay_seconds, run_cleanup)
+            self.cleanup_timer.start()
         
-        # 启动第一次执行
+        # 启动调度
         schedule_next_run()

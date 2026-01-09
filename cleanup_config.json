@@ -1,0 +1,5 @@
+{
+  "enabled": true,
+  "schedule_time": "05:00",
+  "retention_days": 7
+}

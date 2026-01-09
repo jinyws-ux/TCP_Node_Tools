@@ -10,6 +10,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
     <script type="module" src="/static/js/app.js"></script>
     <script type="module" src="/static/js/modules/visual-parser.js"></script>
+    <script type="module" src="/static/js/modules/cleanup.js"></script>
     <!--    <script defer src="/static/js/main-simple.js"></script>-->
 </head>
 
@@ -211,6 +212,9 @@
                 </div>
                 <div class="analyze-controls-right">
                     <div class="analyze-actions">
+                        <button class="btn btn-secondary" id="cleanup-settings-btn" title="自动清理设置">
+                            <i class="fas fa-broom"></i> 清理设置
+                        </button>
                         <button class="btn btn-danger" id="batch-delete-btn">
                             <i class="fas fa-trash"></i> 批量删除
                         </button>
@@ -759,6 +763,63 @@
                     <button class="btn" id="import-mode-cancel">取消</button>
                     <button class="btn btn-secondary" id="import-mode-overwrite">全量覆盖</button>
                     <button class="btn btn-success" id="import-mode-merge">增量插入</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 清理设置模态框 -->
+        <div id="cleanup-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-content" style="max-width: 700px;">
+                <div class="modal-header">
+                    <h3><i class="fas fa-broom"></i> 自动清理设置</h3>
+                    <button class="close-btn" id="close-cleanup-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="cleanup-tabs-nav" style="margin-bottom: 15px; border-bottom: 1px solid #2a2f45; display: flex; gap: 10px;">
+                        <button class="cleanup-tab-btn active" data-target="cleanup-config-tab" style="padding: 8px 16px; background: none; border: none; color: #aab4c3; cursor: pointer; border-bottom: 2px solid #007bff;">基本设置</button>
+                        <button class="cleanup-tab-btn" data-target="cleanup-logs-tab" style="padding: 8px 16px; background: none; border: none; color: #aab4c3; cursor: pointer; border-bottom: 2px solid transparent;">日志锁定管理</button>
+                    </div>
+
+                    <div id="cleanup-config-tab" class="cleanup-tab-content">
+                        <div class="form-group">
+                            <label class="checkbox-item" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="cleanup-enabled"> 启用每日自动清理
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>执行时间 (24小时制)</label>
+                            <input type="time" id="cleanup-time" class="form-control" style="width: 150px;">
+                        </div>
+                        <div class="form-group">
+                            <label>保留天数 (超过此时间的未锁定日志将被删除)</label>
+                            <input type="number" id="cleanup-retention" class="form-control" min="1" max="365" style="width: 100px;">
+                        </div>
+                        <div class="message message-info">
+                            <i class="fas fa-info-circle"></i> 自动清理只会删除<strong>未锁定</strong>的日志。已锁定的日志即使过期也不会被删除，除非手动解锁。
+                        </div>
+                    </div>
+
+                    <div id="cleanup-logs-tab" class="cleanup-tab-content" style="display: none;">
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            <table class="table" style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid #2a2f45;">
+                                        <th style="text-align: left; padding: 8px;">日志文件</th>
+                                        <th style="text-align: left; padding: 8px;">下载时间</th>
+                                        <th style="text-align: center; padding: 8px;">状态</th>
+                                        <th style="text-align: center; padding: 8px;">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cleanup-logs-list">
+                                    <!-- 动态加载 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="cancel-cleanup-modal">关闭</button>
+                    <button class="btn btn-primary" id="save-cleanup-config">保存配置</button>
                 </div>
             </div>
         </div>

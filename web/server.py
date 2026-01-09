@@ -1658,6 +1658,53 @@ def _no_cache_for_dynamic(resp):
         pass
     return resp
 
+
+@app.route('/api/cleanup/config', methods=['GET', 'POST'])
+def handle_cleanup_config():
+    """获取 or 更新清理配置"""
+    if request.method == 'GET':
+        return jsonify(cleanup_manager.get_config())
+    else:
+        try:
+            config = request.json
+            cleanup_manager.save_config(config)
+            return jsonify({'success': True})
+        except Exception as e:
+            logger.error(f"Failed to update cleanup config: {e}")
+            return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cleanup/logs', methods=['GET'])
+def get_cleanup_logs():
+    """获取所有日志及其锁定状态"""
+    try:
+        logs = cleanup_manager.get_all_logs_with_reports()
+        return jsonify(logs)
+    except Exception as e:
+        logger.error(f"Failed to get cleanup logs: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cleanup/lock', methods=['POST'])
+def cleanup_toggle_log_lock():
+    """切换日志锁定状态"""
+    try:
+        data = request.json
+        log_path = data.get('log_path')
+        locked = data.get('locked')
+        if not log_path or locked is None:
+            return jsonify({'error': 'Missing log_path or locked status'}), 400
+            
+        success = cleanup_manager.toggle_lock(log_path, locked)
+        if success:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Failed to update lock status'}), 500
+    except Exception as e:
+        logger.error(f"Failed to toggle lock: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     # 初始化配置文件
     init_config_files()

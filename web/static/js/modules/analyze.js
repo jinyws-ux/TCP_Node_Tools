@@ -942,6 +942,23 @@ export function init() {
   renderAnalysisStats([]);
 
   window.addEventListener('parser-config:changed', () => loadParserConfigs({ preserveSelection: true }));
+  
+  // 监听日志锁定状态变化（来自清理模块）
+  window.addEventListener('log-lock-changed', (e) => {
+    const { logPath, isLocked } = e.detail;
+    // 更新本地缓存
+    const log = allLogsCache.find(l => l.path === logPath);
+    if (log) {
+      log.is_locked = isLocked;
+    }
+    // 更新元数据缓存
+    logMetadataCache[logPath.replace(/\\/g, '/')] = {
+      ...logMetadataCache[logPath.replace(/\\/g, '/')],
+      is_locked: isLocked
+    };
+    // 重新渲染列表
+    renderLogsTable();
+  });
 }
 
 export function handleServerConfigsEvent(evt) { handleServerConfigsChanged(evt); }
