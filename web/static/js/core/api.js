@@ -23,6 +23,46 @@ function ensureSuccess(data, fallbackMsg) {
   throw new Error(err);
 }
 
+function buildOnlineBaseUrl(serverAlias) {
+  const alias = (serverAlias || '').trim();
+  if (!alias) throw new Error('缺少服务器别名');
+  return `https://${alias}.bmwbrill.cn:8080`;
+}
+
+async function onlineGet(serverAlias, path, query) {
+  const toQueryString = (obj) => obj
+    ? new URLSearchParams(Object.entries(obj).filter(([, v]) => v !== undefined && v !== null && v !== '')).toString()
+    : '';
+
+  const base = buildOnlineBaseUrl(serverAlias);
+  const qs = toQueryString(query);
+  const url = `${base}${path}${qs ? `?${qs}` : ''}`;
+
+  const isNetworkErr = (err) => {
+    if (!err) return false;
+    if (err instanceof TypeError) return true;
+    const msg = String(err?.message || '').toLowerCase();
+    return msg.includes('failed to fetch') || msg.includes('network') || msg.includes('cors');
+  };
+
+  try {
+    const res = await fetch(url, { method: 'GET' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  } catch (err) {
+    if (!isNetworkErr(err)) throw err;
+    const proxyQs = toQueryString({ alias: serverAlias, path, ...(query || {}) });
+    const proxyUrl = `/api/online/proxy?${proxyQs}`;
+    const res = await fetch(proxyUrl, { method: 'GET' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data && data.success === false) {
+      throw new Error(data.error || '在线日志代理请求失败');
+    }
+    return data;
+  }
+}
+
 export const api = {
   /* -------- 下载页 -------- */
   getFactories: () => get('/api/factories'),
@@ -100,4 +140,49 @@ export const api = {
     const data = await post('/api/delete-report', { report_id: reportId });
     return ensureSuccess(data, '删除报告失败');
   },
+
+  /* -------- 在线日志（直连 log_file_viewer） -------- */
+  async getOnlineCategories({ serverAlias }) {
+    const data = await onlineGet(serverAlias, '/logging');
+    return data?.collection || [];
+  },
+  async getOnlineObjects({ serverAlias, category }) {
+    const data = await onlineGet(serverAlias, `/logging/${encodeURIComponent(category)}`);
+    return data?.collection || [];
+  },
+  async getOnlineMetadata({ serverAlias, category, objectName }) {
+    return onlineGet(
+      serverAlias,
+      `/logging/${encodeURIComponent(category)}/${encodeURIComponent(objectName)}`
+    );
+  },
+  async getOnlineData({
+    serverAlias,
+    category,
+    objectName,
+    begin = 0,
+    end = -1,
+    encoding,
+    reversed,
+    positive_filter,
+    negative_filter,
+    surrounding_lines,
+  }) {
+    return onlineGet(
+      serverAlias,
+      `/logging/${encodeURIComponent(category)}/${encodeURIComponent(objectName)}/data`,
+      {
+        begin,
+        end,
+        encoding,
+        reversed,
+        positive_filter,
+        negative_filter,
+        surrounding_lines,
+      }
+    );
+  },
+
+  /* -------- 在线日志（本工具后端增量解析） -------- */
+  parseOnlineIncremental: (payload) => post('/api/online/parse-incremental', payload),
 };

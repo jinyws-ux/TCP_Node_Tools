@@ -23,6 +23,9 @@ async function loadModule(tabName) {
 
   let modPromise;
   switch (tabName) {
+    case 'online':
+      modPromise = import('./modules/online.js');
+      break;
     case 'download':
       modPromise = import('./modules/download.js');
       break;

@@ -3,6 +3,10 @@ import ast
 import json
 import logging
 import os
+import re
+import time
+import urllib.parse
+import urllib.request
 from typing import Any, Dict, List
 from datetime import datetime
 import webbrowser
@@ -24,6 +28,8 @@ from core.parser_config_service import ParserConfigService
 from core.report_mapping_store import ReportMappingStore
 from core.server_config_service import ServerConfigService
 from core.template_manager import TemplateManager
+from core.log_parser import LogParser
+from core.log_matcher import LogMatcher, Transaction
 
 app = Flask(__name__)
 
@@ -208,6 +214,266 @@ def get_server_configs():
     except Exception as e:
         logger.error(f"获取服务器配置列表失败: {str(e)}")
         return jsonify({'success': False, 'error': '获取服务器配置列表失败'}), 500
+
+
+def _is_safe_server_alias(alias: str) -> bool:
+    if not alias:
+        return False
+    return re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9\\-]{0,62}", alias) is not None
+
+
+@app.route('/api/online/proxy', methods=['GET'])
+def api_online_proxy():
+    alias = (request.args.get('alias') or '').strip()
+    path = (request.args.get('path') or '').strip()
+
+    if not _is_safe_server_alias(alias):
+        return jsonify({'success': False, 'error': '无效的服务器别名'}), 400
+
+    if not path.startswith('/logging'):
+        return jsonify({'success': False, 'error': '无效的请求路径'}), 400
+
+    query_args = dict(request.args) or {}
+    query_args.pop('alias', None)
+    query_args.pop('path', None)
+
+    base = f"https://{alias}.bmwbrill.cn:8080"
+    url = f"{base}{path}"
+    if query_args:
+        url = f"{url}?{urllib.parse.urlencode(query_args, doseq=True)}"
+
+    try:
+        req = urllib.request.Request(url, method='GET')
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = resp.read()
+            content_type = resp.headers.get('Content-Type') or 'application/json'
+            return Response(raw, status=getattr(resp, 'status', 200), content_type=content_type)
+    except Exception as exc:
+        logger.error(f"在线日志代理请求失败: {exc}", exc_info=True)
+        return jsonify({'success': False, 'error': '在线日志代理请求失败'}), 502
+
+
+# ---------------- 在线日志：增量解析状态 ----------------
+class _OnlineParserState:
+    def __init__(self):
+        self.pending_tail: str = ""
+        self.overlap_lines: List[str] = []
+        self.open_requests: Dict[tuple, Transaction] = {}
+        self.recent_hashes: Dict[str, int] = {}
+        self.recent_limit: int = 5000
+        self.overlap_size: int = 12
+        self.last_access: float = time.time()
+
+    def add_recent(self, h: str):
+        self.recent_hashes[h] = self.recent_hashes.get(h, 0) + 1
+        if len(self.recent_hashes) > self.recent_limit:
+            # 简单裁剪：按插入顺序不维护，随机删除部分
+            for _ in range(len(self.recent_hashes) - self.recent_limit):
+                try:
+                    self.recent_hashes.pop(next(iter(self.recent_hashes)))
+                except Exception:
+                    break
+
+
+_ONLINE_STATES: Dict[str, _OnlineParserState] = {}
+
+
+def _online_state_key(factory: str, system: str, alias: str, category: str, object_name: str) -> str:
+    return f"{factory}|{system}|{alias}|{category}|{object_name}"
+
+
+def _entry_digest(e: Dict[str, Any]) -> str:
+    parts = [
+        str(e.get('timestamp') or ''),
+        str(e.get('message_type') or ''),
+        str(e.get('original_line1') or ''),
+        str(e.get('original_line2') or ''),
+    ]
+    return "E|" + "|".join(parts)
+
+
+def _transaction_digest(t: Transaction) -> str:
+    req = t.latest_request or {}
+    parts = [
+        str(t.node_id),
+        str(t.trans_id),
+        str(req.get('message_type') or ''),
+        str((t.response or {}).get('timestamp') or ''),
+    ]
+    return "T|" + "|".join(parts)
+
+
+def _transaction_to_dict(t: Transaction) -> Dict[str, Any]:
+    def _conv_ts(ts):
+        try:
+            return ts.isoformat()
+        except Exception:
+            return ts
+    return {
+        'node_id': t.node_id,
+        'trans_id': t.trans_id,
+        'requests': t.requests,
+        'response': t.response,
+        'start_time': _conv_ts(t.start_time),
+        'latest_request': t.latest_request,
+    }
+
+def _to_json_safe(obj: Any) -> Any:
+    if isinstance(obj, datetime):
+        try:
+            return obj.isoformat()
+        except Exception:
+            return str(obj)
+    if isinstance(obj, dict):
+        return {k: _to_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_json_safe(v) for v in obj]
+    return obj
+
+def _resolve_factory_system_by_alias(alias: str) -> tuple[str, str]:
+    try:
+        configs = server_config_service.list_configs() or []
+    except Exception:
+        configs = []
+    for cfg in configs:
+        server = cfg.get('server') or {}
+        if (server.get('alias') or '').strip() == alias:
+            return (cfg.get('factory') or '').strip(), (cfg.get('system') or '').strip()
+    return "", ""
+
+def _cleanup_online_states(max_states: int = 64) -> None:
+    if len(_ONLINE_STATES) <= max_states:
+        return
+    items = sorted(_ONLINE_STATES.items(), key=lambda kv: kv[1].last_access)
+    for k, _ in items[: max(0, len(items) - max_states)]:
+        try:
+            del _ONLINE_STATES[k]
+        except KeyError:
+            pass
+
+
+@app.route('/api/online/parse-incremental', methods=['POST'])
+def api_online_parse_incremental():
+    """
+    增量解析：对新增片段 + 少量重叠进行解析与事务匹配，维护缓存并返回增量结果。
+    请求体：
+    {
+      factory, system, serverAlias, category, objectName,
+      lines: [string...]
+    }
+    """
+    try:
+        data = request.get_json(force=True) or {}
+        alias = (data.get('serverAlias') or '').strip()
+        factory = (data.get('factory') or '').strip()
+        system = (data.get('system') or '').strip()
+        if alias and (not factory or not system):
+            f2, s2 = _resolve_factory_system_by_alias(alias)
+            factory = factory or f2
+            system = system or s2
+        category = (data.get('category') or '').strip()
+        object_name = (data.get('objectName') or '').strip()
+        lines = data.get('lines') or []
+        reset = bool(data.get('reset'))
+        if not (factory and system and alias and category and object_name and isinstance(lines, list)):
+            return jsonify({'success': False, 'error': '缺少必要参数或参数格式错误'}), 400
+
+        # 加载解析配置
+        parser_config = parser_config_manager.load_config(factory, system)
+        if not parser_config:
+            return jsonify({'success': False, 'error': f'未找到解析配置: {factory}/{system}'}), 400
+
+        key = _online_state_key(factory, system, alias, category, object_name)
+        st = _ONLINE_STATES.get(key)
+        if not st:
+            st = _OnlineParserState()
+            _ONLINE_STATES[key] = st
+        if reset:
+            st.pending_tail = ""
+            st.overlap_lines = []
+            st.open_requests = {}
+            st.recent_hashes = {}
+        st.last_access = time.time()
+        _cleanup_online_states()
+
+        # 组合重叠 + 新片段
+        overlap = st.overlap_lines or []
+        to_parse = list(overlap) + [str(x or '') for x in lines]
+
+        parser = LogParser(parser_config)
+        matcher = LogMatcher(parser_config)
+        parsed_entries = parser.parse_log_lines(to_parse)
+
+        # 事务缓存匹配
+        emitted_transactions: List[Transaction] = []
+        emitted_entries: List[Dict[str, Any]] = []
+
+        for e in parsed_entries:
+            # 基础字段
+            node_id = matcher._get_node_id(e)
+            msg_type = matcher._get_msg_type(e)
+            is_req = msg_type in matcher.req_to_resp_map
+            is_resp = msg_type in matcher.resp_to_req_map
+
+            if not (is_req or is_resp):
+                # 普通日志项，增量输出（去重）
+                dg = _entry_digest(e)
+                if dg not in st.recent_hashes:
+                    emitted_entries.append(e)
+                    st.add_recent(dg)
+                continue
+
+            trans_id = matcher._extract_trans_id(e)
+            if not trans_id:
+                # 无法提取事务ID，作为普通项输出
+                dg = _entry_digest(e)
+                if dg not in st.recent_hashes:
+                    emitted_entries.append(e)
+                    st.add_recent(dg)
+                continue
+
+            k = (node_id, trans_id)
+            if is_req:
+                tx = st.open_requests.get(k)
+                if not tx:
+                    tx = Transaction(node_id, trans_id)
+                    st.open_requests[k] = tx
+                tx.requests.append(e)
+                # 请求不立即输出，等待回复或在 UI 以“未完成事务”显示（后续可提供）
+            elif is_resp:
+                tx = st.open_requests.get(k)
+                if tx:
+                    # 匹配成功，完成事务
+                    tx.response = e
+                    dg = _transaction_digest(tx)
+                    if dg not in st.recent_hashes:
+                        emitted_transactions.append(tx)
+                        st.add_recent(dg)
+                    # 事务完成后移除缓存
+                    try:
+                        del st.open_requests[k]
+                    except KeyError:
+                        pass
+                else:
+                    # 孤立回复，作为普通项输出
+                    dg = _entry_digest(e)
+                    if dg not in st.recent_hashes:
+                        emitted_entries.append(e)
+                        st.add_recent(dg)
+
+        # 更新重叠窗口（用于边界解析）：保留末尾若干行
+        st.overlap_lines = (to_parse[-st.overlap_size:] if len(to_parse) > st.overlap_size else to_parse[:])
+
+        return jsonify({
+            'success': True,
+            'entries': _to_json_safe(emitted_entries),
+            'transactions': _to_json_safe([_transaction_to_dict(t) for t in emitted_transactions]),
+            'overlap_kept': len(st.overlap_lines),
+            'open_tx_count': len(st.open_requests),
+        })
+    except Exception as exc:
+        logger.error(f"在线日志增量解析失败: {exc}", exc_info=True)
+        return jsonify({'success': False, 'error': '在线日志增量解析失败'}), 500
 
 
 @app.route('/api/save-config', methods=['POST'])

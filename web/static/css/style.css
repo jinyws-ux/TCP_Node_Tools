@@ -929,6 +929,25 @@ tbody tr:hover {
   pointer-events: none;
 }
 
+.online-log-view {
+  height: 560px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.online-log-pre {
+  margin: 0;
+  padding: 14px 16px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+  word-break: break-all;
+  color: var(--muted-strong);
+}
+
 .server-config-header h3 {
   margin: 0 0 2px;
 }
