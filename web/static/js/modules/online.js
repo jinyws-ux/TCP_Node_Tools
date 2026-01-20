@@ -14,6 +14,10 @@ const state = {
   selectedConfig: null,
   categories: [],
   objects: [],
+  nav: {
+    mode: 'categories',
+    filter: '',
+  },
   active: {
     category: '',
     object: '',
@@ -46,11 +50,54 @@ export function init() {
 }
 
 function bindEvents() {
-  qs('#btn-online-load-categories')?.addEventListener('click', () => {
-    loadCategories().catch((err) => {
-      console.error('[online] loadCategories failed', err);
-      msg('error', '加载分类失败：' + (err?.message || err));
+  qs('#enter-online-workspace-btn')?.addEventListener('click', () => {
+    enterWorkspace().catch((err) => {
+      console.error('[online] enter workspace failed', err);
+      msg('error', '进入工作台失败：' + (err?.message || err));
     });
+  });
+
+  qs('#toggle-online-controls-btn')?.addEventListener('click', () => {
+    const ws = qs('#online-workspace');
+    if (!ws) return;
+    const next = !ws.classList.contains('online-controls-collapsed');
+    ws.classList.toggle('online-controls-collapsed', next);
+    const btn = qs('#toggle-online-controls-btn');
+    if (btn) {
+      btn.innerHTML = next
+        ? `<i class="fas fa-sliders-h"></i> 展开设置`
+        : `<i class="fas fa-sliders-h"></i> 收起设置`;
+    }
+  });
+
+  qs('#toggle-online-left-nav-btn')?.addEventListener('click', () => {
+    const ws = qs('#online-workspace');
+    if (!ws) return;
+    const next = !ws.classList.contains('online-left-collapsed');
+    ws.classList.toggle('online-left-collapsed', next);
+    const btn = qs('#toggle-online-left-nav-btn');
+    if (btn) {
+      btn.innerHTML = next
+        ? `<i class="fas fa-columns"></i> 展开左栏`
+        : `<i class="fas fa-columns"></i> 折叠左栏`;
+    }
+  });
+
+  qs('#toggle-online-fullscreen-btn')?.addEventListener('click', () => {
+    const ws = qs('#online-workspace');
+    if (!ws) return;
+    const next = !ws.classList.contains('online-log-fullscreen');
+    ws.classList.toggle('online-log-fullscreen', next);
+    const btn = qs('#toggle-online-fullscreen-btn');
+    if (btn) {
+      btn.innerHTML = next
+        ? `<i class="fas fa-compress"></i> 退出全屏`
+        : `<i class="fas fa-expand"></i> 全屏`;
+    }
+  });
+
+  qs('#exit-online-workspace-btn')?.addEventListener('click', () => {
+    exitWorkspace();
   });
 
   qs('#btn-online-refresh')?.addEventListener('click', () => {
@@ -93,14 +140,18 @@ function bindEvents() {
     }
     renderFromBuffer();
   });
+
+  qs('#online-nav-search')?.addEventListener('input', () => {
+    state.nav.filter = (qs('#online-nav-search')?.value || '').trim().toLowerCase();
+    renderNavList();
+  });
 }
 
 async function bootstrap() {
   await loadServerConfigs();
   await loadFactories();
   initFactorySystemSelectors();
-  const factoryCount = Array.isArray(state.factories) ? state.factories.length : 0;
-  msg('info', `已加载厂区：${factoryCount} 个，请选择后加载分类`);
+  showSelection();
 }
 
 async function loadServerConfigs() {
@@ -208,6 +259,54 @@ function resolveSelectedConfig() {
   return state.configs.find((c) => c.factory === f && c.system === s) || null;
 }
 
+function showSelection() {
+  const sel = qs('#online-selection');
+  const ws = qs('#online-workspace');
+  if (sel) sel.style.display = '';
+  if (ws) ws.style.display = 'none';
+  msg('info', '请选择厂区与系统后进入在线工作台');
+}
+
+function showWorkspace() {
+  const sel = qs('#online-selection');
+  const ws = qs('#online-workspace');
+  if (sel) sel.style.display = 'none';
+  if (ws) ws.style.display = '';
+}
+
+async function enterWorkspace() {
+  state.selectedConfig = resolveSelectedConfig();
+  if (!state.selectedConfig) throw new Error('请先选择厂区与系统');
+  const f = state.selected.factory || '';
+  const s = state.selected.system || '';
+  const fEl = qs('#online-current-factory');
+  const sEl = qs('#online-current-system');
+  if (fEl) fEl.textContent = f || '未知厂区';
+  if (sEl) sEl.textContent = s || '未知系统';
+  showWorkspace();
+  await loadCategoriesForNav();
+}
+
+function exitWorkspace() {
+  stopAutoRefresh();
+  resetRemoteSelection();
+  state.nav.mode = 'categories';
+  state.nav.filter = '';
+  const inp = qs('#online-nav-search');
+  if (inp) inp.value = '';
+  const list = qs('#online-nav-list');
+  if (list) list.innerHTML = '';
+  const ws = qs('#online-workspace');
+  if (ws) ws.classList.remove('online-controls-collapsed', 'online-left-collapsed', 'online-log-fullscreen');
+  const btn = qs('#toggle-online-controls-btn');
+  if (btn) btn.innerHTML = `<i class="fas fa-sliders-h"></i> 收起设置`;
+  const leftBtn = qs('#toggle-online-left-nav-btn');
+  if (leftBtn) leftBtn.innerHTML = `<i class="fas fa-columns"></i> 折叠左栏`;
+  const fsBtn = qs('#toggle-online-fullscreen-btn');
+  if (fsBtn) fsBtn.innerHTML = `<i class="fas fa-expand"></i> 全屏`;
+  showSelection();
+}
+
 function resetRemoteSelection() {
   stopAutoRefresh();
   state.categories = [];
@@ -220,49 +319,63 @@ function resetRemoteSelection() {
   state.active.parsedItems = [];
   state.active.parsedLastKey = '';
   state.active.lastTextKey = '';
-  renderCategories();
-  renderObjects();
+  state.nav.mode = 'categories';
   renderMeta(null);
   renderLines([]);
+  renderNavList();
 }
 
 async function refreshAll() {
-  await loadCategories();
-  if (state.active.category) {
-    await loadObjects();
+  if (!state.selectedConfig) {
+    state.selectedConfig = resolveSelectedConfig();
   }
-  if (state.active.category && state.active.object) {
-    await loadMeta();
-    await fetchAndRender();
+  if (!state.selectedConfig) throw new Error('请先选择厂区与系统');
+
+  if (state.nav.mode === 'categories') {
+    await loadCategoriesForNav();
+    return;
+  }
+
+  if (state.nav.mode === 'objects') {
+    if (!state.active.category) {
+      await loadCategoriesForNav();
+      return;
+    }
+    await loadObjectsForNav(state.active.category);
+    if (state.active.object) {
+      await loadMeta();
+      await fetchAndRender();
+    }
   }
 }
 
-async function loadCategories() {
-  const cfg = resolveSelectedConfig();
+async function loadCategoriesForNav() {
+  const cfg = state.selectedConfig || resolveSelectedConfig();
   if (!cfg) throw new Error('请先选择厂区与系统');
   state.selectedConfig = cfg;
 
-  setButtonLoading('btn-online-load-categories', true, { text: '加载中...' });
-  try {
-    const categories = await api.getOnlineCategories({ serverAlias: cfg?.server?.alias || '' });
-    state.categories = Array.isArray(categories) ? categories : [];
-    renderCategories();
-    msg('success', `已加载分类：${state.categories.length} 个`);
-  } finally {
-    setButtonLoading('btn-online-load-categories', false);
-  }
+  const categories = await api.getOnlineCategories({ serverAlias: cfg?.server?.alias || '' });
+  state.categories = Array.isArray(categories) ? categories : [];
+  state.nav.mode = 'categories';
+  state.active.category = '';
+  state.active.object = '';
+  renderMeta(null);
+  renderLines([]);
+  renderNavList();
 }
 
-async function loadObjects() {
-  const cfg = resolveSelectedConfig();
+async function loadObjectsForNav(categoryName) {
+  const cfg = state.selectedConfig || resolveSelectedConfig();
   if (!cfg) throw new Error('请先选择厂区与系统');
-  if (!state.active.category) return;
+  const cat = (categoryName || '').trim();
+  if (!cat) return;
   const objects = await api.getOnlineObjects({
     serverAlias: cfg?.server?.alias || '',
-    category: state.active.category
+    category: cat
   });
   state.objects = Array.isArray(objects) ? objects : [];
-  renderObjects();
+  state.nav.mode = 'objects';
+  renderNavList();
 }
 
 async function loadMeta() {
@@ -277,63 +390,123 @@ async function loadMeta() {
   renderMeta(meta);
 }
 
-function renderCategories() {
-  const sel = qs('#online-category-select');
-  if (!sel) return;
-  sel.innerHTML = `<option value="">请选择分类</option>` + state.categories
-    .map((c) => {
-      const name = c?.name || '';
-      return `<option value="${escapeHtmlAttr(name)}">${escapeHtmlText(name)}</option>`;
-    })
-    .join('');
+function renderNavList() {
+  const list = qs('#online-nav-list');
+  if (!list) return;
+  const filter = state.nav.filter || '';
+  const frag = document.createDocumentFragment();
 
-  sel.value = state.active.category || '';
-  sel.onchange = async () => {
-    state.active.category = sel.value || '';
-    state.active.object = '';
-    state.active.cursor = 0;
-    state.active.sizeInBytes = 0;
-    state.active.bufferLines = [];
-    state.active.parsedItems = [];
-    state.active.parsedLastKey = '';
-    state.active.lastTextKey = '';
-    renderObjects();
-    renderMeta(null);
-    renderLines([]);
-    stopAutoRefresh();
-    if (state.active.category) {
-      await loadObjects();
-    }
+  const mkCard = ({ title, subtitle, kind, active = false, isBack = false, onClick }) => {
+    const el = document.createElement('div');
+    el.className = `online-card${isBack ? ' online-card--back' : ''}${active ? ' online-card--active' : ''}`;
+    el.dataset.kind = kind;
+    const t = document.createElement('div');
+    t.className = 'online-card-title';
+    t.textContent = title;
+    const sub = document.createElement('div');
+    sub.className = 'online-card-subtitle';
+    sub.textContent = subtitle || '';
+    el.appendChild(t);
+    if (subtitle) el.appendChild(sub);
+    el.addEventListener('click', onClick);
+    return el;
   };
-}
 
-function renderObjects() {
-  const sel = qs('#online-object-select');
-  if (!sel) return;
-  sel.innerHTML = `<option value="">请选择对象</option>` + state.objects
-    .map((o) => {
+  const matches = (txt) => {
+    if (!filter) return true;
+    return String(txt || '').toLowerCase().includes(filter);
+  };
+
+  if (state.nav.mode === 'objects') {
+    frag.appendChild(mkCard({
+      title: '返回分类',
+      subtitle: '回到分类列表',
+      kind: 'back',
+      isBack: true,
+      onClick: async () => {
+        stopAutoRefresh();
+        state.active.object = '';
+        state.objects = [];
+        state.nav.mode = 'categories';
+        renderMeta(null);
+        renderLines([]);
+        renderNavList();
+      }
+    }));
+
+    const catTitle = state.active.category ? `当前分类：${state.active.category}` : '未选择分类';
+    frag.appendChild(mkCard({
+      title: catTitle,
+      subtitle: '点击对象卡片后可在右侧打开查看',
+      kind: 'hint',
+      isBack: true,
+      onClick: () => { }
+    }));
+
+    (state.objects || []).forEach((o) => {
       const name = o?.name || '';
       const info = (o?.info || '').trim();
-      const label = info ? `${name} (${info})` : name;
-      return `<option value="${escapeHtmlAttr(name)}">${escapeHtmlText(label)}</option>`;
-    })
-    .join('');
-  sel.value = state.active.object || '';
-  sel.onchange = async () => {
-    state.active.object = sel.value || '';
-    state.active.cursor = 0;
-    state.active.sizeInBytes = 0;
-    state.active.bufferLines = [];
-    state.active.parsedItems = [];
-    state.active.parsedLastKey = '';
-    state.active.lastTextKey = '';
-    renderMeta(null);
-    renderLines([]);
-    stopAutoRefresh();
-    if (state.active.category && state.active.object) {
-      await loadMeta();
-    }
-  };
+      const label = info ? `${name} ${info}` : name;
+      if (!matches(label)) return;
+      frag.appendChild(mkCard({
+        title: name,
+        subtitle: info || '',
+        kind: 'object',
+        active: name === state.active.object,
+        onClick: async () => {
+          stopAutoRefresh();
+          state.active.object = name;
+          state.active.cursor = 0;
+          state.active.sizeInBytes = 0;
+          state.active.bufferLines = [];
+          state.active.parsedItems = [];
+          state.active.parsedLastKey = '';
+          state.active.lastTextKey = '';
+          renderMeta(null);
+          renderLines([]);
+          try {
+            await loadMeta();
+          } catch (err) {
+            msg('error', '加载元信息失败：' + (err?.message || err));
+          }
+          renderNavList();
+        }
+      }));
+    });
+  } else {
+    (state.categories || []).forEach((c) => {
+      const name = c?.name || '';
+      const path = c?.path || '';
+      const label = `${name} ${path}`;
+      if (!matches(label)) return;
+      frag.appendChild(mkCard({
+        title: name,
+        subtitle: path ? `路径：${path}` : '',
+        kind: 'category',
+        onClick: async () => {
+          stopAutoRefresh();
+          state.active.category = name;
+          state.active.object = '';
+          state.active.cursor = 0;
+          state.active.sizeInBytes = 0;
+          state.active.bufferLines = [];
+          state.active.parsedItems = [];
+          state.active.parsedLastKey = '';
+          state.active.lastTextKey = '';
+          renderMeta(null);
+          renderLines([]);
+          try {
+            await loadObjectsForNav(name);
+          } catch (err) {
+            msg('error', '加载对象失败：' + (err?.message || err));
+          }
+        }
+      }));
+    });
+  }
+
+  list.innerHTML = '';
+  list.appendChild(frag);
 }
 
 function renderMeta(meta) {

@@ -73,101 +73,134 @@
         <div id="online-tab" class="tab-content">
             <div class="message-container" id="online-messages" data-label="在线日志"></div>
 
-            <div class="config-layout neon-grid">
-                <section class="config-form-section neon-card">
-                    <form id="online-form" class="config-form">
-                        <div class="form-group">
-                            <label for="online-factory-select">厂区</label>
-                            <select id="online-factory-select"></select>
-                        </div>
-                        <div class="form-group">
-                            <label for="online-system-select">系统</label>
-                            <select id="online-system-select"></select>
-                        </div>
+            <div class="selection-panel" id="online-selection">
+                <div class="selection-header">
+                    <h3>选择配置范围</h3>
+                    <p class="selection-description">请先选择要查看的厂区和系统</p>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="online-factory-select">选择厂区</label>
+                        <select id="online-factory-select" class="form-control">
+                            <option value="">-- 请选择厂区 --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="online-system-select">选择系统</label>
+                        <select id="online-system-select" class="form-control">
+                            <option value="">-- 请选择系统 --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-primary" id="enter-online-workspace-btn" type="button">
+                            <i class="fas fa-play"></i> 进入在线工作台
+                        </button>
+                    </div>
+                </div>
+            </div>
 
-                        <div class="analyze-actions" style="margin-top:12px;">
-                            <button type="button" class="btn btn-primary" id="btn-online-load-categories"><i class="fas fa-list"></i> 加载分类</button>
-                            <button type="button" class="btn btn-secondary" id="btn-online-refresh"><i class="fas fa-sync"></i> 刷新</button>
+            <div class="simple-config-workspace" id="online-workspace" style="display:none;">
+                <div class="parser-shell">
+                    <div class="parser-shell__toolbar">
+                        <div class="parser-breadcrumb">
+                            <span class="breadcrumb-label">当前范围</span>
+                            <strong id="online-current-factory">未知厂区</strong>
+                            <span>/</span>
+                            <strong id="online-current-system">未知系统</strong>
                         </div>
-
-                        <div class="form-group" style="margin-top:14px;">
-                            <label for="online-category-select">分类</label>
-                            <select id="online-category-select"></select>
-                        </div>
-                        <div class="form-group">
-                            <label for="online-object-select">对象</label>
-                            <select id="online-object-select"></select>
-                        </div>
-
-                        <div id="online-meta" class="status-badge status-info" style="display:none; margin-top:12px;"></div>
-                    </form>
-                </section>
-
-                <section class="config-list-section neon-card">
-                    <div class="panel-heading">
-                        <div>
-                            <div class="panel-label">在线日志</div>
-                            <h3 style="margin:0;">查看</h3>
+                        <div class="parser-toolbar-actions">
+                            <button class="btn btn-secondary" id="toggle-online-left-nav-btn" type="button"><i class="fas fa-columns"></i>
+                                折叠左栏</button>
+                            <button class="btn btn-tertiary" id="exit-online-workspace-btn" type="button"><i class="fas fa-arrow-left"></i>
+                                退出工作台</button>
                         </div>
                     </div>
 
-                    <div class="form-row" style="margin-bottom:12px;">
-                        <div class="form-group">
-                            <label for="online-lines-select">显示最近</label>
-                            <select id="online-lines-select">
-                                <option value="100">100 行</option>
-                                <option value="200">200 行</option>
-                                <option value="500">500 行</option>
-                                <option value="1000" selected>1000 行</option>
-                                <option value="2000">2000 行</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="online-view-select">视图</label>
-                            <select id="online-view-select">
-                                <option value="raw" selected>原文</option>
-                                <option value="parsed">解析</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="online-order-select">顺序</label>
-                            <select id="online-order-select">
-                                <option value="asc">正序</option>
-                                <option value="desc" selected>倒序</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="online-interval-select">刷新间隔</label>
-                            <select id="online-interval-select">
-                                <option value="500">0.5s</option>
-                                <option value="1000" selected>1s</option>
-                                <option value="2000">2s</option>
-                                <option value="5000">5s</option>
-                            </select>
-                        </div>
-                    </div>
+                    <div class="online-two-column">
+                        <aside class="online-left-nav">
+                            <div class="online-nav-header">
+                                <div class="online-search-box">
+                                    <i class="fas fa-search"></i>
+                                    <input id="online-nav-search" type="text" placeholder="筛选分类/对象">
+                                </div>
+                            </div>
+                            <div id="online-nav-list" class="online-card-list"></div>
+                        </aside>
 
-                    <div class="form-row" style="margin-bottom:12px;">
-                        <div class="form-group">
-                            <label for="online-filter-input">关键字过滤（包含）</label>
-                            <input id="online-filter-input" type="text" placeholder="输入关键字...">
-                        </div>
-                        <div class="form-group" style="min-width: 160px;">
-                            <label for="online-auto-refresh">自动刷新</label>
-                            <label class="checkbox-item" style="height: var(--control-height); margin: 0;">
-                                <input id="online-auto-refresh" type="checkbox">
-                                启用
-                            </label>
-                        </div>
-                    </div>
+                        <section class="online-view-panel">
+                            <div class="online-controls">
+                                <div class="online-controls-top">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="toggle-online-controls-btn">
+                                        <i class="fas fa-sliders-h"></i> 收起设置
+                                    </button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="toggle-online-fullscreen-btn">
+                                        <i class="fas fa-expand"></i> 全屏
+                                    </button>
+                                </div>
+                                <div class="form-row online-controls-row">
+                                    <div class="form-group">
+                                        <label for="online-lines-select">显示最近</label>
+                                        <select id="online-lines-select">
+                                            <option value="100">100 行</option>
+                                            <option value="200">200 行</option>
+                                            <option value="500">500 行</option>
+                                            <option value="1000" selected>1000 行</option>
+                                            <option value="2000">2000 行</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="online-view-select">视图</label>
+                                        <select id="online-view-select">
+                                            <option value="raw" selected>原文</option>
+                                            <option value="parsed">解析</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="online-order-select">顺序</label>
+                                        <select id="online-order-select">
+                                            <option value="asc">正序</option>
+                                            <option value="desc" selected>倒序</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="online-interval-select">刷新间隔</label>
+                                        <select id="online-interval-select">
+                                            <option value="500">0.5s</option>
+                                            <option value="1000" selected>1s</option>
+                                            <option value="2000">2s</option>
+                                            <option value="5000">5s</option>
+                                        </select>
+                                    </div>
+                                </div>
 
-                    <div class="analyze-actions" style="margin-bottom:12px;">
-                        <button type="button" class="btn btn-primary" id="btn-online-open"><i class="fas fa-play"></i> 打开查看</button>
-                        <button type="button" class="btn btn-secondary" id="btn-online-stop"><i class="fas fa-stop"></i> 暂停</button>
-                    </div>
+                                <div class="form-row online-controls-row">
+                                    <div class="form-group">
+                                        <label for="online-filter-input">关键字过滤（包含）</label>
+                                        <input id="online-filter-input" type="text" placeholder="输入关键字...">
+                                    </div>
+                                    <div class="form-group online-auto-refresh-group">
+                                        <label for="online-auto-refresh">自动刷新</label>
+                                        <label class="checkbox-item" style="height: var(--control-height); margin: 0;">
+                                            <input id="online-auto-refresh" type="checkbox">
+                                            启用
+                                        </label>
+                                    </div>
+                                </div>
 
-                    <div id="online-log-view" class="online-log-view"></div>
-                </section>
+                                <div class="analyze-actions online-controls-actions">
+                                    <button type="button" class="btn btn-primary" id="btn-online-open"><i class="fas fa-play"></i> 打开查看</button>
+                                    <button type="button" class="btn btn-secondary" id="btn-online-stop"><i class="fas fa-stop"></i> 暂停</button>
+                                    <button type="button" class="btn btn-secondary" id="btn-online-refresh"><i class="fas fa-sync"></i> 刷新</button>
+                                </div>
+
+                                <div id="online-meta" class="status-badge status-info" style="display:none;"></div>
+                            </div>
+
+                            <div id="online-log-view" class="online-log-view"></div>
+                        </section>
+                    </div>
+                </div>
             </div>
         </div>
 
