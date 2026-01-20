@@ -9,7 +9,7 @@ const qs = (sel, scope = document) => scope.querySelector(sel);
 const state = {
   configs: [],
   factories: [],
-  systemsByFactory: new Map(),
+  systems: [],
   selected: { factory: '', system: '' },
   selectedConfig: null,
   categories: [],
@@ -97,28 +97,54 @@ function bindEvents() {
 
 async function bootstrap() {
   await loadServerConfigs();
+  await loadFactories();
   initFactorySystemSelectors();
-  msg('info', '请选择服务器后加载分类');
+  const factoryCount = Array.isArray(state.factories) ? state.factories.length : 0;
+  msg('info', `已加载厂区：${factoryCount} 个，请选择后加载分类`);
 }
 
 async function loadServerConfigs() {
   state.configs = await api.getServerConfigs();
+}
 
-  const factories = new Set();
-  const systemsByFactory = new Map();
-  for (const cfg of state.configs) {
-    const f = cfg?.factory || '';
-    const s = cfg?.system || '';
-    if (!f || !s) continue;
-    factories.add(f);
-    if (!systemsByFactory.has(f)) systemsByFactory.set(f, new Set());
-    systemsByFactory.get(f).add(s);
+async function loadFactories() {
+  try {
+    const list = await api.getFactories();
+    state.factories = Array.isArray(list) ? list : [];
+  } catch (err) {
+    state.factories = [];
   }
 
-  state.factories = Array.from(factories).sort();
-  state.systemsByFactory = new Map(
-    Array.from(systemsByFactory.entries()).map(([f, set]) => [f, Array.from(set).sort()])
-  );
+  if (!state.factories.length && Array.isArray(state.configs) && state.configs.length) {
+    const uniq = new Map();
+    for (const cfg of state.configs) {
+      const f = (cfg?.factory || '').trim();
+      if (!f) continue;
+      if (!uniq.has(f)) uniq.set(f, { id: f, name: f });
+    }
+    state.factories = Array.from(uniq.values());
+  }
+}
+
+async function loadSystems(factoryId) {
+  try {
+    const list = await api.getSystems(factoryId || '');
+    state.systems = Array.isArray(list) ? list : [];
+  } catch (err) {
+    state.systems = [];
+  }
+
+  if (!state.systems.length && Array.isArray(state.configs) && state.configs.length) {
+    const uniq = new Map();
+    for (const cfg of state.configs) {
+      const f = (cfg?.factory || '').trim();
+      if (f !== (factoryId || '').trim()) continue;
+      const s = (cfg?.system || '').trim();
+      if (!s) continue;
+      if (!uniq.has(s)) uniq.set(s, { id: s, name: s });
+    }
+    state.systems = Array.from(uniq.values());
+  }
 }
 
 function initFactorySystemSelectors() {
@@ -127,32 +153,52 @@ function initFactorySystemSelectors() {
 
   if (factorySel) {
     factorySel.innerHTML = `<option value="">请选择厂区</option>` +
-      state.factories.map(f => `<option value="${escapeHtmlAttr(f)}">${escapeHtmlText(f)}</option>`).join('');
+      state.factories
+        .map((f) => `<option value="${escapeHtmlAttr(f.id)}">${escapeHtmlText(f.name || f.id)}</option>`)
+        .join('');
   }
 
-  const updateSystems = (factory) => {
-    const systems = state.systemsByFactory.get(factory) || [];
-    if (systemSel) {
-      systemSel.innerHTML = `<option value="">请选择系统</option>` +
-        systems.map(s => `<option value="${escapeHtmlAttr(s)}">${escapeHtmlText(s)}</option>`).join('');
-    }
+  const renderSystems = () => {
+    if (!systemSel) return;
+    systemSel.innerHTML = `<option value="">请选择系统</option>` +
+      state.systems
+        .map((s) => `<option value="${escapeHtmlAttr(s.id)}">${escapeHtmlText(s.name || s.id)}</option>`)
+        .join('');
   };
 
-  factorySel?.addEventListener('change', () => {
+  factorySel?.addEventListener('change', async () => {
     state.selected.factory = factorySel.value || '';
     state.selected.system = '';
     state.selectedConfig = null;
-    updateSystems(state.selected.factory);
+    state.systems = [];
+    renderSystems();
     resetRemoteSelection();
+    if (state.selected.factory) {
+      try {
+        await loadSystems(state.selected.factory);
+        renderSystems();
+      } catch (err) {
+        console.error('[online] loadSystems failed', err);
+        msg('error', '加载系统失败：' + (err?.message || err));
+      }
+    }
   });
 
   systemSel?.addEventListener('change', () => {
     state.selected.system = systemSel.value || '';
     state.selectedConfig = resolveSelectedConfig();
     resetRemoteSelection();
+    if (state.selected.factory && state.selected.system && !state.selectedConfig) {
+      msg('warning', '未找到匹配的服务器配置（请检查服务器配置页是否存在对应厂区/系统）');
+    }
   });
 
-  updateSystems('');
+  renderSystems();
+
+  if (factorySel && state.factories.length === 1) {
+    factorySel.value = state.factories[0]?.id || '';
+    factorySel.dispatchEvent(new Event('change'));
+  }
 }
 
 function resolveSelectedConfig() {
@@ -317,10 +363,6 @@ function stopAutoRefresh() {
     state.active.running = false;
     msg('info', '已暂停在线查看');
   }
-}
-
-async function startAutoRefresh() {
-  return startAutoRefresh({ forceRestart: false });
 }
 
 async function startAutoRefresh({ forceRestart = false } = {}) {
