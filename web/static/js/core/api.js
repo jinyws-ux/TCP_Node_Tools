@@ -185,4 +185,7 @@ export const api = {
 
   /* -------- 在线日志（本工具后端增量解析） -------- */
   parseOnlineIncremental: (payload) => post('/api/online/parse-incremental', payload),
+
+  /* -------- 在线日志（快照分析） -------- */
+  analyzeOnlineCurrent: (payload) => post('/api/online/analyze-current', payload),
 };

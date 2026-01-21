@@ -114,6 +114,13 @@ function bindEvents() {
     });
   });
 
+  qs('#btn-online-analyze-current')?.addEventListener('click', () => {
+    analyzeCurrentLogs().catch((err) => {
+      console.error('[online] analyze current failed', err);
+      msg('error', '分析当前日志失败：' + (err?.message || err));
+    });
+  });
+
   qs('#btn-online-stop')?.addEventListener('click', stopAutoRefresh);
 
   qs('#online-lines-select')?.addEventListener('change', () => {
@@ -145,6 +152,41 @@ function bindEvents() {
     state.nav.filter = (qs('#online-nav-search')?.value || '').trim().toLowerCase();
     renderNavList();
   });
+}
+
+async function analyzeCurrentLogs() {
+  const cfg = state.selectedConfig || resolveSelectedConfig();
+  if (!cfg) throw new Error('请先选择厂区与系统并进入工作台');
+  if (!state.active.category) throw new Error('请先选择分类');
+  if (!state.active.object) throw new Error('请先选择对象');
+  const raw = Array.isArray(state.active.bufferLines) ? state.active.bufferLines : [];
+  if (!raw.length) throw new Error('请先打开查看并加载日志内容');
+
+  const maxLines = 6000;
+  const lines = raw.length > maxLines ? raw.slice(raw.length - maxLines) : raw.slice();
+
+  setButtonLoading('btn-online-analyze-current', true, { text: '分析中...' });
+  try {
+    const res = await api.analyzeOnlineCurrent({
+      factory: state.selected.factory,
+      system: state.selected.system,
+      serverAlias: cfg?.server?.alias || '',
+      category: state.active.category,
+      objectName: state.active.object,
+      lines,
+    });
+    if (!res || res.success === false) {
+      throw new Error(res?.error || '分析失败');
+    }
+    const reportId = res?.report_id || '';
+    if (!reportId) {
+      throw new Error('分析已完成，但未返回报告ID');
+    }
+    window.open(`${window.location.origin}/report/${encodeURIComponent(reportId)}`, '_blank');
+    msg('success', '已生成分析报告，已在新标签页打开');
+  } finally {
+    setButtonLoading('btn-online-analyze-current', false);
+  }
 }
 
 async function bootstrap() {

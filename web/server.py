@@ -476,6 +476,62 @@ def api_online_parse_incremental():
         return jsonify({'success': False, 'error': '在线日志增量解析失败'}), 500
 
 
+@app.route('/api/online/analyze-current', methods=['POST'])
+def api_online_analyze_current():
+    try:
+        data = request.get_json(force=True) or {}
+        alias = (data.get('serverAlias') or '').strip()
+        factory = (data.get('factory') or '').strip()
+        system = (data.get('system') or '').strip()
+        category = (data.get('category') or '').strip()
+        object_name = (data.get('objectName') or '').strip()
+        lines = data.get('lines') or []
+
+        if not (factory and system and alias and isinstance(lines, list)):
+            return jsonify({'success': False, 'error': '缺少必要参数或参数格式错误'}), 400
+        if not lines:
+            return jsonify({'success': False, 'error': '当前没有可分析的日志内容'}), 400
+        if len(lines) > 20000:
+            return jsonify({'success': False, 'error': '日志内容过多，请缩小窗口后再分析'}), 400
+
+        def _safe_part(text: str, max_len: int = 48) -> str:
+            s = re.sub(r'[^a-zA-Z0-9._\\-]+', '_', str(text or '').strip())
+            s = s.strip('._-')
+            return s[:max_len] if s else 'NA'
+
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"online_{_safe_part(alias)}_{_safe_part(category)}_{_safe_part(object_name)}_{ts}.log"
+        snap_dir = os.path.join(DOWNLOAD_DIR, factory, system, '_online_snapshots')
+        os.makedirs(snap_dir, exist_ok=True)
+        snap_path = os.path.join(snap_dir, filename)
+
+        with open(snap_path, 'w', encoding='utf-8', errors='replace') as f:
+            for line in lines:
+                f.write(str(line).rstrip('\n'))
+                f.write('\n')
+
+        config_id = f"{factory}_{system}.json"
+        result = analysis_service.analyze_logs(
+            [snap_path],
+            config_id,
+            options={
+                'generate_html': True,
+                'generate_original_log': False,
+                'generate_sorted_log': False,
+            }
+        )
+        report_id = result.get('report_id') or ''
+        result.pop('report_data', None)
+        result['snapshot_path'] = snap_path
+        result['report_id'] = report_id
+        return jsonify(result)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    except Exception as exc:
+        logger.error(f"在线日志快照分析失败: {exc}", exc_info=True)
+        return jsonify({'success': False, 'error': '在线日志快照分析失败'}), 500
+
+
 @app.route('/api/save-config', methods=['POST'])
 def save_server_config():
     """保存服务器配置"""

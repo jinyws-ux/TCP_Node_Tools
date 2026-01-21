@@ -53,7 +53,8 @@ class AnalysisService:
         if result.get("success"):
             # 保存报告数据到报告数据存储
             if result.get("report_data"):
-                self.save_report_data(result["report_data"])
+                report_id = self.save_report_data(result["report_data"])
+                result["report_id"] = report_id
             # 不再保存HTML报告映射，因为我们已经迁移到报告数据存储
         return result
 
