@@ -396,7 +396,7 @@ async function loadCategoriesForNav() {
   if (!cfg) throw new Error('请先选择厂区与系统');
   state.selectedConfig = cfg;
 
-  const categories = await api.getOnlineCategories({ serverAlias: cfg?.server?.alias || '' });
+  const categories = await api.getOnlineCategories({ serverAlias: cfg?.server?.alias || '', system: state.selected.system });
   state.categories = Array.isArray(categories) ? categories : [];
   state.nav.mode = 'categories';
   state.active.category = '';
@@ -413,6 +413,7 @@ async function loadObjectsForNav(categoryName) {
   if (!cat) return;
   const objects = await api.getOnlineObjects({
     serverAlias: cfg?.server?.alias || '',
+    system: state.selected.system,
     category: cat
   });
   state.objects = Array.isArray(objects) ? objects : [];
@@ -426,6 +427,7 @@ async function loadMeta() {
   if (!state.active.category || !state.active.object) return;
   const meta = await api.getOnlineMetadata({
     serverAlias: cfg?.server?.alias || '',
+    system: state.selected.system,
     category: state.active.category,
     objectName: state.active.object
   });
@@ -671,6 +673,7 @@ async function fetchAndRender({ forceTail = false, _retryRotate = false, resetPa
   const begin = forceTail ? cursor : Math.max(0, cursor - state.active.byteOverlap);
   const data = await api.getOnlineData({
     serverAlias,
+    system: state.selected.system,
     category,
     objectName,
     begin,

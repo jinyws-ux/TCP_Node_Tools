@@ -23,18 +23,20 @@ function ensureSuccess(data, fallbackMsg) {
   throw new Error(err);
 }
 
-function buildOnlineBaseUrl(serverAlias) {
+function buildOnlineBaseUrl(serverAlias, system) {
   const alias = (serverAlias || '').trim();
   if (!alias) throw new Error('缺少服务器别名');
-  return `https://${alias}.bmwbrill.cn:8080`;
+  const sys = String(system || '').trim().toUpperCase();
+  const domain = sys === 'OSM' ? 'bba' : 'bmwbrill.cn';
+  return `https://${alias}.${domain}:8080`;
 }
 
-async function onlineGet(serverAlias, path, query) {
+async function onlineGet(serverAlias, path, query, { system } = {}) {
   const toQueryString = (obj) => obj
     ? new URLSearchParams(Object.entries(obj).filter(([, v]) => v !== undefined && v !== null && v !== '')).toString()
     : '';
 
-  const base = buildOnlineBaseUrl(serverAlias);
+  const base = buildOnlineBaseUrl(serverAlias, system);
   const qs = toQueryString(query);
   const url = `${base}${path}${qs ? `?${qs}` : ''}`;
 
@@ -51,7 +53,7 @@ async function onlineGet(serverAlias, path, query) {
     return res.json();
   } catch (err) {
     if (!isNetworkErr(err)) throw err;
-    const proxyQs = toQueryString({ alias: serverAlias, path, ...(query || {}) });
+    const proxyQs = toQueryString({ alias: serverAlias, path, system, ...(query || {}) });
     const proxyUrl = `/api/online/proxy?${proxyQs}`;
     const res = await fetch(proxyUrl, { method: 'GET' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -142,22 +144,26 @@ export const api = {
   },
 
   /* -------- 在线日志（直连 log_file_viewer） -------- */
-  async getOnlineCategories({ serverAlias }) {
-    const data = await onlineGet(serverAlias, '/logging');
+  async getOnlineCategories({ serverAlias, system }) {
+    const data = await onlineGet(serverAlias, '/logging', null, { system });
     return data?.collection || [];
   },
-  async getOnlineObjects({ serverAlias, category }) {
-    const data = await onlineGet(serverAlias, `/logging/${encodeURIComponent(category)}`);
+  async getOnlineObjects({ serverAlias, system, category }) {
+    const data = await onlineGet(serverAlias, `/logging/${encodeURIComponent(category)}`, null, { system });
     return data?.collection || [];
   },
-  async getOnlineMetadata({ serverAlias, category, objectName }) {
+  async getOnlineMetadata({ serverAlias, system, category, objectName }) {
     return onlineGet(
       serverAlias,
       `/logging/${encodeURIComponent(category)}/${encodeURIComponent(objectName)}`
+      ,
+      null,
+      { system }
     );
   },
   async getOnlineData({
     serverAlias,
+    system,
     category,
     objectName,
     begin = 0,
@@ -179,7 +185,8 @@ export const api = {
         positive_filter,
         negative_filter,
         surrounding_lines,
-      }
+      },
+      { system }
     );
   },
 

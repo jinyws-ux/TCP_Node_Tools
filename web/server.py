@@ -226,6 +226,7 @@ def _is_safe_server_alias(alias: str) -> bool:
 def api_online_proxy():
     alias = (request.args.get('alias') or '').strip()
     path = (request.args.get('path') or '').strip()
+    system = (request.args.get('system') or '').strip()
 
     if not _is_safe_server_alias(alias):
         return jsonify({'success': False, 'error': '无效的服务器别名'}), 400
@@ -236,8 +237,13 @@ def api_online_proxy():
     query_args = dict(request.args) or {}
     query_args.pop('alias', None)
     query_args.pop('path', None)
+    query_args.pop('system', None)
 
-    base = f"https://{alias}.bmwbrill.cn:8080"
+    if not system:
+        _, resolved_system = _resolve_factory_system_by_alias(alias)
+        system = resolved_system
+    domain = "bba" if system.strip().upper() == "OSM" else "bmwbrill.cn"
+    base = f"https://{alias}.{domain}:8080"
     url = f"{base}{path}"
     if query_args:
         url = f"{url}?{urllib.parse.urlencode(query_args, doseq=True)}"
