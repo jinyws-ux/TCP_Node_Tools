@@ -382,6 +382,7 @@ function focusPreviewPath(path) {
 async function enterWorkspace(factory, system) {
   workingFactory = factory;
   workingSystem = system;
+  const tab = qs('#parser-config-tab');
 
   // 面包屑
   const fCrumb = qs('#current-factory-breadcrumb');
@@ -391,7 +392,7 @@ async function enterWorkspace(factory, system) {
 
   // 切换视图
   qs('#factory-system-selection')?.setAttribute('style', 'display:none;');
-  qs('.simple-config-workspace')?.setAttribute('style', 'display:block;');
+  qs('.simple-config-workspace', tab || document)?.setAttribute('style', 'display:block;');
 
   try {
     await Promise.all([refreshTree(), refreshFullConfig(), refreshStats()]);
@@ -403,8 +404,9 @@ async function enterWorkspace(factory, system) {
 }
 
 function exitWorkspace() {
+  const tab = qs('#parser-config-tab');
   qs('#factory-system-selection')?.setAttribute('style', 'display:block;');
-  qs('.simple-config-workspace')?.setAttribute('style', 'display:none;');
+  qs('.simple-config-workspace', tab || document)?.setAttribute('style', 'display:none;');
   const treeHost = qs('#left-nav-tree');
   const jsonBox = qs('#json-preview-content');
   const rightBox = qs('#full-layers-container');
