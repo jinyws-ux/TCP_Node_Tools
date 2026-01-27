@@ -73,6 +73,7 @@ class ReportDataStore:
             }
             
             # 保存内容数据
+            os.makedirs(self.report_content_dir, exist_ok=True)
             content_file = os.path.join(self.report_content_dir, f'{report_id}.json')
             with open(content_file, 'w', encoding='utf-8') as f:
                 json.dump(content_data, f, ensure_ascii=False, indent=2)

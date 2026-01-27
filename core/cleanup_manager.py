@@ -11,6 +11,7 @@ from typing import Dict, Iterable, List, Set, Optional
 
 from .log_metadata_store import LogMetadataStore
 from .report_mapping_store import ReportMappingStore
+from .report_data_store import ReportDataStore
 
 
 class CleanupManager:
@@ -34,6 +35,7 @@ class CleanupManager:
         self.config_file = os.path.join(self.config_dir, "cleanup_config.json")
         self.cleanup_timer: Optional[threading.Timer] = None
         self.config = self._load_config()
+        self.report_data_store = ReportDataStore(self.html_logs_dir)
 
     def _load_config(self) -> Dict[str, any]:
         """加载清理配置。"""
@@ -182,21 +184,17 @@ class CleanupManager:
                 metadata_path = log_info["metadata_path"]
                 related_reports = log_info["related_reports"]
                 
-                # 清理逻辑：
-                # 1. 如果未锁定，直接清理
-                # 2. 如果已锁定但已过期 (超过14天)，也清理
-                if is_locked and not is_expired:
+                if is_locked:
                     stats["locked_logs"] += 1
-                    self.logger.info(f"跳过锁定文件 (未过期): {log_path}")
-                    continue
-                
-                if is_locked and is_expired:
-                    retention_days = self.config.get("retention_days", 14)
-                    self.logger.info(f"处理已过期锁定文件 (超过{retention_days}天): {log_path}")
                 else:
-                    self.logger.info(f"处理未锁定文件: {log_path}")
-                
-                stats["unlocked_logs"] += 1
+                    stats["unlocked_logs"] += 1
+
+                retention_days = self.config.get("retention_days", 14)
+                if not is_expired:
+                    self.logger.info(f"跳过未过期文件 (保留{retention_days}天): {log_path}")
+                    continue
+
+                self.logger.info(f"处理已过期文件 (超过{retention_days}天): {log_path}")
                 
                 # 删除日志文件和关联元数据
                 try:
@@ -233,14 +231,9 @@ class CleanupManager:
             # 删除空目录
             deleted_dirs = self._clean_empty_directories()
             stats["deleted_directories"] = deleted_dirs
-            
-            # 处理孤立报告文件
-            orphaned_reports = self._clean_orphaned_reports()
-            stats["deleted_reports"] += orphaned_reports
-            
-            # 处理孤立元数据文件
-            orphaned_metadata = self._clean_orphaned_metadata()
-            stats["deleted_metadata"] += orphaned_metadata
+
+            deleted_report_data = self._clean_expired_report_data()
+            stats["deleted_reports"] += deleted_report_data
             
             stats["end_time"] = datetime.now().isoformat()
             stats["duration_seconds"] = round(time.time() - start_time, 2)
@@ -284,6 +277,47 @@ class CleanupManager:
         
         return deleted_count
 
+    def _clean_expired_report_data(self) -> int:
+        deleted = 0
+        retention_days = int(self.config.get("retention_days", 14) or 14)
+        now = datetime.now()
+        reports = self.report_data_store.list_reports() or []
+        for meta in reports:
+            report_id = (meta.get("report_id") or "").strip()
+            if not report_id:
+                continue
+
+            created_at = (meta.get("created_at") or "").strip()
+            created_dt = None
+            if created_at:
+                try:
+                    ts = created_at.replace("Z", "+00:00")
+                    created_dt = datetime.fromisoformat(ts)
+                    if created_dt.tzinfo is not None:
+                        created_dt = created_dt.astimezone(tz=None).replace(tzinfo=None)
+                except Exception:
+                    created_dt = None
+
+            if created_dt is None:
+                content_file = os.path.join(self.report_data_store.report_content_dir, f"{report_id}.json")
+                if os.path.exists(content_file):
+                    try:
+                        created_dt = datetime.fromtimestamp(os.path.getmtime(content_file))
+                    except Exception:
+                        created_dt = None
+
+            if created_dt is None:
+                continue
+
+            age_days = (now - created_dt).total_seconds() / (24 * 3600)
+            if age_days <= retention_days:
+                continue
+
+            if self.report_data_store.delete_report(report_id):
+                deleted += 1
+
+        return deleted
+
     def _clean_empty_dirs_recursive(self, directory: str) -> int:
         """递归清理空目录。"""
         deleted_count = 0
@@ -297,6 +331,10 @@ class CleanupManager:
                 dir_path = os.path.join(root, dir_name)
                 try:
                     # 检查目录是否为空
+                    # 保护 reports_data 及其子目录不被删除
+                    if "reports_data" in dir_path:
+                        continue
+
                     if not os.listdir(dir_path):
                         os.rmdir(dir_path)
                         deleted_count += 1
