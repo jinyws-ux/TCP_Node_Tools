@@ -156,7 +156,7 @@ export async function mount(ctx) {
     const data = await fetchJson('/api/pcl/servers');
     servers = Array.isArray(data.items) ? data.items : [];
     fillServers();
-    serverPath.textContent = data.remoteDir || servers?.[0]?.path || '-';
+    serverPath.textContent = servers?.[0]?.path || '-';
     const ghost = data.ghostpclExe || '-';
     const ghostOk = !!data.ghostpclExists;
     ghostpclInfo.textContent = ghostOk ? `已就绪：${ghost}` : `未找到：${ghost}`;

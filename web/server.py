@@ -64,7 +64,6 @@ def _load_paths_config(root: str) -> Dict[str, str]:
         'REPORT_MAPPING_FILE': _resolve_dir(data.get('REPORT_MAPPING_FILE', ''), root) if data.get('REPORT_MAPPING_FILE') else '',
         'WIDGETS_DIR': _resolve_dir(data.get('WIDGETS_DIR', 'widgets'), root),
         'GHOSTPCL_EXE': _resolve_dir(data.get('GHOSTPCL_EXE', ''), root) if data.get('GHOSTPCL_EXE') else '',
-        'PCL_REMOTE_DIR': str(data.get('PCL_REMOTE_DIR') or '/var/log/pcl_output/').strip() or '/var/log/pcl_output/',
     }
 
 paths_cfg = _load_paths_config(project_root)
@@ -110,7 +109,11 @@ os.makedirs(WIDGETS_DIR, exist_ok=True)
 
 REPORT_MAPPING_FILE = paths_cfg['REPORT_MAPPING_FILE'] or os.path.join(HTML_LOGS_DIR, 'report_mappings.json')
 
-PCL_REMOTE_DIR = paths_cfg.get('PCL_REMOTE_DIR') or '/var/log/pcl_output/'
+PCL_REMOTE_DIR_BY_FACTORY: Dict[str, str] = {
+    "DaDong": "/global/apipso71/apps/apipso71/zwr_test",
+    "TieXi": "/global/apipso72/apps/apipso72/tc_test",
+    "Lydia": "/global/apipso52/apps/apipso52/test",
+}
 GHOSTPCL_EXE = paths_cfg.get('GHOSTPCL_EXE') or default_ghostpcl_exe(project_root)
 
 # 服务对象
@@ -142,6 +145,10 @@ def _pcl_resolve_server(server_config_id: str):
     if not _pcl_is_osm(cfg.get("system") or ""):
         return None, "该配置不是 OSM 系统"
     server = cfg.get("server") or {}
+    factory = (cfg.get("factory") or "").strip()
+    remote_dir = (PCL_REMOTE_DIR_BY_FACTORY.get(factory) or "").strip()
+    if not remote_dir:
+        return None, f"该厂区未配置 PCL 路径: {factory}"
     hostname = (server.get("hostname") or "").strip()
     username = (server.get("username") or "").strip()
     if not hostname or not username:
@@ -150,7 +157,7 @@ def _pcl_resolve_server(server_config_id: str):
         "host": hostname,
         "port": int(server.get("port") or 22),
         "user": username,
-        "path": PCL_REMOTE_DIR,
+        "path": remote_dir,
     }, None
 
 def _pcl_get_password(server_config_id: str) -> str:
@@ -2036,6 +2043,7 @@ def _pcl_public_server(s: Dict[str, Any]) -> Dict[str, Any]:
     system = str(s.get("system") or "").strip()
     hostname = str(server.get("hostname") or "").strip()
     username = str(server.get("username") or "").strip()
+    remote_dir = (PCL_REMOTE_DIR_BY_FACTORY.get(factory) or "").strip() or "-"
     return {
         "id": str(s.get("id") or "").strip(),
         "factory": factory,
@@ -2044,7 +2052,7 @@ def _pcl_public_server(s: Dict[str, Any]) -> Dict[str, Any]:
         "host": hostname,
         "port": int(server.get("port") or 22),
         "user": username,
-        "path": PCL_REMOTE_DIR,
+        "path": remote_dir,
     }
 
 @pcl_bp.route("/api/pcl/servers", methods=["GET"])
@@ -2056,7 +2064,7 @@ def api_pcl_servers():
             "items": items,
             "ghostpclExe": pcl_job_manager.ghostpcl_exe,
             "ghostpclExists": os.path.exists(pcl_job_manager.ghostpcl_exe),
-            "remoteDir": PCL_REMOTE_DIR,
+            "remoteDir": "",
         }
     )
 

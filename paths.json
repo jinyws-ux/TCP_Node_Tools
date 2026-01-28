@@ -7,6 +7,5 @@
   "HTML_LOGS_DIR": "html_logs",
   "WIDGETS_DIR": "widgets",
   "REPORT_MAPPING_FILE": "",
-  "GHOSTPCL_EXE": "",
-  "PCL_REMOTE_DIR": "/var/log/pcl_output/"
+  "GHOSTPCL_EXE": ""
 }
