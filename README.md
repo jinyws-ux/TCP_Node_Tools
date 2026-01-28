@@ -45,6 +45,7 @@ py -3.12 -m web.server
   "MAPPING_CONFIG_DIR": "configs/mappingconfig",
   "DOWNLOAD_DIR": "downloads",
   "HTML_LOGS_DIR": "html_logs",
+  "WIDGETS_DIR": "widgets",
   "REPORT_MAPPING_FILE": ""
 }
 ```
@@ -57,10 +58,34 @@ py -3.12 -m web.server
   "MAPPING_CONFIG_DIR": "\\\\nas-server\\share\\LogToolData\\configs\\mappingconfig",
   "DOWNLOAD_DIR": "\\\\nas-server\\share\\LogToolData\\downloads",
   "HTML_LOGS_DIR": "\\\\nas-server\\share\\LogToolData\\html_logs",
+  "WIDGETS_DIR": "\\\\nas-server\\share\\LogToolData\\widgets",
   "REPORT_MAPPING_FILE": "\\\\nas-server\\share\\LogToolData\\html_logs\\report_mappings.json"
 }
 ```
 - 说明：绝对路径（含 UNC）优先；留空 `REPORT_MAPPING_FILE` 则默认使用 `HTML_LOGS_DIR/report_mappings.json`。
+
+## 小工具（Widgets）热加载
+- 目标：把与主体无关的便利小工具做成可独立投放、可替换的模块，无需重新打包主程序。
+- 放置目录：通过 `paths.json` 的 `WIDGETS_DIR` 指向一个可写目录（本地或 NAS），运行时会扫描其子目录。
+- 目录结构约定：
+```
+WIDGETS_DIR/
+  <widget_id>/
+    widget.json
+    index.js
+    style.css (可选)
+    ... (其它静态资源可选)
+```
+- `widget.json` 最小字段：
+  - `id`：必须等于目录名
+  - `name`：显示名称
+  - `entry`：入口 ES Module 文件名（例如 `index.js`）
+  - `css`：可选，字符串数组（例如 `["style.css"]`）
+- 前端加载方式：
+  - 访问“工具箱”标签页，点击“刷新列表”拉取 `/api/widgets/manifest`
+  - 点击某个小工具后通过 `import(entryUrl?v=<version>)` 动态加载并挂载到页面
+- 小工具入口导出约定：
+  - 必须导出 `mount(ctx)`（或 `default.mount(ctx)`），并返回 `{ unmount() }`（可选但建议提供）
 
 ## 打包命令（PyInstaller）
 - 一目录模式（推荐分发）：

@@ -16,6 +16,7 @@ window.setButtonLoading = ui.setButtonLoading;
 
 const qs = (sel, scope = document) => scope.querySelector(sel);
 const qsa = (sel, scope = document) => Array.from(scope.querySelectorAll(sel));
+let currentTabName = null;
 
 /* ---------- 模块懒加载 ---------- */
 async function loadModule(tabName) {
@@ -75,6 +76,14 @@ async function switchTab(tabName) {
   const activeEl = document.activeElement;
   if (activeEl && typeof activeEl.blur === 'function') {
     activeEl.blur();
+  }
+  const prev = currentTabName;
+  currentTabName = tabName;
+  if (prev && prev !== tabName) {
+    const prevMod = loadedModules.get(prev);
+    if (prevMod && typeof prevMod.deactivate === 'function') {
+      try { prevMod.deactivate(); } catch (_) { }
+    }
   }
   activateTab(tabName);
   const mod = await loadModule(tabName);
@@ -144,6 +153,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 默认打开第一个 tab
   const first = qs('.tab')?.getAttribute('data-tab') || 'download';
   await switchTab(first);
+
+  import('./modules/tools.js')
+    .then((m) => {
+      if (m && typeof m.initFloatingTools === 'function') {
+        m.initFloatingTools();
+      }
+    })
+    .catch((err) => console.warn('[app] 工具箱悬浮窗加载失败', err));
 
   // 已移除：退出后台按钮及相关逻辑
 

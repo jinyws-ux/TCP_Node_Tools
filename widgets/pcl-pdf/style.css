@@ -1,0 +1,98 @@
+.pcl-root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pcl-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pcl-title {
+  margin: 0;
+  font-size: 16px;
+  color: #101828;
+}
+
+.pcl-subtitle {
+  color: #5b6474;
+  font-size: 12px;
+}
+
+.pcl-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.pcl-form .pcl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pcl-form label {
+  font-size: 12px;
+  color: #344054;
+}
+
+.pcl-input, .pcl-select {
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.pcl-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.pcl-box {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 12px;
+}
+
+.pcl-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  color: #5b6474;
+  font-size: 12px;
+}
+
+.pcl-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pcl-bar {
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.pcl-bar > div {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #3b82f6, #2563eb);
+  transition: width 0.15s ease;
+}
+
+.pcl-log {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  color: #1f2937;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

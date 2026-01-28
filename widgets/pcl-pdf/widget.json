@@ -1,0 +1,9 @@
+{
+  "id": "pcl-pdf",
+  "name": "PCL 转 PDF",
+  "version": "1.0.0",
+  "entry": "index.js",
+  "css": ["style.css"],
+  "description": "从服务器下载 PCL/PRN 并转换为 PDF。",
+  "icon": "fas fa-print"
+}

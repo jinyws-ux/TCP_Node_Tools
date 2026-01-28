@@ -972,6 +972,41 @@
             <p>ITCC日志分析系统 &copy; 2025 | 版本 0.0.1 Beta</p>
         </footer>
     </div>
+
+    <div id="widget-drawer-backdrop" class="widget-drawer-backdrop" style="display:none;"></div>
+    <button id="widget-fab" type="button" class="widget-fab" aria-label="打开工具箱">
+        <i class="fas fa-toolbox"></i>
+    </button>
+    <aside id="widget-drawer" class="widget-drawer" aria-hidden="true">
+        <div class="widget-drawer-header">
+            <div class="widget-drawer-title">
+                <i class="fas fa-toolbox"></i>
+                <strong>工具箱</strong>
+            </div>
+            <div class="widget-drawer-actions">
+                <button type="button" class="btn btn-secondary" id="widget-drawer-refresh-btn"><i class="fas fa-sync"></i></button>
+                <button type="button" class="btn btn-secondary" id="widget-drawer-close-btn"><i class="fas fa-times"></i></button>
+            </div>
+        </div>
+        <div class="message-container" id="widget-drawer-messages" data-label="工具箱"></div>
+        <div class="widget-drawer-body">
+            <div id="widget-drawer-list" class="widget-drawer-list"></div>
+        </div>
+    </aside>
+
+    <div id="widget-modal-backdrop" class="widget-modal-backdrop" style="display:none;"></div>
+    <section id="widget-modal" class="widget-modal" aria-hidden="true">
+        <div id="widget-modal-header" class="widget-modal-header">
+            <div class="widget-modal-title">
+                <i class="fas fa-window-maximize"></i>
+                <strong id="widget-modal-title">小工具</strong>
+            </div>
+            <div class="widget-modal-actions">
+                <button type="button" class="btn btn-secondary" id="widget-modal-close-btn"><i class="fas fa-times"></i></button>
+            </div>
+        </div>
+        <div id="widget-modal-host" class="widget-modal-host"></div>
+    </section>
 </body>
 
 </html>

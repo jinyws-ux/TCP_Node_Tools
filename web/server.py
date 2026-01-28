@@ -14,7 +14,7 @@ import subprocess
 import platform
 import paramiko
 
-from flask import Blueprint, Flask, render_template, request, jsonify, send_from_directory, Response
+from flask import Blueprint, Flask, render_template, request, jsonify, send_from_directory, send_file, Response
 
 from core.analysis_service import AnalysisService
 from core.cleanup_manager import CleanupManager
@@ -30,6 +30,8 @@ from core.server_config_service import ServerConfigService
 from core.template_manager import TemplateManager
 from core.log_parser import LogParser
 from core.log_matcher import LogMatcher, Transaction
+from core.pcl_jobs import PclJobManager
+from core.pcl_service import list_remote_pcl_files, default_ghostpcl_exe
 
 app = Flask(__name__)
 
@@ -59,7 +61,10 @@ def _load_paths_config(root: str) -> Dict[str, str]:
         'MAPPING_CONFIG_DIR': _resolve_dir(data.get('MAPPING_CONFIG_DIR', 'configs/mappingconfig'), root),
         'DOWNLOAD_DIR': _resolve_dir(data.get('DOWNLOAD_DIR', 'downloads'), root),
         'HTML_LOGS_DIR': _resolve_dir(data.get('HTML_LOGS_DIR', 'html_logs'), root),
-        'REPORT_MAPPING_FILE': _resolve_dir(data.get('REPORT_MAPPING_FILE', ''), root) if data.get('REPORT_MAPPING_FILE') else ''
+        'REPORT_MAPPING_FILE': _resolve_dir(data.get('REPORT_MAPPING_FILE', ''), root) if data.get('REPORT_MAPPING_FILE') else '',
+        'WIDGETS_DIR': _resolve_dir(data.get('WIDGETS_DIR', 'widgets'), root),
+        'GHOSTPCL_EXE': _resolve_dir(data.get('GHOSTPCL_EXE', ''), root) if data.get('GHOSTPCL_EXE') else '',
+        'PCL_REMOTE_DIR': str(data.get('PCL_REMOTE_DIR') or '/var/log/pcl_output/').strip() or '/var/log/pcl_output/',
     }
 
 paths_cfg = _load_paths_config(project_root)
@@ -100,8 +105,13 @@ os.makedirs(HTML_LOGS_DIR, exist_ok=True)
 os.makedirs(PARSER_CONFIGS_DIR, exist_ok=True)
 os.makedirs(REGION_TEMPLATES_DIR, exist_ok=True)
 os.makedirs(MAPPING_CONFIG_DIR, exist_ok=True)
+WIDGETS_DIR = paths_cfg['WIDGETS_DIR']
+os.makedirs(WIDGETS_DIR, exist_ok=True)
 
 REPORT_MAPPING_FILE = paths_cfg['REPORT_MAPPING_FILE'] or os.path.join(HTML_LOGS_DIR, 'report_mappings.json')
+
+PCL_REMOTE_DIR = paths_cfg.get('PCL_REMOTE_DIR') or '/var/log/pcl_output/'
+GHOSTPCL_EXE = paths_cfg.get('GHOSTPCL_EXE') or default_ghostpcl_exe(project_root)
 
 # 服务对象
 region_template_manager = TemplateManager(REGION_TEMPLATES_DIR)
@@ -113,6 +123,45 @@ server_config_service = ServerConfigService(
     region_template_manager,
     parser_config_service,
 )
+
+def _pcl_is_osm(system_name: str) -> bool:
+    s = (system_name or "").strip().upper()
+    return "OSM" in s
+
+def _pcl_list_osm_configs() -> List[Dict[str, Any]]:
+    return [c for c in (server_config_service.list_configs() or []) if _pcl_is_osm(c.get("system") or "")]
+
+def _pcl_resolve_server(server_config_id: str):
+    cid = (server_config_id or "").strip()
+    if not cid:
+        return None, "缺少服务器配置 ID"
+    try:
+        cfg = server_config_service.get_config(cid)
+    except Exception:
+        return None, "服务器配置不存在"
+    if not _pcl_is_osm(cfg.get("system") or ""):
+        return None, "该配置不是 OSM 系统"
+    server = cfg.get("server") or {}
+    hostname = (server.get("hostname") or "").strip()
+    username = (server.get("username") or "").strip()
+    if not hostname or not username:
+        return None, "服务器配置缺少 hostname/username"
+    return {
+        "host": hostname,
+        "port": int(server.get("port") or 22),
+        "user": username,
+        "path": PCL_REMOTE_DIR,
+    }, None
+
+def _pcl_get_password(server_config_id: str) -> str:
+    try:
+        cfg = server_config_service.get_config(server_config_id)
+        server = cfg.get("server") or {}
+        return str(server.get("password") or "")
+    except Exception:
+        return ""
+
+pcl_job_manager = PclJobManager(DOWNLOAD_DIR, project_root, ghostpcl_exe=GHOSTPCL_EXE, server_resolver=_pcl_resolve_server)
 analysis_service = AnalysisService(
     log_downloader=log_downloader,
     log_analyzer=log_analyzer,
@@ -170,7 +219,6 @@ def init_config_files():
 
     # 创建解析配置文件目录
     os.makedirs(PARSER_CONFIGS_DIR, exist_ok=True)
-
 
 # 路由定义
 @app.route('/')
@@ -1223,7 +1271,7 @@ def serve_report(filename):
 @app.route('/static/<path:filename>')
 def serve_static(filename):
     """提供静态文件"""
-    return send_from_directory(os.path.join(base_dir, 'web', 'static'), filename)
+    return send_from_directory(os.path.join(base_dir, 'static'), filename)
 
 
 @app.route('/api/add-escape', methods=['POST'])
@@ -1900,6 +1948,179 @@ def delete_template(tid):
 
 # 注册蓝图
 app.register_blueprint(templates_bp)
+
+widgets_bp = Blueprint("widgets_api", __name__)
+
+def _safe_commonpath(root: str, target: str) -> bool:
+    try:
+        return os.path.commonpath([root, target]) == root
+    except Exception:
+        return False
+
+def _normalize_list(value: Any) -> List[str]:
+    if not value:
+        return []
+    if isinstance(value, list):
+        return [str(x).strip() for x in value if str(x).strip()]
+    if isinstance(value, str):
+        return [s.strip() for s in value.split(',') if s.strip()]
+    return []
+
+def _discover_widgets() -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
+    root = os.path.abspath(WIDGETS_DIR)
+    if not os.path.isdir(root):
+        return items
+    for name in os.listdir(root):
+        widget_dir = os.path.abspath(os.path.join(root, name))
+        if not _safe_commonpath(root, widget_dir):
+            continue
+        if not os.path.isdir(widget_dir):
+            continue
+        meta_file = os.path.join(widget_dir, 'widget.json')
+        if not os.path.exists(meta_file):
+            continue
+        try:
+            with open(meta_file, 'r', encoding='utf-8') as f:
+                meta = json.load(f) or {}
+        except Exception:
+            continue
+
+        widget_id = str(meta.get('id') or name).strip() or name
+        if widget_id != name:
+            continue
+
+        entry = str(meta.get('entry') or 'index.js').strip() or 'index.js'
+        css_files = _normalize_list(meta.get('css'))
+        items.append({
+            'id': widget_id,
+            'name': str(meta.get('name') or widget_id).strip() or widget_id,
+            'description': str(meta.get('description') or '').strip(),
+            'version': str(meta.get('version') or '').strip(),
+            'icon': str(meta.get('icon') or '').strip(),
+            'entryUrl': f"/widgets/{urllib.parse.quote(widget_id)}/{urllib.parse.quote(entry)}",
+            'cssUrls': [f"/widgets/{urllib.parse.quote(widget_id)}/{urllib.parse.quote(p)}" for p in css_files],
+        })
+    items.sort(key=lambda x: (x.get('name') or x.get('id') or '').lower())
+    return items
+
+@widgets_bp.route("/api/widgets/manifest", methods=["GET"])
+def api_widgets_manifest():
+    return jsonify({"success": True, "items": _discover_widgets()})
+
+@widgets_bp.route("/widgets/<widget_id>/<path:filename>", methods=["GET"])
+def serve_widget_asset(widget_id: str, filename: str):
+    root = os.path.abspath(WIDGETS_DIR)
+    widget_dir = os.path.abspath(os.path.join(root, widget_id))
+    if not _safe_commonpath(root, widget_dir):
+        return jsonify({"success": False, "error": "非法路径"}), 400
+    if not os.path.isdir(widget_dir):
+        return jsonify({"success": False, "error": "Widget 不存在"}), 404
+    target = os.path.abspath(os.path.join(widget_dir, filename))
+    if not _safe_commonpath(widget_dir, target):
+        return jsonify({"success": False, "error": "非法路径"}), 400
+    resp = send_from_directory(widget_dir, filename)
+    try:
+        resp.headers["Cache-Control"] = "no-store"
+    except Exception:
+        pass
+    return resp
+
+app.register_blueprint(widgets_bp)
+
+pcl_bp = Blueprint("pcl_api", __name__)
+
+def _pcl_public_server(s: Dict[str, Any]) -> Dict[str, Any]:
+    server = s.get("server") or {}
+    factory = str(s.get("factory") or "").strip()
+    system = str(s.get("system") or "").strip()
+    hostname = str(server.get("hostname") or "").strip()
+    username = str(server.get("username") or "").strip()
+    return {
+        "id": str(s.get("id") or "").strip(),
+        "factory": factory,
+        "system": system,
+        "name": factory or str(s.get("id") or "").strip(),
+        "host": hostname,
+        "port": int(server.get("port") or 22),
+        "user": username,
+        "path": PCL_REMOTE_DIR,
+    }
+
+@pcl_bp.route("/api/pcl/servers", methods=["GET"])
+def api_pcl_servers():
+    items = [_pcl_public_server(c) for c in _pcl_list_osm_configs()]
+    return jsonify(
+        {
+            "success": True,
+            "items": items,
+            "ghostpclExe": pcl_job_manager.ghostpcl_exe,
+            "ghostpclExists": os.path.exists(pcl_job_manager.ghostpcl_exe),
+            "remoteDir": PCL_REMOTE_DIR,
+        }
+    )
+
+@pcl_bp.route("/api/pcl/files", methods=["POST"])
+def api_pcl_files():
+    body = request.get_json(force=True) or {}
+    server_id = str(body.get("serverId") or "").strip()
+    password = str(body.get("password") or "") or _pcl_get_password(server_id)
+    server, err = _pcl_resolve_server(server_id)
+    if err:
+        return jsonify({"success": False, "error": err}), 400
+    files, err = list_remote_pcl_files(server, password)
+    if err:
+        return jsonify({"success": False, "error": err}), 400
+    try:
+        cfg = server_config_service.get_config(server_id)
+    except Exception:
+        cfg = {"id": server_id, "factory": "", "system": "", "server": {}}
+    return jsonify({"success": True, "files": files, "server": _pcl_public_server(cfg)})
+
+@pcl_bp.route("/api/pcl/convert", methods=["POST"])
+def api_pcl_convert():
+    body = request.get_json(force=True) or {}
+    server_id = str(body.get("serverId") or "").strip()
+    filename = str(body.get("filename") or "").strip()
+    password = str(body.get("password") or "") or _pcl_get_password(server_id)
+    job_id, err = pcl_job_manager.create_convert_job(server_id, filename, password)
+    if err:
+        return jsonify({"success": False, "error": err}), 400
+    return jsonify({"success": True, "jobId": job_id})
+
+@pcl_bp.route("/api/pcl/jobs/<job_id>", methods=["GET"])
+def api_pcl_job_status(job_id: str):
+    job = pcl_job_manager.get_job(job_id)
+    if not job:
+        return jsonify({"success": False, "error": "任务不存在"}), 404
+    public_job = {
+        "id": job.get("id"),
+        "serverId": job.get("serverId"),
+        "filename": job.get("filename"),
+        "status": job.get("status"),
+        "step": job.get("step"),
+        "progress": job.get("progress"),
+        "error": job.get("error"),
+        "createdAt": job.get("createdAt"),
+    }
+    return jsonify({"success": True, "job": public_job})
+
+@pcl_bp.route("/api/pcl/jobs/<job_id>/pdf", methods=["GET"])
+def api_pcl_job_pdf(job_id: str):
+    pdf_path = pcl_job_manager.get_job_pdf_path(job_id)
+    if not pdf_path:
+        return jsonify({"success": False, "error": "PDF 尚未就绪"}), 404
+    try:
+        resp = send_file(pdf_path, as_attachment=True, download_name=os.path.basename(pdf_path))
+    except TypeError:
+        resp = send_file(pdf_path, as_attachment=True, attachment_filename=os.path.basename(pdf_path))
+    try:
+        resp.headers["Cache-Control"] = "no-store"
+    except Exception:
+        pass
+    return resp
+
+app.register_blueprint(pcl_bp)
 
 @app.route('/api/logs/search', methods=['POST'])
 def api_logs_search():

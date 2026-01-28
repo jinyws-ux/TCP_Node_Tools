@@ -1,0 +1,9 @@
+{
+  "id": "hello-clock",
+  "name": "时钟与时间戳",
+  "version": "1.0.0",
+  "entry": "index.js",
+  "css": ["style.css"],
+  "description": "显示当前时间，并支持复制当前时间戳。",
+  "icon": "fas fa-clock"
+}

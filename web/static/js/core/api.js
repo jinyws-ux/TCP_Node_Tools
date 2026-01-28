@@ -66,6 +66,7 @@ async function onlineGet(serverAlias, path, query, { system } = {}) {
 }
 
 export const api = {
+  getWidgetsManifest: () => get('/api/widgets/manifest'),
   /* -------- 下载页 -------- */
   getFactories: () => get('/api/factories'),
   getSystems: (factoryId) => get(`/api/systems?factory=${encodeURIComponent(factoryId)}`),
