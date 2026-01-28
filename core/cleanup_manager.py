@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import threading
 import time
 from datetime import datetime, timedelta
@@ -166,6 +167,9 @@ class CleanupManager:
             "deleted_metadata": 0,
             "deleted_reports": 0,
             "deleted_directories": 0,
+            "deleted_pcl_job_dirs": 0,
+            "deleted_pcl_job_files": 0,
+            "skipped_recent_pcl_jobs": 0,
             "start_time": datetime.now().isoformat(),
         }
         
@@ -228,6 +232,11 @@ class CleanupManager:
                 # 从映射中删除日志记录
                 self.report_mapping_store.delete(log_path)
             
+            pcl_stats = self._cleanup_pcl_jobs(min_age_seconds=30 * 60)
+            stats["deleted_pcl_job_dirs"] = pcl_stats.get("deleted_dirs", 0)
+            stats["deleted_pcl_job_files"] = pcl_stats.get("deleted_files", 0)
+            stats["skipped_recent_pcl_jobs"] = pcl_stats.get("skipped_recent", 0)
+
             # 删除空目录
             deleted_dirs = self._clean_empty_directories()
             stats["deleted_directories"] = deleted_dirs
@@ -259,6 +268,48 @@ class CleanupManager:
                 "error": str(e),
                 "stats": stats,
             }
+
+    def _cleanup_pcl_jobs(self, min_age_seconds: int = 30 * 60) -> Dict[str, int]:
+        deleted_dirs = 0
+        deleted_files = 0
+        skipped_recent = 0
+        job_root = os.path.join(self.download_dir, "pcl_jobs")
+        if not os.path.isdir(job_root):
+            return {"deleted_dirs": 0, "deleted_files": 0, "skipped_recent": 0}
+
+        now = time.time()
+        try:
+            entries = os.listdir(job_root)
+        except Exception:
+            return {"deleted_dirs": 0, "deleted_files": 0, "skipped_recent": 0}
+
+        for name in entries:
+            full = os.path.join(job_root, name)
+            try:
+                mtime = os.path.getmtime(full)
+            except Exception:
+                mtime = 0
+            if mtime and (now - mtime) < min_age_seconds:
+                skipped_recent += 1
+                continue
+            try:
+                if os.path.isdir(full):
+                    shutil.rmtree(full, ignore_errors=False)
+                    deleted_dirs += 1
+                else:
+                    os.remove(full)
+                    deleted_files += 1
+            except Exception as e:
+                self.logger.error(f"删除 pcl_jobs 失败 {full}: {e}")
+
+        if deleted_dirs or deleted_files:
+            self.logger.info(
+                "已清理 pcl_jobs: 删除 %d 个任务目录, %d 个文件, 跳过 %d 个近期任务",
+                deleted_dirs,
+                deleted_files,
+                skipped_recent,
+            )
+        return {"deleted_dirs": deleted_dirs, "deleted_files": deleted_files, "skipped_recent": skipped_recent}
 
     def _clean_empty_directories(self) -> int:
         """清理空目录。"""

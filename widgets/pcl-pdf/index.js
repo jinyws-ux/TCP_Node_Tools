@@ -81,7 +81,7 @@ export async function mount(ctx) {
 
   const form = el('div', { className: 'pcl-form' }, [
     el('div', { className: 'pcl-field' }, [el('label', { text: '厂区（仅 OSM）' }), serverSelect]),
-    el('div', { className: 'pcl-field' }, [el('label', { text: '文件（.pcl/.prn）' }), fileSelect]),
+    el('div', { className: 'pcl-field' }, [el('label', { text: '文件' }), fileSelect]),
     el('div', { className: 'pcl-field', style: 'grid-column: 1 / -1;' }, [el('label', { text: '操作' }), el('div', { className: 'pcl-actions' }, [btnFiles, btnConvert, dlLink])]),
   ]);
 
@@ -187,7 +187,7 @@ export async function mount(ctx) {
     });
     files = Array.isArray(data.files) ? data.files : [];
     fillFiles();
-    setProgress(0, files.length ? `已加载 ${files.length} 个文件` : '目录下未发现 .pcl/.prn 文件');
+    setProgress(0, files.length ? `已加载 ${files.length} 个文件` : '目录为空或无可用文件');
     updateConvertEnabled();
   }
 

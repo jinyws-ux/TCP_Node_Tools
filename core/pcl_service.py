@@ -71,9 +71,6 @@ def list_remote_pcl_files(server: Dict[str, Any], password: str) -> Tuple[List[D
             fn = getattr(f, "filename", "")
             if not isinstance(fn, str):
                 continue
-            lower = fn.lower()
-            if not (lower.endswith(".pcl") or lower.endswith(".prn")):
-                continue
             items.append(
                 {
                     "filename": fn,
@@ -82,6 +79,7 @@ def list_remote_pcl_files(server: Dict[str, Any], password: str) -> Tuple[List[D
                 }
             )
         items.sort(key=lambda x: x.get("mtime", 0), reverse=True)
+        items = items[:500]
         try:
             sftp.close()
         finally:
@@ -145,4 +143,3 @@ def convert_pcl_to_pdf(ghostpcl_exe: str, pcl_file: str, pdf_file: str) -> Tuple
         return False, "转换失败：可能是 PCL/PRN 文件损坏或格式不兼容"
     except Exception as exc:
         return False, str(exc)
-
