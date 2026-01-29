@@ -1,0 +1,8 @@
+{
+  "id": "url-health-check",
+  "name": "URL 健康检查",
+  "entry": "index.js",
+  "css": ["style.css"],
+  "description": "按厂区批量请求多个 URL，解析 target/status 并标记异常项。",
+  "icon": "fas fa-stethoscope"
+}

@@ -2043,6 +2043,91 @@ def serve_widget_asset(widget_id: str, filename: str):
         pass
     return resp
 
+_UHC_WIDGET_ID = "url-health-check"
+
+def _uhc_config_path() -> str:
+    root = os.path.abspath(WIDGETS_DIR)
+    widget_dir = os.path.abspath(os.path.join(root, _UHC_WIDGET_ID))
+    return os.path.join(widget_dir, "config.json")
+
+def _uhc_validate_config(payload: Any) -> (bool, str):
+    if not isinstance(payload, dict):
+        return False, "配置必须是 JSON 对象"
+    profiles = payload.get("profiles")
+    if profiles is None:
+        return False, "缺少 profiles"
+    if not isinstance(profiles, list):
+        return False, "profiles 必须是数组"
+    for p in profiles:
+        if not isinstance(p, dict):
+            return False, "profiles[] 必须是对象"
+        pid = str(p.get("id") or "").strip()
+        pname = str(p.get("name") or "").strip()
+        if not pid or not pname:
+            return False, "每个配置必须包含 id 和 name"
+        factories = p.get("factories") or []
+        if not isinstance(factories, list):
+            return False, f"配置「{pname}」的 factories 必须是数组"
+        for f in factories:
+            if not isinstance(f, dict):
+                return False, f"配置「{pname}」的 factories[] 必须是对象"
+            fid = str(f.get("id") or f.get("name") or "").strip()
+            fname = str(f.get("name") or f.get("id") or "").strip()
+            urls = f.get("urls") or []
+            if not fid or not fname:
+                return False, f"配置「{pname}」的厂区不能为空"
+            if not isinstance(urls, list) or len(urls) < 2:
+                return False, f"配置「{pname}」的厂区「{fname}」必须包含 2 个 url"
+            u1 = str(urls[0] or "").strip()
+            u2 = str(urls[1] or "").strip()
+            if not u1 or not u2:
+                return False, f"配置「{pname}」的厂区「{fname}」必须包含 2 个 url"
+    return True, ""
+
+@widgets_bp.route("/api/widgets/url-health-check/config", methods=["GET"])
+def api_uhc_get_config():
+    path = _uhc_config_path()
+    try:
+        if not os.path.exists(path):
+            payload = {"profiles": [], "activeProfileId": ""}
+        else:
+            with open(path, "r", encoding="utf-8") as f:
+                payload = json.load(f) or {"profiles": [], "activeProfileId": ""}
+    except Exception as e:
+        return jsonify({"success": False, "error": f"读取配置失败：{e}"}), 500
+    resp = jsonify({"success": True, "data": payload})
+    try:
+        resp.headers["Cache-Control"] = "no-store"
+    except Exception:
+        pass
+    return resp
+
+@widgets_bp.route("/api/widgets/url-health-check/config", methods=["PUT"])
+def api_uhc_save_config():
+    body = request.get_json(force=True) or {}
+    ok, err = _uhc_validate_config(body)
+    if not ok:
+        return jsonify({"success": False, "error": err}), 400
+    path = _uhc_config_path()
+    root = os.path.abspath(WIDGETS_DIR)
+    widget_dir = os.path.abspath(os.path.join(root, _UHC_WIDGET_ID))
+    if not _safe_commonpath(root, widget_dir):
+        return jsonify({"success": False, "error": "非法路径"}), 400
+    try:
+        os.makedirs(widget_dir, exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(body, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except Exception as e:
+        return jsonify({"success": False, "error": f"保存配置失败：{e}"}), 500
+    resp = jsonify({"success": True, "saved": True})
+    try:
+        resp.headers["Cache-Control"] = "no-store"
+    except Exception:
+        pass
+    return resp
+
 app.register_blueprint(widgets_bp)
 
 pcl_bp = Blueprint("pcl_api", __name__)

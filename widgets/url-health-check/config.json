@@ -1,0 +1,19 @@
+{
+  "profiles": [
+    {
+      "id": "p1",
+      "name": "cascade",
+      "factories": [
+        {
+          "id": "大东",
+          "name": "大东",
+          "urls": [
+            "u1",
+            "u2"
+          ]
+        }
+      ]
+    }
+  ],
+  "activeProfileId": "p1"
+}
