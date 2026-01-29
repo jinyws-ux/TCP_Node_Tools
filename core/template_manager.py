@@ -2,6 +2,7 @@
 import os
 import json
 import uuid
+import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
@@ -42,12 +43,16 @@ class TemplateManager:
         q: str = "",
         page: int = 1,
         page_size: int = 20,
+        order_by: str = "updated_at",
+        order_dir: str = "desc",
     ) -> Dict[str, Any]:
         """
         过滤规则（向后兼容）：
         - 若传入 factory：同时尝试匹配 factory_id / factory_name / factory
         - 若传入 system：同时尝试匹配 system_id / system_name / system
-        - q：命中 name 或 nodes 中的任意一个
+        - q：支持空格/逗号分词；每个词需命中（AND）
+          - 非纯数字：命中 name/factory/system/nodes 任意字段
+          - 纯数字：命中 nodes
         """
         items: List[Dict[str, Any]] = []
         for fn in os.listdir(self.base_dir):
@@ -81,10 +86,28 @@ class TemplateManager:
 
                 # 关键词过滤
                 if q:
-                    ql = q.lower()
-                    name_hit = ql in (data.get("name", "").lower())
-                    nodes_hit = any(ql in str(n).lower() for n in data.get("nodes", []))
-                    if not (name_hit or nodes_hit):
+                    qn = re.sub(r"[，、,;；]+", " ", str(q)).strip()
+                    terms = [t for t in re.split(r"\s+", qn) if t]
+                    name = str(data.get("name") or "")
+                    factory_name = str(data.get("factory_name") or data.get("factory") or "")
+                    system_name = str(data.get("system_name") or data.get("system") or "")
+                    nodes = data.get("nodes") or []
+                    hay = " ".join([name, factory_name, system_name]).lower()
+                    ok = True
+                    for term in terms:
+                        tl = term.lower()
+                        if tl.isdigit():
+                            if not any(tl in str(n) for n in nodes):
+                                ok = False
+                                break
+                            continue
+                        if tl in hay:
+                            continue
+                        if any(tl in str(n).lower() for n in nodes):
+                            continue
+                        ok = False
+                        break
+                    if not ok:
                         continue
 
                 items.append(data)
@@ -92,11 +115,25 @@ class TemplateManager:
                 # 单个文件异常不影响整体
                 continue
 
-        # 最新更新在前（若缺失 updated_at，则回退 created_at）
-        items.sort(
-            key=lambda x: (x.get("updated_at") or x.get("created_at") or ""),
-            reverse=True,
-        )
+        ob = (order_by or "updated_at").strip().lower()
+        od = (order_dir or "desc").strip().lower()
+        reverse = od != "asc"
+
+        if ob in {"name"}:
+            items.sort(
+                key=lambda x: ((x.get("name") or "").lower(), (x.get("updated_at") or x.get("created_at") or "")),
+                reverse=reverse,
+            )
+        elif ob in {"nodes", "nodes_count"}:
+            items.sort(
+                key=lambda x: (len(x.get("nodes") or []), (x.get("updated_at") or x.get("created_at") or "")),
+                reverse=reverse,
+            )
+        else:
+            items.sort(
+                key=lambda x: (x.get("updated_at") or x.get("created_at") or ""),
+                reverse=reverse,
+            )
         total = len(items)
         start = max(page - 1, 0) * page_size
         end = start + page_size

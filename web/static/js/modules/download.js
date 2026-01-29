@@ -72,6 +72,13 @@ function clearLastSearch() {
   updateRefreshButton();
 }
 
+function normalizeTemplateQuery(input) {
+  return String(input || '')
+    .replace(/[，、]/g, ',')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function init() {
   const tab = qs('#download-tab');
   if (!tab || inited) return;
@@ -161,12 +168,20 @@ function bindRightPanel() {
 
   let timer = null;
   qs('#template-search-input')?.addEventListener('input', (e) => {
-    const q = (e.target.value || '').trim();
+    const q = normalizeTemplateQuery(e.target.value || '');
     clearTimeout(timer);
     timer = setTimeout(() => {
       state.pager.q = q;
       reloadTemplates(true);
     }, 300);
+  });
+  qs('#template-search-input')?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    clearTimeout(timer);
+    const q = normalizeTemplateQuery(e.target.value || '');
+    state.pager.q = q;
+    reloadTemplates(true);
   });
   qs('#template-clear-search')?.addEventListener('click', () => {
     const input = qs('#template-search-input');
@@ -181,8 +196,6 @@ function bindRightPanel() {
     state.pager.page += 1;
     reloadTemplates(false);
   });
-
-  reloadTemplates(true);
 }
 
 /* ---------------- 搜索 ---------------- */
@@ -611,18 +624,22 @@ function renderTemplateList(items, append = false) {
     const previewText = nodesPreview
       ? `${nodesPreview}${nodes.length > 4 ? ' …' : ''}`
       : '暂无示例';
-    el.className = 'config-item config-item--compact template-card';
+    el.className = 'config-item template-card template-card--dense';
     el.innerHTML = `
-      <p class="config-compact-subline">${escapeHtml(factoryName)} - ${escapeHtml(systemName)}</p>
-      <div class="config-compact-title">
-        <h3>${escapeHtml(t.name)}</h3>
-        <span class="config-chip">${nodes.length} 节点</span>
+      <div class="template-card-main">
+        <div class="template-card-top">
+          <h3 class="template-card-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</h3>
+          <span class="config-chip">${nodes.length} 节点</span>
+        </div>
+        <div class="template-card-sub">
+          <span class="template-card-sys">${escapeHtml(factoryName)} - ${escapeHtml(systemName)}</span>
+          <span class="template-card-preview"><i class="fas fa-stream"></i> ${escapeHtml(previewText)}</span>
+        </div>
       </div>
-      <div class="config-compact-meta"><i class="fas fa-stream"></i> ${escapeHtml(previewText)}</div>
-      <div class="config-compact-actions tpl-actions">
-        <button class="btn btn-primary btn-sm tpl-select">选择区域</button>
-        <button class="btn btn-secondary btn-sm tpl-edit">编辑</button>
-        <button class="btn btn-danger btn-sm tpl-del">删除</button>
+      <div class="template-card-actions">
+        <button class="btn btn-primary btn-xs tpl-select" title="选择区域"><i class="fas fa-check"></i></button>
+        <button class="btn btn-secondary btn-xs tpl-edit" title="编辑"><i class="fas fa-edit"></i></button>
+        <button class="btn btn-danger btn-xs tpl-del" title="删除"><i class="fas fa-trash"></i></button>
       </div>
     `;
 
@@ -761,12 +778,11 @@ async function deleteTemplate(t) {
 
 /* ---------------- 公共工具 ---------------- */
 
-async function loadFactories() {
-  const sel = qs('#factory-select');
+async function loadFactories(sel = qs('#factory-select'), { placeholder = '-- 请选择厂区 --' } = {}) {
   if (!sel) return;
   try {
     const list = await api.getFactories();
-    sel.innerHTML = '<option value="">-- 请选择厂区 --</option>';
+    sel.innerHTML = `<option value="">${placeholder}</option>`;
     (list || []).forEach(f => {
       const opt = document.createElement('option');
       opt.value = f.id;
@@ -778,16 +794,15 @@ async function loadFactories() {
   }
 }
 
-async function loadSystems(factoryId) {
-  const sel = qs('#system-select');
+async function loadSystems(factoryId, sel = qs('#system-select'), { placeholder = '-- 请选择系统 --' } = {}) {
   if (!sel) return;
   if (!factoryId) {
-    sel.innerHTML = '<option value="">-- 请选择系统 --</option>';
+    sel.innerHTML = `<option value="">${placeholder}</option>`;
     return;
   }
   try {
     const list = await api.getSystems(factoryId);
-    sel.innerHTML = '<option value="">-- 请选择系统 --</option>';
+    sel.innerHTML = `<option value="">${placeholder}</option>`;
     (list || []).forEach(s => {
       const opt = document.createElement('option');
       opt.value = s.id;

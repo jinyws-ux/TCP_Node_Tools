@@ -1882,6 +1882,8 @@ def list_templates():
     q = (request.args.get("q") or "").strip()
     factory = (request.args.get("factory") or "").strip()
     system = (request.args.get("system") or "").strip()
+    order_by = (request.args.get("order_by") or "updated_at").strip()
+    order_dir = (request.args.get("order_dir") or "desc").strip()
     try:
         page = int(request.args.get("page", "1"))
         page_size = int(request.args.get("page_size", "20"))
@@ -1889,7 +1891,15 @@ def list_templates():
         page, page_size = 1, 20
 
     # TemplateManager.list 返回 {"items":[...], "total":N}
-    data = tm.list(factory=factory, system=system, q=q, page=page, page_size=page_size)
+    data = tm.list(
+        factory=factory,
+        system=system,
+        q=q,
+        page=page,
+        page_size=page_size,
+        order_by=order_by,
+        order_dir=order_dir,
+    )
     return jsonify({
         "success": True,
         "items": data.get("items", []),

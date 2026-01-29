@@ -1576,6 +1576,79 @@ tbody tr:hover {
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
 }
 
+.template-panel .template-card--dense {
+  border-radius: 12px;
+  padding: 10px 12px;
+  gap: 10px;
+  align-items: center;
+}
+
+.template-card--dense .template-card-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.template-card--dense .template-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.template-card--dense .template-card-name {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--muted-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.template-card--dense .template-card-sub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  min-width: 0;
+}
+
+.template-card--dense .template-card-sys {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.template-card--dense .template-card-preview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.template-card--dense .template-card-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.template-card--dense .template-card-actions .btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.template-card--dense .template-card-actions .btn i {
+  margin: 0;
+}
+
 .config-compact-head {
   display: flex;
   flex-direction: column;
