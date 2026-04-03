@@ -2036,7 +2036,10 @@ def serve_widget_asset(widget_id: str, filename: str):
     target = os.path.abspath(os.path.join(widget_dir, filename))
     if not _safe_commonpath(widget_dir, target):
         return jsonify({"success": False, "error": "非法路径"}), 400
-    resp = send_from_directory(widget_dir, filename)
+    if filename.lower().endswith(".mjs"):
+        resp = send_file(target, mimetype="text/javascript")
+    else:
+        resp = send_from_directory(widget_dir, filename)
     try:
         resp.headers["Cache-Control"] = "no-store"
     except Exception:
@@ -2142,6 +2145,13 @@ def _ttf_legacy_config_path() -> str:
 def _ttf_normalize_field(field: Any) -> Dict[str, Any]:
     if not isinstance(field, dict):
         return {}
+    def _parse_length(value: Any):
+        if value in ("", None):
+            return ""
+        try:
+            return max(0, int(value))
+        except Exception:
+            return value
     key = str(field.get("key") or "").strip()
     label = str(field.get("label") or key).strip() or key
     input_type = str(field.get("inputType") or "text").strip().lower() or "text"
@@ -2153,16 +2163,20 @@ def _ttf_normalize_field(field: Any) -> Dict[str, Any]:
     normalized_options = [str(item).strip() for item in options if str(item).strip()]
     default_value = "" if field.get("defaultValue") is None else str(field.get("defaultValue"))
     time_format = str(field.get("format") or "").strip() or "YYYY-MM-DDTHH:mm:ss.SSS"
+    min_length = _parse_length(field.get("minLength"))
+    max_length = _parse_length(field.get("maxLength"))
     if input_type == "generated_time":
         default_value = ""
     return {
         "key": key,
         "label": label,
-        "required": bool(field.get("required")),
+        "required": True if field.get("required") is None else bool(field.get("required")),
         "inputType": input_type,
         "defaultValue": default_value,
         "options": normalized_options,
         "format": time_format,
+        "minLength": min_length,
+        "maxLength": max_length,
     }
 
 def _ttf_validate_config(payload: Any) -> (bool, str, Dict[str, Any]):
@@ -2209,6 +2223,14 @@ def _ttf_validate_config(payload: Any) -> (bool, str, Dict[str, Any]):
                 return False, f"模板「{name}」的变量「{key}」下拉选项不能为空", {}
             if normalized_field["inputType"] == "generated_time" and not normalized_field["format"]:
                 return False, f"模板「{name}」的时间变量「{key}」格式不能为空", {}
+            min_length = normalized_field.get("minLength")
+            max_length = normalized_field.get("maxLength")
+            if min_length != "" and not isinstance(min_length, int):
+                return False, f"模板「{name}」的变量「{key}」最小长度无效", {}
+            if max_length != "" and not isinstance(max_length, int):
+                return False, f"模板「{name}」的变量「{key}」最大长度无效", {}
+            if min_length != "" and max_length != "" and max_length < min_length:
+                return False, f"模板「{name}」的变量「{key}」最大长度不能小于最小长度", {}
             normalized_fields.append(normalized_field)
         normalized_templates.append({
             "id": template_id,

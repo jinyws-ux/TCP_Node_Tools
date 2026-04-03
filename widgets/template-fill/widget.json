@@ -1,7 +1,7 @@
 {
   "id": "template-fill",
   "name": "模板填充",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "entry": "index.js",
   "css": ["style.css"],
   "description": "保存共用模板，填入变量并快速生成文本。",

@@ -1,5 +1,13 @@
 const CONFIG_API = '/api/widgets/template-fill/config';
 const DEFAULT_TIME_FORMAT = 'YYYY-MM-DDTHH:mm:ss.SSS';
+const SQL_KEYWORDS = [
+  'select', 'from', 'where', 'and', 'or', 'insert', 'into', 'values', 'update', 'set', 'delete',
+  'join', 'left', 'right', 'inner', 'outer', 'full', 'cross', 'on', 'as', 'group', 'order', 'by',
+  'limit', 'offset', 'having', 'distinct', 'union', 'all', 'not', 'null', 'is', 'in', 'like',
+  'between', 'exists', 'case', 'when', 'then', 'else', 'end', 'create', 'table', 'alter', 'drop',
+  'view', 'index', 'primary', 'key', 'foreign', 'references', 'default', 'if', 'begin', 'commit',
+  'rollback', 'truncate', 'top', 'with', 'over', 'partition', 'asc', 'desc'
+];
 
 function el(tag, attrs, ...children) {
   const node = document.createElement(tag);
@@ -80,17 +88,23 @@ function normalizeField(raw, keyOverride) {
   const inputType = normalizeInputType(raw?.inputType);
   const options = normalizeOptions(raw?.options);
   const format = String(raw?.format || '').trim() || DEFAULT_TIME_FORMAT;
+  const rawMinLength = raw?.minLength;
+  const rawMaxLength = raw?.maxLength;
+  const minLength = rawMinLength === '' || rawMinLength === undefined || rawMinLength === null ? '' : Math.max(0, Number.parseInt(rawMinLength, 10) || 0);
+  const maxLength = rawMaxLength === '' || rawMaxLength === undefined || rawMaxLength === null ? '' : Math.max(0, Number.parseInt(rawMaxLength, 10) || 0);
   let defaultValue = raw?.defaultValue === undefined || raw?.defaultValue === null ? '' : String(raw.defaultValue);
   if (inputType === 'select' && !defaultValue && options.length) defaultValue = options[0];
   if (inputType === 'generated_time') defaultValue = '';
   return {
     key,
     label: String(raw?.label || key).trim() || key,
-    required: Boolean(raw?.required),
+    required: raw?.required === undefined ? true : Boolean(raw?.required),
     inputType,
     defaultValue,
     options,
-    format
+    format,
+    minLength,
+    maxLength
   };
 }
 
@@ -141,6 +155,13 @@ function excerpt(text, limit = 220) {
   return value.length > limit ? `${value.slice(0, limit)}...` : value;
 }
 
+function escapeHtml(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function pad(value, len = 2) {
   return String(value).padStart(len, '0');
 }
@@ -157,6 +178,75 @@ function formatCurrentTime(format) {
     SSS: pad(dt.getMilliseconds(), 3)
   };
   return String(format || DEFAULT_TIME_FORMAT).replace(/YYYY|MM|DD|HH|mm|ss|SSS/g, (token) => tokenMap[token] || token);
+}
+
+function validateJsonContent(text) {
+  try {
+    JSON.parse(String(text || ''));
+    return '';
+  } catch (err) {
+    return err?.message || 'JSON 格式不正确';
+  }
+}
+
+function replaceWithHighlightedTokens(text, pattern, tokenResolver) {
+  const source = String(text || '');
+  let html = '';
+  let lastIndex = 0;
+  pattern.lastIndex = 0;
+  let match = pattern.exec(source);
+  while (match) {
+    html += escapeHtml(source.slice(lastIndex, match.index));
+    const token = tokenResolver(match);
+    if (token?.className) html += `<span class="${token.className}">${escapeHtml(token.text)}</span>`;
+    else html += escapeHtml(match[0]);
+    lastIndex = match.index + match[0].length;
+    match = pattern.exec(source);
+  }
+  html += escapeHtml(source.slice(lastIndex));
+  return html;
+}
+
+function highlightTextContent(text) {
+  return replaceWithHighlightedTokens(text, /\{\{\s*[a-zA-Z0-9_]+\s*\}\}/g, (match) => ({
+    className: 'ttf-token ttf-token--placeholder',
+    text: match[0]
+  }));
+}
+
+function highlightJsonContent(text) {
+  const pattern = /"(?:\\.|[^"\\])*"(?=\s*:)?|"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?|\b(?:true|false|null)\b|[{}\[\],:]/g;
+  return replaceWithHighlightedTokens(text, pattern, (match) => {
+    const value = match[0];
+    if (value.startsWith('"') && /^\s*:/.test(String(text).slice(match.index + value.length))) {
+      return { className: 'ttf-token ttf-token--key', text: value };
+    }
+    if (value.startsWith('"')) return { className: 'ttf-token ttf-token--string', text: value };
+    if (/^-?\d/.test(value)) return { className: 'ttf-token ttf-token--number', text: value };
+    if (/^(true|false|null)$/.test(value)) return { className: 'ttf-token ttf-token--atom', text: value };
+    return { className: 'ttf-token ttf-token--punctuation', text: value };
+  });
+}
+
+function highlightSqlContent(text) {
+  const pattern = /--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|[^'])*'|\{\{\s*[a-zA-Z0-9_]+\s*\}\}|\b\d+(?:\.\d+)?\b|\b[a-zA-Z_][a-zA-Z0-9_]*\b/g;
+  return replaceWithHighlightedTokens(text, pattern, (match) => {
+    const value = match[0];
+    if (value.startsWith('--') || value.startsWith('/*')) return { className: 'ttf-token ttf-token--comment', text: value };
+    if (value.startsWith('\'')) return { className: 'ttf-token ttf-token--string', text: value };
+    if (value.startsWith('{{')) return { className: 'ttf-token ttf-token--placeholder', text: value };
+    if (/^\d/.test(value)) return { className: 'ttf-token ttf-token--number', text: value };
+    if (SQL_KEYWORDS.includes(value.toLowerCase())) return { className: 'ttf-token ttf-token--keyword', text: value };
+    return { className: 'ttf-token ttf-token--identifier', text: value };
+  });
+}
+
+function renderHighlightedEditorHtml(type, text) {
+  const value = String(text || '');
+  if (!value) return '<span class="ttf-code-placeholder">例如：SELECT * FROM users WHERE created_at &gt; \'{{start_time}}\';</span>\n';
+  if (normalizeTemplateType(type) === 'json') return `${highlightJsonContent(value)}\n`;
+  if (normalizeTemplateType(type) === 'sql') return `${highlightSqlContent(value)}\n`;
+  return `${highlightTextContent(value)}\n`;
 }
 
 function getAutoValue(field) {
@@ -258,6 +348,10 @@ function validateStore(store) {
     const template = normalizeTemplate(rawTemplate);
     if (!template.name.trim()) return { ok: false, error: '模板名称不能为空' };
     if (!template.content.trim()) return { ok: false, error: `模板「${template.name}」内容不能为空` };
+    if (template.type === 'json') {
+      const jsonError = validateJsonContent(template.content);
+      if (jsonError) return { ok: false, error: `模板「${template.name}」JSON 格式错误：${jsonError}` };
+    }
     if (names.has(template.name)) return { ok: false, error: `模板名称重复：${template.name}` };
     names.add(template.name);
     for (const field of template.fields) {
@@ -267,14 +361,40 @@ function validateStore(store) {
       if (field.inputType === 'generated_time' && !String(field.format || '').trim()) {
         return { ok: false, error: `模板「${template.name}」中的时间变量「${field.key}」格式不能为空` };
       }
+      const minLength = field.minLength === '' ? '' : Number(field.minLength);
+      const maxLength = field.maxLength === '' ? '' : Number(field.maxLength);
+      if (minLength !== '' && (!Number.isInteger(minLength) || minLength < 0)) {
+        return { ok: false, error: `模板「${template.name}」中的变量「${field.key}」最小长度无效` };
+      }
+      if (maxLength !== '' && (!Number.isInteger(maxLength) || maxLength < 0)) {
+        return { ok: false, error: `模板「${template.name}」中的变量「${field.key}」最大长度无效` };
+      }
+      if (minLength !== '' && maxLength !== '' && maxLength < minLength) {
+        return { ok: false, error: `模板「${template.name}」中的变量「${field.key}」最大长度不能小于最小长度` };
+      }
     }
   }
   return { ok: true };
 }
 
 function validateValues(template, values) {
-  const missing = getMissingRequiredFields(template, values);
-  if (missing.length) return { ok: false, error: `请填写「${missing[0].label || missing[0].key}」` };
+  for (const field of template?.fields || []) {
+    const value = String(getEffectiveValue(field, values) || '');
+    const text = value.trim();
+    if (field.required && !text) return { ok: false, error: `请填写「${field.label || field.key}」`, fieldKey: field.key };
+    if (!text) continue;
+    const minLength = field.minLength === '' ? '' : Number(field.minLength);
+    const maxLength = field.maxLength === '' ? '' : Number(field.maxLength);
+    if (minLength !== '' && maxLength !== '' && minLength === maxLength && value.length !== minLength) {
+      return { ok: false, error: `「${field.label || field.key}」长度必须为 ${minLength}`, fieldKey: field.key };
+    }
+    if (minLength !== '' && value.length < minLength) {
+      return { ok: false, error: `「${field.label || field.key}」长度不能少于 ${minLength}`, fieldKey: field.key };
+    }
+    if (maxLength !== '' && value.length > maxLength) {
+      return { ok: false, error: `「${field.label || field.key}」长度不能超过 ${maxLength}`, fieldKey: field.key };
+    }
+  }
   return { ok: true };
 }
 
@@ -317,7 +437,11 @@ export async function mount(ctx) {
     draftTemplateId: '',
     managerOpen: false,
     generatorOpen: false,
-    configPath: ''
+    configPath: '',
+    codeEditorHost: null,
+    codeEditorInput: null,
+    codeEditorHighlight: null,
+    codeEditorHint: null
   };
 
   const title = el('h3', { className: 'ttf-title', text: ctx?.widget?.name || '模板填充' });
@@ -395,6 +519,7 @@ export async function mount(ctx) {
   btnGeneratorClose.innerHTML = '<i class="fas fa-xmark"></i> 关闭';
   generatorHead.append(generatorHeadText, btnGeneratorClose);
   const generatorStatus = el('div', { className: 'ttf-note' });
+  const generatorError = el('div', { className: 'ttf-status' });
   const generatorBody = el('div', { className: 'ttf-generator-body' });
   const generatorFields = el('div', { className: 'ttf-generator-grid' });
   const generatorActions = el('div', { className: 'ttf-modal-actions' });
@@ -402,7 +527,7 @@ export async function mount(ctx) {
   btnGeneratorConfirm.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> 生成文本';
   generatorActions.append(btnGeneratorConfirm);
   generatorBody.append(generatorFields);
-  generatorPanel.append(generatorHead, generatorStatus, generatorBody, generatorActions);
+  generatorPanel.append(generatorHead, generatorStatus, generatorError, generatorBody, generatorActions);
   generator.appendChild(generatorPanel);
   container.appendChild(generator);
 
@@ -458,9 +583,13 @@ export async function mount(ctx) {
   const btnSyncFields = el('button', { type: 'button', className: 'btn btn-secondary btn-sm' });
   btnSyncFields.innerHTML = '<i class="fas fa-arrows-rotate"></i> 识别变量';
   contentRow.append(contentTitle, btnSyncFields);
-  const contentTextarea = el('textarea', { className: 'ttf-textarea', placeholder: '例如：SELECT * FROM users WHERE created_at > \'{{start_time}}\';' });
+  const contentEditorHost = el('div', { className: 'ttf-code-editor' });
+  const contentHighlight = el('pre', { className: 'ttf-code-highlight', 'aria-hidden': 'true' });
+  const contentTextarea = el('textarea', { className: 'ttf-textarea ttf-code-input', placeholder: '例如：SELECT * FROM users WHERE created_at > \'{{start_time}}\';', spellcheck: 'false' });
+  contentEditorHost.append(contentHighlight, contentTextarea);
+  const contentEditorHint = el('div', { className: 'ttf-meta' });
   const contentHint = el('div', { className: 'ttf-meta', text: '时间变量推荐使用 {{start_time}} 之类的命名，再在下方设为“当前时间”。' });
-  contentField.append(contentRow, contentTextarea, contentHint);
+  contentField.append(contentRow, contentEditorHost, contentEditorHint, contentHint);
 
   const fieldsHead = el('div', { className: 'ttf-row' },
     el('strong', { text: '变量配置' }),
@@ -480,6 +609,18 @@ export async function mount(ctx) {
   manager.appendChild(managerPanel);
   container.appendChild(manager);
 
+  state.codeEditorHost = contentEditorHost;
+  state.codeEditorInput = contentTextarea;
+  state.codeEditorHighlight = contentHighlight;
+  state.codeEditorHint = contentEditorHint;
+
+  function setGeneratorError(message) {
+    generatorError.textContent = String(message || '');
+    generatorError.className = 'ttf-status';
+    if (!message) return;
+    generatorError.classList.add('is-visible', 'ttf-status--error');
+  }
+
   function setManagerStatus(type, message) {
     managerStatus.textContent = String(message || '');
     managerStatus.className = 'ttf-status';
@@ -495,6 +636,49 @@ export async function mount(ctx) {
 
   function getDraftTemplate() {
     return getTemplateById(state.draftStore, state.draftTemplateId);
+  }
+
+  function getDraftContentValue() {
+    return state.codeEditorInput ? state.codeEditorInput.value : '';
+  }
+
+  function setDraftContentValue(value) {
+    const next = String(value || '');
+    if (state.codeEditorInput) state.codeEditorInput.value = next;
+    refreshCodeEditorDisplay(getDraftTemplate()?.type, next);
+  }
+
+  function refreshCodeEditorHint(type, content) {
+    if (!state.codeEditorHint) return;
+    if (normalizeTemplateType(type) === 'json') {
+      const error = validateJsonContent(content);
+      state.codeEditorHint.textContent = error ? `JSON 实时检查：${error}` : 'JSON 实时检查通过';
+      return;
+    }
+    if (normalizeTemplateType(type) === 'sql') {
+      state.codeEditorHint.textContent = 'SQL 本地高亮已启用';
+      return;
+    }
+    state.codeEditorHint.textContent = '纯文本模式，变量占位会高亮显示';
+  }
+
+  function syncCodeEditorScroll() {
+    if (!state.codeEditorInput || !state.codeEditorHighlight) return;
+    state.codeEditorHighlight.scrollTop = state.codeEditorInput.scrollTop;
+    state.codeEditorHighlight.scrollLeft = state.codeEditorInput.scrollLeft;
+  }
+
+  function refreshCodeEditorDisplay(type, content) {
+    if (state.codeEditorHighlight) {
+      state.codeEditorHighlight.innerHTML = renderHighlightedEditorHtml(type, content);
+    }
+    syncCodeEditorScroll();
+  }
+
+  function refreshCodeEditorMode(type) {
+    const content = getDraftContentValue();
+    refreshCodeEditorDisplay(type, content);
+    refreshCodeEditorHint(type, content);
   }
 
   function refreshValues(keepExisting) {
@@ -585,6 +769,7 @@ export async function mount(ctx) {
   function renderGenerator() {
     generator.classList.toggle('is-open', state.generatorOpen);
     generatorFields.innerHTML = '';
+    setGeneratorError('');
     const template = getActiveTemplate();
     if (!template) {
       generatorStatus.textContent = '当前没有模板。';
@@ -610,7 +795,8 @@ export async function mount(ctx) {
         const preview = getAutoValue(field);
         card.append(
           el('div', { className: 'ttf-auto-preview', text: preview }),
-          el('div', { className: 'ttf-meta', text: `格式：${field.format || DEFAULT_TIME_FORMAT}` })
+          el('div', { className: 'ttf-meta', text: `格式：${field.format || DEFAULT_TIME_FORMAT}` }),
+          el('div', { className: 'ttf-meta', text: '生成时自动取当前时间' })
         );
         generatorFields.appendChild(card);
         return;
@@ -630,8 +816,16 @@ export async function mount(ctx) {
       }
       input.addEventListener('input', () => {
         state.values[field.key] = input.value;
+        setGeneratorError('');
       });
-      card.append(input, el('div', { className: 'ttf-meta', text: field.defaultValue ? `默认值：${field.defaultValue}` : '未设置默认值' }));
+      const rules = [];
+      if (field.defaultValue) rules.push(`默认值：${field.defaultValue}`);
+      if (field.minLength !== '' && field.maxLength !== '' && Number(field.minLength) === Number(field.maxLength)) rules.push(`固定 ${field.minLength} 位`);
+      else {
+        if (field.minLength !== '') rules.push(`最少 ${field.minLength} 位`);
+        if (field.maxLength !== '') rules.push(`最多 ${field.maxLength} 位`);
+      }
+      card.append(input, el('div', { className: 'ttf-meta', text: rules.join(' · ') || '未设置长度限制' }));
       generatorFields.appendChild(card);
     });
   }
@@ -727,8 +921,43 @@ export async function mount(ctx) {
           field.defaultValue = defaultInput.value;
         });
         defaultField.append(el('div', { className: 'ttf-label', text: '默认值' }), defaultInput);
-        rowB.append(defaultField);
-        card.append(header, fieldMeta, rowA, rowB);
+        const minLengthField = el('div', { className: 'ttf-field' });
+        const minLengthInput = el('input', { className: 'ttf-input', type: 'number', min: '0', value: field.minLength, placeholder: '最小长度' });
+        const maxLengthField = el('div', { className: 'ttf-field' });
+        const maxLengthInput = el('input', { className: 'ttf-input', type: 'number', min: '0', value: field.maxLength, placeholder: '最大长度' });
+        function sanitizeLengthValue(source) {
+          const sourceValue = source.value.trim();
+          return sourceValue === '' ? '' : String(Math.max(0, Number.parseInt(sourceValue, 10) || 0));
+        }
+        function updateOwnLength(source) {
+          const normalized = sanitizeLengthValue(source);
+          if (source === minLengthInput) field.minLength = normalized;
+          else field.maxLength = normalized;
+          source.value = normalized;
+        }
+        function syncMirrorLength(source) {
+          const normalized = sanitizeLengthValue(source);
+          const target = source === minLengthInput ? maxLengthInput : minLengthInput;
+          const ownKey = source === minLengthInput ? 'minLength' : 'maxLength';
+          const targetKey = source === minLengthInput ? 'maxLength' : 'minLength';
+          field[ownKey] = normalized;
+          source.value = normalized;
+          if (!target.value.trim() && normalized !== '') {
+            field[targetKey] = normalized;
+            target.value = normalized;
+          }
+        }
+        minLengthInput.addEventListener('input', () => updateOwnLength(minLengthInput));
+        maxLengthInput.addEventListener('input', () => updateOwnLength(maxLengthInput));
+        minLengthInput.addEventListener('blur', () => syncMirrorLength(minLengthInput));
+        maxLengthInput.addEventListener('blur', () => syncMirrorLength(maxLengthInput));
+        minLengthField.append(el('div', { className: 'ttf-label', text: '最小长度' }), minLengthInput);
+        maxLengthField.append(el('div', { className: 'ttf-label', text: '最大长度' }), maxLengthInput);
+        rowB.append(defaultField, minLengthField, maxLengthField);
+        const lengthMeta = [];
+        if (field.minLength !== '') lengthMeta.push(`最小 ${field.minLength}`);
+        if (field.maxLength !== '') lengthMeta.push(`最大 ${field.maxLength}`);
+        card.append(header, fieldMeta, rowA, rowB, el('div', { className: 'ttf-meta', text: lengthMeta.join(' · ') || '未限制长度' }));
       }
 
       if (field.inputType === 'select') {
@@ -781,14 +1010,16 @@ export async function mount(ctx) {
     if (!current) {
       nameInput.value = '';
       typeSelect.value = 'text';
-      contentTextarea.value = '';
+      setDraftContentValue('');
+      refreshCodeEditorHint('text', '');
       renderFieldsEditor();
       return;
     }
 
     nameInput.value = current.name;
     typeSelect.value = current.type;
-    contentTextarea.value = current.content;
+    setDraftContentValue(current.content);
+    refreshCodeEditorMode(current.type);
     renderFieldsEditor();
   }
 
@@ -833,16 +1064,18 @@ export async function mount(ctx) {
   btnGeneratorConfirm.addEventListener('click', () => {
     const template = getActiveTemplate();
     if (!template) {
+      setGeneratorError('请先选择模板');
       ctx?.showMessage?.('error', '请先选择模板');
       return;
     }
     const finalValues = buildSubmissionValues(template, state.values);
     const validation = validateValues(template, finalValues);
     if (!validation.ok) {
+      setGeneratorError(validation.error);
       ctx?.showMessage?.('error', validation.error);
-      renderGenerator();
       return;
     }
+    setGeneratorError('');
     state.values = finalValues;
     state.result = renderTemplate(template.content, finalValues);
     renderMain();
@@ -885,17 +1118,32 @@ export async function mount(ctx) {
     const current = getDraftTemplate();
     if (!current) return;
     current.type = typeSelect.value;
+    refreshCodeEditorMode(current.type);
   });
 
   contentTextarea.addEventListener('input', () => {
     const current = getDraftTemplate();
     if (!current) return;
     current.content = contentTextarea.value;
+    refreshCodeEditorDisplay(current.type, current.content);
+    refreshCodeEditorHint(current.type, current.content);
+  });
+  contentTextarea.addEventListener('scroll', syncCodeEditorScroll);
+  contentTextarea.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab' || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+    event.preventDefault();
+    const start = contentTextarea.selectionStart;
+    const end = contentTextarea.selectionEnd;
+    const next = `${contentTextarea.value.slice(0, start)}  ${contentTextarea.value.slice(end)}`;
+    contentTextarea.value = next;
+    contentTextarea.selectionStart = contentTextarea.selectionEnd = start + 2;
+    contentTextarea.dispatchEvent(new Event('input'));
   });
 
   btnSyncFields.addEventListener('click', () => {
     const current = getDraftTemplate();
     if (!current) return;
+    current.content = getDraftContentValue();
     current.fields = mergeFieldsFromContent(current.content, current.fields);
     renderFieldsEditor();
     setManagerStatus('success', `已识别 ${current.fields.length} 个变量`);
@@ -948,6 +1196,7 @@ export async function mount(ctx) {
 
   renderMain();
   await loadStore(false);
+  refreshCodeEditorMode('text');
 
   return {
     unmount() {

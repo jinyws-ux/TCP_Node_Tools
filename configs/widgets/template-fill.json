@@ -1,22 +1,24 @@
 {
   "templates": [
     {
-      "id": "tpl_4cc0575e2dd838_19d516caf69",
+      "id": "tpl_06e426b5a72f7_19d51e617c9",
       "name": "新模板1",
       "type": "text",
-      "content": "{{ceshi}}已生成",
+      "content": "{{ceshi}}",
       "fields": [
         {
           "key": "ceshi",
           "label": "ceshi",
           "required": false,
-          "inputType": "generated_time",
+          "inputType": "text",
           "defaultValue": "",
           "options": [],
-          "format": "YYYY-MM-DDTHH:mm:ss"
+          "format": "YYYY-MM-DDTHH:mm:ss.SSS",
+          "minLength": 10,
+          "maxLength": 10
         }
       ]
     }
   ],
-  "activeTemplateId": "tpl_4cc0575e2dd838_19d516caf69"
+  "activeTemplateId": "tpl_06e426b5a72f7_19d51e617c9"
 }
