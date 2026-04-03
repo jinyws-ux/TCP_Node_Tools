@@ -1,0 +1,24 @@
+{
+  "templates": [
+    {
+      "id": "tpl_2e192f35933b48_19d50d80ad3",
+      "name": "新模板1",
+      "type": "text",
+      "content": "sasa{{aaa}}",
+      "fields": [
+        {
+          "key": "aaa",
+          "label": "aaa",
+          "required": true,
+          "inputType": "text",
+          "defaultValue": "",
+          "options": [
+            "1",
+            "2"
+          ]
+        }
+      ]
+    }
+  ],
+  "activeTemplateId": "tpl_2e192f35933b48_19d50d80ad3"
+}

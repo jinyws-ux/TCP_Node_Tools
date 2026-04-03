@@ -2128,6 +2128,143 @@ def api_uhc_save_config():
         pass
     return resp
 
+_TTF_WIDGET_ID = "template-fill"
+
+def _ttf_config_path() -> str:
+    widgets_cfg_dir = os.path.abspath(os.path.join(CONFIG_DIR, "widgets"))
+    return os.path.abspath(os.path.join(widgets_cfg_dir, f"{_TTF_WIDGET_ID}.json"))
+
+def _ttf_legacy_config_path() -> str:
+    root = os.path.abspath(WIDGETS_DIR)
+    widget_dir = os.path.abspath(os.path.join(root, _TTF_WIDGET_ID))
+    return os.path.join(widget_dir, "config.json")
+
+def _ttf_normalize_field(field: Any) -> Dict[str, Any]:
+    if not isinstance(field, dict):
+        return {}
+    key = str(field.get("key") or "").strip()
+    label = str(field.get("label") or key).strip() or key
+    input_type = str(field.get("inputType") or "text").strip().lower() or "text"
+    if input_type not in {"text", "textarea", "select"}:
+        input_type = "text"
+    options = field.get("options") or []
+    if not isinstance(options, list):
+        options = []
+    normalized_options = [str(item).strip() for item in options if str(item).strip()]
+    default_value = "" if field.get("defaultValue") is None else str(field.get("defaultValue"))
+    return {
+        "key": key,
+        "label": label,
+        "required": bool(field.get("required")),
+        "inputType": input_type,
+        "defaultValue": default_value,
+        "options": normalized_options,
+    }
+
+def _ttf_validate_config(payload: Any) -> (bool, str, Dict[str, Any]):
+    if not isinstance(payload, dict):
+        return False, "配置必须是 JSON 对象", {}
+    templates = payload.get("templates")
+    if templates is None:
+        return False, "缺少 templates", {}
+    if not isinstance(templates, list):
+        return False, "templates 必须是数组", {}
+    normalized_templates: List[Dict[str, Any]] = []
+    template_ids = set()
+    active_template_id = str(payload.get("activeTemplateId") or "").strip()
+    for item in templates:
+        if not isinstance(item, dict):
+            return False, "templates[] 必须是对象", {}
+        template_id = str(item.get("id") or "").strip()
+        name = str(item.get("name") or "").strip()
+        template_type = str(item.get("type") or "text").strip().lower() or "text"
+        content = str(item.get("content") or "")
+        if template_type not in {"text", "json", "sql"}:
+            template_type = "text"
+        if not template_id or not name:
+            return False, "每个模板必须包含 id 和 name", {}
+        if not content.strip():
+            return False, f"模板「{name}」内容不能为空", {}
+        if template_id in template_ids:
+            return False, f"模板 ID 重复：{template_id}", {}
+        template_ids.add(template_id)
+        fields = item.get("fields") or []
+        if not isinstance(fields, list):
+            return False, f"模板「{name}」的 fields 必须是数组", {}
+        normalized_fields: List[Dict[str, Any]] = []
+        field_keys = set()
+        for field in fields:
+            normalized_field = _ttf_normalize_field(field)
+            key = normalized_field.get("key") or ""
+            if not key:
+                return False, f"模板「{name}」的变量 key 不能为空", {}
+            if key in field_keys:
+                return False, f"模板「{name}」的变量 key 重复：{key}", {}
+            field_keys.add(key)
+            if normalized_field["inputType"] == "select" and not normalized_field["options"]:
+                return False, f"模板「{name}」的变量「{key}」下拉选项不能为空", {}
+            normalized_fields.append(normalized_field)
+        normalized_templates.append({
+            "id": template_id,
+            "name": name,
+            "type": template_type,
+            "content": content,
+            "fields": normalized_fields,
+        })
+    if active_template_id and active_template_id not in template_ids:
+        active_template_id = normalized_templates[0]["id"] if normalized_templates else ""
+    if not active_template_id and normalized_templates:
+        active_template_id = normalized_templates[0]["id"]
+    return True, "", {
+        "templates": normalized_templates,
+        "activeTemplateId": active_template_id,
+    }
+
+@widgets_bp.route("/api/widgets/template-fill/config", methods=["GET"])
+def api_ttf_get_config():
+    path = _ttf_config_path()
+    legacy_path = _ttf_legacy_config_path()
+    try:
+        source_path = path if os.path.exists(path) else legacy_path
+        if not os.path.exists(source_path):
+            payload = {"templates": [], "activeTemplateId": ""}
+        else:
+            with open(source_path, "r", encoding="utf-8") as f:
+                payload = json.load(f) or {"templates": [], "activeTemplateId": ""}
+    except Exception as e:
+        return jsonify({"success": False, "error": f"读取配置失败：{e}"}), 500
+    resp = jsonify({"success": True, "data": payload, "configPath": path})
+    try:
+        resp.headers["Cache-Control"] = "no-store"
+    except Exception:
+        pass
+    return resp
+
+@widgets_bp.route("/api/widgets/template-fill/config", methods=["PUT"])
+def api_ttf_save_config():
+    body = request.get_json(force=True) or {}
+    ok, err, normalized = _ttf_validate_config(body)
+    if not ok:
+        return jsonify({"success": False, "error": err}), 400
+    path = _ttf_config_path()
+    widgets_cfg_dir = os.path.abspath(os.path.join(CONFIG_DIR, "widgets"))
+    if not _safe_commonpath(widgets_cfg_dir, path):
+        return jsonify({"success": False, "error": "非法路径"}), 400
+    try:
+        os.makedirs(widgets_cfg_dir, exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(normalized, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except Exception as e:
+        return jsonify({"success": False, "error": f"保存配置失败：{e}"}), 500
+    resp = jsonify({"success": True, "saved": True})
+    try:
+        resp.headers["Cache-Control"] = "no-store"
+    except Exception:
+        pass
+    return resp
+
 app.register_blueprint(widgets_bp)
 
 pcl_bp = Blueprint("pcl_api", __name__)

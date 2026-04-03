@@ -229,7 +229,7 @@ def open_default_browser(host: str, port: int) -> None:
 
 def parse_args(argv: Optional[Iterable[str]] = None):
     parser = argparse.ArgumentParser(description="启动 TCP LogTool Web 服务")
-    parser.add_argument("--port", type=int, default=5000, help="Flask 监听端口（默认5000）")
+    parser.add_argument("--port", type=int, default=5556, help="Flask 监听端口（默认5000）")
     parser.add_argument("--no-browser", action="store_true", help="启动后不自动打开浏览器")
     parser.add_argument("--backend-only", action="store_true", help="只启动后端API服务，不自动打开浏览器")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="绑定的主机地址（默认127.0.0.1，服务器部署使用0.0.0.0）")

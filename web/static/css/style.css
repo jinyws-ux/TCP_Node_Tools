@@ -193,6 +193,8 @@ header::after {
   display: flex;
   gap: 10px;
   align-items: center;
+  position: relative;
+  z-index: 1;
 }
 
 .status-pill {
@@ -210,6 +212,100 @@ header::after {
   color: rgba(148, 163, 184, 0.85);
   font-size: 0.78rem;
   letter-spacing: 0.22em;
+}
+
+.click-effect-toggle {
+  position: relative;
+  min-width: 116px;
+  height: 42px;
+  padding: 0 14px 0 12px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(10px);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.10);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.click-effect-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.14);
+  border-color: rgba(96, 165, 250, 0.36);
+}
+
+.click-effect-toggle:active {
+  transform: translateY(0);
+}
+
+.click-effect-toggle__glow {
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.12), rgba(244, 114, 182, 0.08));
+  pointer-events: none;
+}
+
+.click-effect-toggle__icon,
+.click-effect-toggle__text {
+  position: relative;
+  z-index: 1;
+}
+
+.click-effect-toggle__icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.72);
+  color: rgba(71, 85, 105, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+  transition: color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+
+.click-effect-toggle__text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.05;
+}
+
+.click-effect-toggle__text small {
+  font-size: 0.56rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(100, 116, 139, 0.95);
+}
+
+.click-effect-toggle__text strong {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  color: rgba(51, 65, 85, 0.96);
+}
+
+.click-effect-toggle.is-on {
+  border-color: rgba(99, 102, 241, 0.28);
+  background: rgba(248, 250, 255, 0.86);
+}
+
+.click-effect-toggle.is-on .click-effect-toggle__icon {
+  color: rgba(79, 70, 229, 0.96);
+  background: rgba(224, 231, 255, 0.95);
+  transform: rotate(-8deg) scale(1.03);
+}
+
+.click-effect-toggle.is-on .click-effect-toggle__text strong {
+  color: rgba(79, 70, 229, 0.96);
+}
+
+.click-effect-toggle.is-on .click-effect-toggle__glow {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.16), rgba(236, 72, 153, 0.12));
 }
 
 /* ======================= Tabs ======================= */

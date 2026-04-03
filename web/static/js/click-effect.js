@@ -18,8 +18,12 @@
     "❤PLANTCON❤",
     "❤SERAFINA❤",
   ];
+  const STORAGE_KEY = "logtool_click_effect_enabled";
+  const CONTROL_SELECTOR = "[data-click-effect-control]";
 
   let phraseIndex = 0;
+  let enabled = false;
+  let controlButton = null;
 
   function randomColor() {
     const r = Math.floor(Math.random() * 255);
@@ -28,7 +32,50 @@
     return `rgb(${r},${g},${b})`;
   }
 
+  function loadEnabled() {
+    try {
+      return localStorage.getItem(STORAGE_KEY) === "1";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function saveEnabled(next) {
+    try {
+      localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
+    } catch (_) {
+    }
+  }
+
+  function applyButtonState() {
+    if (!controlButton) return;
+    controlButton.classList.toggle("is-on", enabled);
+    controlButton.setAttribute("aria-pressed", enabled ? "true" : "false");
+    const strong = controlButton.querySelector(".click-effect-toggle__text strong");
+    if (strong) strong.textContent = enabled ? "ON" : "OFF";
+  }
+
+  function toggleEnabled(force) {
+    enabled = typeof force === "boolean" ? force : !enabled;
+    saveEnabled(enabled);
+    applyButtonState();
+  }
+
+  function setupControl() {
+    controlButton = document.querySelector(CONTROL_SELECTOR);
+    if (!controlButton) return;
+    enabled = loadEnabled();
+    applyButtonState();
+    controlButton.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleEnabled();
+    });
+  }
+
   function onClick(event) {
+    if (!enabled) return;
+    if (event.target && typeof event.target.closest === "function" && event.target.closest(CONTROL_SELECTOR)) return;
     const heart = document.createElement("b");
     heart.textContent = phrases[phraseIndex];
     phraseIndex = (phraseIndex + 1) % phrases.length;
@@ -74,5 +121,11 @@
 
   if (window.__LOGTOOL_CLICK_EFFECT_INSTALLED__) return;
   window.__LOGTOOL_CLICK_EFFECT_INSTALLED__ = true;
+  enabled = loadEnabled();
   window.addEventListener("click", onClick);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", setupControl, { once: true });
+  } else {
+    setupControl();
+  }
 })();
