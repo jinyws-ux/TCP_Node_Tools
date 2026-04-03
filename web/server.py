@@ -2145,13 +2145,16 @@ def _ttf_normalize_field(field: Any) -> Dict[str, Any]:
     key = str(field.get("key") or "").strip()
     label = str(field.get("label") or key).strip() or key
     input_type = str(field.get("inputType") or "text").strip().lower() or "text"
-    if input_type not in {"text", "textarea", "select"}:
+    if input_type not in {"text", "textarea", "select", "generated_time"}:
         input_type = "text"
     options = field.get("options") or []
     if not isinstance(options, list):
         options = []
     normalized_options = [str(item).strip() for item in options if str(item).strip()]
     default_value = "" if field.get("defaultValue") is None else str(field.get("defaultValue"))
+    time_format = str(field.get("format") or "").strip() or "YYYY-MM-DDTHH:mm:ss.SSS"
+    if input_type == "generated_time":
+        default_value = ""
     return {
         "key": key,
         "label": label,
@@ -2159,6 +2162,7 @@ def _ttf_normalize_field(field: Any) -> Dict[str, Any]:
         "inputType": input_type,
         "defaultValue": default_value,
         "options": normalized_options,
+        "format": time_format,
     }
 
 def _ttf_validate_config(payload: Any) -> (bool, str, Dict[str, Any]):
@@ -2203,6 +2207,8 @@ def _ttf_validate_config(payload: Any) -> (bool, str, Dict[str, Any]):
             field_keys.add(key)
             if normalized_field["inputType"] == "select" and not normalized_field["options"]:
                 return False, f"模板「{name}」的变量「{key}」下拉选项不能为空", {}
+            if normalized_field["inputType"] == "generated_time" and not normalized_field["format"]:
+                return False, f"模板「{name}」的时间变量「{key}」格式不能为空", {}
             normalized_fields.append(normalized_field)
         normalized_templates.append({
             "id": template_id,

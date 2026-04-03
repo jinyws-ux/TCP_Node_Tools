@@ -7,9 +7,9 @@
 
 .ttf-main-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.84fr);
   gap: 10px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .ttf-column {
@@ -17,6 +17,7 @@
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+  height: 100%;
 }
 
 .ttf-title {
@@ -69,6 +70,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  box-sizing: border-box;
 }
 
 .ttf-card--sticky {
@@ -100,6 +102,7 @@
   background: rgba(255, 255, 255, 0.9);
   color: var(--muted-strong);
   font-size: 0.82rem;
+  box-sizing: border-box;
 }
 
 .ttf-select,
@@ -124,6 +127,11 @@
 
 .ttf-field--wide {
   flex: 1 1 100%;
+}
+
+.ttf-check--compact {
+  align-self: end;
+  min-height: 30px;
 }
 
 .ttf-label {
@@ -200,18 +208,74 @@
 }
 
 .ttf-preview {
-  min-height: 135px;
+  min-height: 150px;
 }
 
 .ttf-field-title {
   font-size: 0.9rem;
   font-weight: 700;
   color: var(--muted-strong);
+  line-height: 1.2;
+  min-height: 1.1rem;
 }
 
 .ttf-result {
   min-height: 180px;
   font-family: Consolas, "Courier New", monospace;
+}
+
+.ttf-generator {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(6px);
+  padding: 24px;
+}
+
+.ttf-generator.is-open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ttf-generator-panel {
+  width: min(980px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 25px 70px rgba(15, 23, 42, 0.35);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ttf-generator-body {
+  min-width: 0;
+}
+
+.ttf-generator-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.ttf-textarea--compact {
+  min-height: 76px;
+}
+
+.ttf-auto-preview {
+  padding: 8px 9px;
+  border-radius: 10px;
+  background: rgba(224, 231, 255, 0.38);
+  color: rgba(55, 48, 163, 1);
+  font-size: 0.82rem;
+  font-weight: 700;
+  word-break: break-all;
 }
 
 .ttf-modal {
@@ -336,6 +400,11 @@
   cursor: pointer;
   background: rgba(255, 255, 255, 0.92);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 58px;
+  box-sizing: border-box;
 }
 
 .ttf-list-item:hover {
@@ -375,8 +444,8 @@
 }
 
 .ttf-fields {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 8px;
 }
 
@@ -388,16 +457,27 @@
   flex-direction: column;
   gap: 8px;
   background: rgba(248, 250, 252, 0.7);
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .ttf-field-card--input {
   background: rgba(255, 255, 255, 0.96);
 }
 
+.ttf-field-card--compact {
+  min-height: 0;
+}
+
+.ttf-field-card--manager {
+  align-self: stretch;
+}
+
 .ttf-field-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 8px;
+  align-items: end;
 }
 
 .ttf-check {
@@ -424,7 +504,9 @@
 @media (max-width: 900px) {
   .ttf-flow,
   .ttf-guide,
-  .ttf-main-grid {
+  .ttf-main-grid,
+  .ttf-fields,
+  .ttf-generator-grid {
     grid-template-columns: 1fr;
   }
 

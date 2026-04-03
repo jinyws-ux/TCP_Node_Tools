@@ -1,4 +1,22 @@
 {
-  "templates": [],
-  "activeTemplateId": ""
+  "templates": [
+    {
+      "id": "tpl_4cc0575e2dd838_19d516caf69",
+      "name": "新模板1",
+      "type": "text",
+      "content": "{{ceshi}}已生成",
+      "fields": [
+        {
+          "key": "ceshi",
+          "label": "ceshi",
+          "required": false,
+          "inputType": "generated_time",
+          "defaultValue": "",
+          "options": [],
+          "format": "YYYY-MM-DDTHH:mm:ss"
+        }
+      ]
+    }
+  ],
+  "activeTemplateId": "tpl_4cc0575e2dd838_19d516caf69"
 }
