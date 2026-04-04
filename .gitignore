@@ -36,7 +36,6 @@ log/
 *.md
 *.rst
 *.txt
-*.pdf
 *.docx
 # 但保留README.md
 !.gitignore
