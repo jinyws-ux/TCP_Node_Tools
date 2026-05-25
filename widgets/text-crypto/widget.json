@@ -1,0 +1,9 @@
+{
+  "id": "text-crypto",
+  "name": "文本加密",
+  "version": "1.0.0",
+  "entry": "index.js",
+  "css": ["style.css"],
+  "description": "输入一段文本，按常用方式快速加密或编码。",
+  "icon": "fas fa-lock"
+}

@@ -1,0 +1,105 @@
+.tc-root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tc-title {
+  margin: 0;
+  font-size: 16px;
+  color: #101828;
+}
+
+.tc-subtitle {
+  color: #667085;
+  font-size: 12px;
+}
+
+.tc-note {
+  padding: 8px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.95);
+  color: #475467;
+  font-size: 12px;
+}
+
+.tc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.tc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tc-field--wide {
+  grid-column: 1 / -1;
+}
+
+.tc-label {
+  color: #475467;
+  font-size: 12px;
+}
+
+.tc-select,
+.tc-input,
+.tc-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #101828;
+  font-size: 13px;
+}
+
+.tc-select,
+.tc-input {
+  height: 34px;
+  padding: 0 10px;
+}
+
+.tc-textarea {
+  min-height: 120px;
+  padding: 10px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.tc-textarea--result {
+  min-height: 140px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.tc-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tc-status {
+  display: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(248, 250, 252, 0.95);
+  color: #334155;
+}
+
+.tc-status--error {
+  border-color: rgba(220, 38, 38, 0.24);
+  background: rgba(254, 242, 242, 0.95);
+  color: #b42318;
+}
+
+.tc-status--success {
+  border-color: rgba(22, 163, 74, 0.24);
+  background: rgba(240, 253, 244, 0.95);
+  color: #15803d;
+}
