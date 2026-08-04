@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>未分配工单</title>
+    <link rel="stylesheet" href="/widgets/unassigned-tickets/style.css">
+</head>
+<body class="ut-monitor-body">
+    <main id="ticket-monitor-root"></main>
+    <script type="module">
+        const root = document.getElementById('ticket-monitor-root');
+        try {
+            const moduleUrl = `/widgets/unassigned-tickets/index.js?v=${Date.now()}`;
+            const widgetModule = await import(moduleUrl);
+            const mount = widgetModule.mount || widgetModule.default?.mount;
+            if (typeof mount !== 'function') throw new Error('Widget缺少mount入口');
+            await mount({
+                container: root,
+                standalone: true,
+                widget: { id: 'unassigned-tickets', name: '未分配工单' },
+                showMessage: () => {},
+            });
+        } catch (error) {
+            root.textContent = `监控页面加载失败：${error?.message || String(error)}`;
+        }
+    </script>
+</body>
+</html>

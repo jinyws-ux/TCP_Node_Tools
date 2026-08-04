@@ -87,6 +87,36 @@ WIDGETS_DIR/
 - 小工具入口导出约定：
   - 必须导出 `mount(ctx)`（或 `default.mount(ctx)`），并返回 `{ unmount() }`（可选但建议提供）
 
+## 未分配工单监控
+
+- 工具箱中提供“未分配工单”Widget；独立窄屏页面地址为 `/ticket-monitor`。
+- 后端固定查询 `IT Control Center L2` 组内 `assignee IS NULL` 且未取消的工单。
+- `Incident` 显示为 `INC`，`WorkOrder` 显示为 `WO`。
+- 所有浏览器共享5分钟服务端缓存，数据库异常时保留上次成功结果。
+
+安装PostgreSQL驱动：
+
+```shell
+py -3.12 -m pip install -r requirements-ticket-monitor.txt
+```
+
+复制配置示例并填写服务器信息：
+
+```text
+configs/unassigned_tickets.example.json
+  -> C:\SecureConfig\unassigned_tickets.json
+```
+
+通过环境变量指定配置文件和密码，避免将密码提交到Git：
+
+```powershell
+$env:UNASSIGNED_TICKET_DB_CONFIG = 'C:\SecureConfig\unassigned_tickets.json'
+$env:UNASSIGNED_TICKET_DB_PASSWORD = '<数据库密码>'
+py -3.12 app.py --backend-only --host 0.0.0.0
+```
+
+也可以直接通过 `UNASSIGNED_TICKET_DB_DSN` 提供完整连接串。生产账号应仅具有目标表的只读权限。
+
 ## 打包命令（PyInstaller）
 - 一目录模式（推荐分发）：
 ```

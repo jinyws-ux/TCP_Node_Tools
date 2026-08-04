@@ -12,6 +12,8 @@ CORE_MODULES = [
     "core.report_mapping_store",
     "core.server_config_service",
     "core.template_manager",
+    "core.unassigned_ticket_service",
+    "web.unassigned_ticket_routes",
 ]
 
 

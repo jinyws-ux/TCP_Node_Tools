@@ -1,0 +1,11 @@
+{
+  "host": "postgres-server.example.internal",
+  "port": 5432,
+  "dbname": "reporting",
+  "user": "ticket_monitor_readonly",
+  "passwordEnv": "UNASSIGNED_TICKET_DB_PASSWORD",
+  "connectTimeoutSeconds": 5,
+  "statementTimeoutMs": 8000,
+  "cacheSeconds": 300,
+  "minForceIntervalSeconds": 10
+}

@@ -36,6 +36,8 @@ log/
 *.md
 *.rst
 *.txt
+!requirements-ticket-monitor.txt
+configs/unassigned_tickets.json
 *.docx
 # 但保留README.md
 !.gitignore

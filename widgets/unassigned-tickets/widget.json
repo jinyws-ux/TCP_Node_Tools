@@ -1,0 +1,9 @@
+{
+  "id": "unassigned-tickets",
+  "name": "未分配工单",
+  "version": "1.0.0",
+  "entry": "index.js",
+  "css": ["style.css"],
+  "description": "显示IT Control Center L2组内没有Assignee的INC和WO工单。",
+  "icon": "fas fa-inbox"
+}
