@@ -34,6 +34,7 @@ from core.log_matcher import LogMatcher, Transaction
 from core.pcl_jobs import PclJobManager
 from core.pcl_service import list_remote_pcl_files, default_ghostpcl_exe
 from web.unassigned_ticket_routes import create_unassigned_ticket_blueprint
+from web.plc_report_routes import create_plc_report_blueprint
 
 app = Flask(__name__)
 
@@ -111,6 +112,7 @@ os.makedirs(WIDGETS_DIR, exist_ok=True)
 
 unassigned_ticket_service = UnassignedTicketService.from_environment(project_root)
 app.register_blueprint(create_unassigned_ticket_blueprint(unassigned_ticket_service))
+app.register_blueprint(create_plc_report_blueprint())
 
 REPORT_MAPPING_FILE = paths_cfg['REPORT_MAPPING_FILE'] or os.path.join(HTML_LOGS_DIR, 'report_mappings.json')
 

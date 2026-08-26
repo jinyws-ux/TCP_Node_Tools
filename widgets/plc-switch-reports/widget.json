@@ -1,0 +1,9 @@
+{
+  "id": "plc-switch-reports",
+  "name": "PLC切换报告",
+  "version": "1.0.0",
+  "entry": "index.js",
+  "css": ["style.css"],
+  "description": "按成功和失败分类查看PLC切换记录并下载HTML报告。",
+  "icon": "fas fa-file-alt"
+}

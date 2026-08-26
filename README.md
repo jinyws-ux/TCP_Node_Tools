@@ -117,6 +117,13 @@ py -3.12 app.py --backend-only --host 0.0.0.0
 
 也可以直接通过 `UNASSIGNED_TICKET_DB_DSN` 提供完整连接串。生产账号应仅具有目标表的只读权限。
 
+## PLC切换报告
+
+- 工具箱中提供“PLC切换报告”Widget，按“全部 / 成功 / 失败”查看任务。
+- 每条记录显示任务ID、时间、PLC和方向，并可下载HTML报告。
+- TCP Node Tools后端只读转发报告列表和HTML下载请求到本机 `http://127.0.0.1:1999`。
+- 该工具不代理PLC切换或回滚接口。
+
 ## 打包命令（PyInstaller）
 - 一目录模式（推荐分发）：
 ```

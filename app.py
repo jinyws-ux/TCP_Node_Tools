@@ -14,6 +14,7 @@ CORE_MODULES = [
     "core.template_manager",
     "core.unassigned_ticket_service",
     "web.unassigned_ticket_routes",
+    "web.plc_report_routes",
 ]
 
 
