@@ -75,3 +75,10 @@ build/
 *~
 
 *.gitignore
+
+# Private runtime configuration and updater state
+configs/workload.json
+clients/**/ticket-monitor.json
+*.update-backup
+*.update-incoming
+!clients/TicketMonitorTk/VERSION.txt

@@ -29,6 +29,7 @@ from core.report_mapping_store import ReportMappingStore
 from core.server_config_service import ServerConfigService
 from core.template_manager import TemplateManager
 from core.unassigned_ticket_service import UnassignedTicketService
+from core.sla_risk_service import SlaRiskService
 from core.log_parser import LogParser
 from core.log_matcher import LogMatcher, Transaction
 from core.pcl_jobs import PclJobManager
@@ -111,7 +112,8 @@ WIDGETS_DIR = paths_cfg['WIDGETS_DIR']
 os.makedirs(WIDGETS_DIR, exist_ok=True)
 
 unassigned_ticket_service = UnassignedTicketService.from_environment(project_root)
-app.register_blueprint(create_unassigned_ticket_blueprint(unassigned_ticket_service))
+sla_risk_service = SlaRiskService.from_environment(project_root)
+app.register_blueprint(create_unassigned_ticket_blueprint(unassigned_ticket_service, sla_risk_service))
 app.register_blueprint(create_plc_report_blueprint())
 
 REPORT_MAPPING_FILE = paths_cfg['REPORT_MAPPING_FILE'] or os.path.join(HTML_LOGS_DIR, 'report_mappings.json')

@@ -153,3 +153,10 @@ pyinstaller --onedir --hidden-import=platform --hidden-import=socket --hidden-im
 - 已移除本地构建产物：`dist/LogTool/`、`build/LogTool/`，避免将打包结果提交。
 - 建议保留的核心目录与文件：`app.py`、`paths.json`、`web/`、`core/`。
 - 如需忽略更多本地文件，可在 VCS 中添加忽略规则（例如 `dist/`、`build/`）。
+
+
+## 工单监控同步分支（2026-09-09）
+
+客户端源码现在统一位于 `clients/TicketMonitorTk/`，包含待处理分区、SLA、工作量、共享忽略、防锁按钮与 NAS 更新。详见 [同步说明](docs/ticket-monitor-sync.md)。客户端基线是已交付的 v2.5.0；生产手改的版本号并不能证明代码已同步。
+
+配置示例：`configs/unassigned_tickets.example.json`、`configs/workload.example.json` 和 `clients/TicketMonitorTk/ticket-monitor.example.json`。实际配置不提交 Git。后端启动方式沿用原项目。

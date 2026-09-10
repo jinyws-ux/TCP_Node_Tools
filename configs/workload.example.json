@@ -1,0 +1,30 @@
+{
+  "cacheSeconds": 300,
+  "minForceIntervalSeconds": 10,
+  "ticketDaysPerTicket": 0.33625,
+  "calendar": {
+    "weekendDays": [
+      5,
+      6
+    ],
+    "holidays": [],
+    "extraWorkdays": [],
+    "monthlyTargetOverrides": {}
+  },
+  "jira": {
+    "baseUrl": "",
+    "apiVersion": "2",
+    "authMode": "bearer",
+    "tokenEnv": "JIRA_API_TOKEN",
+    "storyPointField": "customfield_10002",
+    "jqlTemplate": "",
+    "employeePlaceholder": "current",
+    "pageSize": 100,
+    "timeoutSeconds": 10,
+    "token": ""
+  },
+  "ticket": {
+    "query": "SELECT COUNT(*) AS ticket_count FROM remedy_ticket WHERE assignee = %(assignee)s AND (((ticket_type = 'WorkOrder') AND resolved_time >= %(month_start)s AND resolved_time < %(next_month_start)s) OR ((ticket_type = 'Incident') AND limit_time >= %(month_start)s AND limit_time < %(next_month_start)s))",
+    "countField": "ticket_count"
+  }
+}

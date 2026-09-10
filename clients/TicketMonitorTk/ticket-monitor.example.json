@@ -1,0 +1,26 @@
+{
+  "apiUrl": "http://127.0.0.1:5556/api/unassigned-tickets",
+  "slaApiUrl": "http://127.0.0.1:5556/api/sla-risk-tickets",
+  "workloadApiUrl": "http://127.0.0.1:5556/api/workload/summary",
+  "refreshSeconds": 300,
+  "slaRefreshSeconds": 60,
+  "workloadRefreshSeconds": 300,
+  "timeoutSeconds": 8,
+  "collapsedOpacity": 0.72,
+  "expandedOpacity": 0.96,
+  "notify": true,
+  "useSystemProxy": false,
+  "ignoreListPath": "",
+  "ufNumber": "",
+  "remedyAssignee": "",
+  "dockEnabled": true,
+  "dockStripWidth": 32,
+  "dockHideDelayMs": 900,
+  "dockSnapDistance": 18,
+  "position": {
+    "anchorRight": null,
+    "top": 80,
+    "dockSide": null
+  },
+  "updateManifestPath": ""
+}

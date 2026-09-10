@@ -16,11 +16,17 @@ SELECT
     ticket_type,
     summary,
     priority,
+    status,
+    assignee,
     submit_time
 FROM remedy_ticket
 WHERE assign_group = 'IT Control Center L2'
   AND status != 'Cancelled'
-  AND assignee IS NULL
+  AND (
+    assignee IS NULL OR BTRIM(assignee) = ''
+    OR (%(agent_assignee)s <> '' AND assignee = %(agent_assignee)s
+        AND status = %(agent_status)s)
+  )
 ORDER BY submit_time DESC NULLS LAST
 """.strip()
 
@@ -192,7 +198,11 @@ class UnassignedTicketService:
 
         with psycopg.connect(*connection_args, **kwargs) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(DEFAULT_QUERY)
+                query = str(self.config.get("pendingQuery") or DEFAULT_QUERY)
+                cursor.execute(query, {
+                    "agent_assignee": str(self.config.get("agentHandoffAssignee") or "").strip(),
+                    "agent_status": str(self.config.get("agentHandoffStatus") or "In Progress").strip(),
+                })
                 return list(cursor.fetchall())
 
     def _build_snapshot(self, rows: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
@@ -209,11 +219,21 @@ class UnassignedTicketService:
                     "raw_type": str(raw_type or "").strip(),
                     "summary": str(row.get("summary") or "").strip(),
                     "priority": str(row.get("priority") or "").strip(),
+                    "status": str(row.get("status") or "").strip(),
+                    "assignee": str(row.get("assignee") or "").strip(),
+                    "handling_kind": (
+                        "agent_handoff"
+                        if str(self.config.get("agentHandoffAssignee") or "").strip()
+                        and str(row.get("assignee") or "").strip() == str(self.config.get("agentHandoffAssignee") or "").strip()
+                        and str(row.get("status") or "").strip() == str(self.config.get("agentHandoffStatus") or "In Progress").strip()
+                        else "unassigned"
+                    ),
                     "submit_time": _serialize_value(row.get("submit_time")),
                 }
             )
 
         items.sort(key=lambda item: str(item.get("submit_time") or ""), reverse=True)
+        items.sort(key=lambda item: item["handling_kind"] != "agent_handoff")
         inc_count = sum(1 for item in items if item["type"] == "INC")
         wo_count = sum(1 for item in items if item["type"] == "WO")
         return {
